@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}Add Target - VAPT Scanner Pro{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/targets.css') }}">
+{% endblock %}
+{% block body %}
+<div id="_main" style="padding-top:56px;margin-left:220px;min-height:100vh;">
+<div class="content">
+  <a href="/targets" class="back-a"><i class="fa-solid fa-arrow-left"></i> Back to Targets</a>
+  <div class="pt">
+    <h1><i class="fa-solid fa-crosshairs"></i> Add New Target</h1>
+    <p>Configure a new scanning target</p>
+  </div>
+  <div class="card" style="max-width:680px;">
+    <div class="cb">
+
+      <!-- Basic Info -->
+      <div class="fg"><label>Target Name <span style="color:var(--red)">*</span></label><input type="text" id="tName" placeholder="e.g. Production Web App"></div>
+      <div class="fg"><label>URL / IP Address <span style="color:var(--red)">*</span></label><input type="text" id="tUrl" placeholder="e.g. https://app.example.com"></div>
+      <div class="fg">
+        <label>Target Type</label>
+        <div class="type-btns">
+          <button class="type-btn active" onclick="selType(this)"><i class="fa-solid fa-globe"></i> Web</button>
+          <button class="type-btn" onclick="selType(this)"><i class="fa-solid fa-code"></i> API</button>
+          <button class="type-btn" onclick="selType(this)"><i class="fa-solid fa-wifi"></i> IP</button>
+        </div>
+      </div>
+      <div class="fg"><label>Description</label><textarea id="tDesc" placeholder="Optional description..."></textarea></div>
+
+      <!-- Authentication Method -->
+      <div class="fg">
+        <label>Authentication Method</label>
+        <select id="tAuth" onchange="showAuth()">
+          <option value="none">No Authentication</option>
+          <option value="basic">HTTP Basic Auth</option>
+          <option value="form">Form-Based Login</option>
+        </select>
+      </div>
+
+      <!-- HTTP Basic Auth Fields -->
+      <div id="basicAuthFields" style="display:none;border:1.5px solid var(--border);border-radius:10px;padding:1rem;margin-bottom:.75rem;">
+        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.875rem;">
+          <span style="font-size:1.1rem;">🔐</span>
+          <h3 style="margin:0;font-size:.875rem;font-weight:600;color:var(--text);">HTTP Basic Authentication</h3>
+        </div>
+        <div class="fg"><label>Username</label><input type="text" id="basicUsername" placeholder="Enter username"></div>
+        <div class="fg"><label>Password</label><input type="password" id="basicPassword" placeholder="Enter password"></div>
+      </div>
+
+      <!-- Form-Based Auth Fields -->
+      <div id="formAuthFields" style="display:none;border:1.5px solid var(--border);border-radius:10px;padding:1rem;margin-bottom:.75rem;">
+        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.875rem;">
+          <span style="font-size:1.1rem;">📋</span>
+          <h3 style="margin:0;font-size:.875rem;font-weight:600;color:var(--text);">Form-Based Authentication</h3>
+        </div>
+        <div class="fg">
+          <label>Login Page URL</label>
+          <div style="display:flex;gap:.5rem;">
+            <input type="url" id="formLoginUrl" placeholder="https://example.com/login" style="flex:1;">
+            <button type="button" class="btn btn-o" onclick="detectLoginFields()" title="Auto-detect field names"><i class="fa-solid fa-wand-magic-sparkles"></i> Detect</button>
+          </div>
+        </div>
+        <div class="fg"><label>Username</label><input type="text" id="formUsername" placeholder="Enter username"></div>
+        <div class="fg"><label>Password</label><input type="password" id="formPassword" placeholder="Enter password"></div>
+        <div class="fg">
+          <label>Username Field Name <span style="color:var(--text-muted);font-weight:400;font-size:.75rem;">(HTML input name attribute)</span></label>
+          <input type="text" id="formUsernameField" placeholder="username">
+        </div>
+        <div class="fg">
+          <label>Password Field Name <span style="color:var(--text-muted);font-weight:400;font-size:.75rem;">(HTML input name attribute)</span></label>
+          <input type="text" id="formPasswordField" placeholder="password">
+        </div>
+        <div class="fg">
+          <label>Success Indicator <span style="color:var(--text-muted);font-weight:400;font-size:.75rem;">(text visible after login)</span></label>
+          <input type="text" id="formSuccessIndicator" placeholder="e.g. Dashboard, Welcome, Logout">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:.625rem;flex-wrap:wrap;">
+        <button class="btn btn-o" onclick="addTarget('save')"><i class="fa-solid fa-floppy-disk"></i> Save Target</button>
+        <button class="btn btn-p" onclick="addTarget('scan')"><i class="fa-solid fa-play"></i> Save &amp; Start Scan</button>
+        <a href="/targets" class="btn btn-o" style="margin-left:auto;">Cancel</a>
+      </div>
+
+    </div>
+  </div>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+initLayout('/targets');
+
+function selType(b) {
+  document.querySelectorAll('.type-btn').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+}
+
+function showAuth() {
+  const v = document.getElementById('tAuth').value;
+  document.getElementById('basicAuthFields').style.display = v === 'basic' ? 'block' : 'none';
+  document.getElementById('formAuthFields').style.display  = v === 'form'  ? 'block' : 'none';
+}
+
+async function detectLoginFields() {
+  const url = document.getElementById('formLoginUrl').value.trim();
+  if (!url) { alert('Enter Login Page URL first'); return; }
+  try {
+    const res = await fetch('/api/detect-login-fields', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ login_url: url })
+    });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      document.getElementById('formUsernameField').value = data.username_field || 'username';
+      document.getElementById('formPasswordField').value = data.password_field || 'password';
+      if (data.api_login_url) document.getElementById('formLoginUrl').value = data.api_login_url;
+    } else {
+      alert(data.message || 'Could not detect fields');
+    }
+  } catch (e) { alert('Detection failed: ' + e.message); }
+}
+
+async function addTarget(action) {
+  const n = document.getElementById('tName').value.trim();
+  const u = document.getElementById('tUrl').value.trim();
+  if (!n || !u) { alert('Please enter target name and URL.'); return; }
+
+  const activeType = document.querySelector('.type-btn.active');
+  const ttype = activeType ? activeType.textContent.trim() : 'Web';
+  const desc  = document.getElementById('tDesc').value.trim();
+  const authType = document.getElementById('tAuth').value;
+
+  // Build auth config — mirrors scanning page field names exactly
+  const authConfig = { type: authType };
+  if (authType === 'basic') {
+    authConfig.basicUsername = document.getElementById('basicUsername').value.trim();
+    authConfig.basicPassword = document.getElementById('basicPassword').value;
+  } else if (authType === 'form') {
+    authConfig.formLoginUrl          = document.getElementById('formLoginUrl').value.trim();
+    authConfig.formUsername          = document.getElementById('formUsername').value.trim();
+    authConfig.formPassword          = document.getElementById('formPassword').value;
+    authConfig.formUsernameField     = document.getElementById('formUsernameField').value.trim() || 'username';
+    authConfig.formPasswordField     = document.getElementById('formPasswordField').value.trim() || 'password';
+    authConfig.formSuccessIndicator  = document.getElementById('formSuccessIndicator').value.trim();
+  }
+
+  try {
+    const res  = await fetch('/api/targets', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ name: n, url: u, type: ttype, description: desc, auth_config: authConfig })
+    });
+    const data = await res.json();
+    if (data.status !== 'success') {
+      alert('Error: ' + (data.message || 'Could not add target.'));
+      return;
+    }
+
+    if (action === 'scan') {
+      // Write prefill data to localStorage so scanning page picks it up
+      const prefill = {
+        target:   u,
+        loginType: authType,
+        authData:  authConfig,
+      };
+      localStorage.setItem('vapt_prefill', JSON.stringify(prefill));
+      window.location.href = '/scanning?autostart=1';
+    } else {
+      window.location.href = '/targets';
+    }
+
+  } catch(e) { alert('Network error: ' + e.message); }
+}
+</script>
+{% endblock %}

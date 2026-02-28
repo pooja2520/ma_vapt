@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VAPT Scanner Pro - Check Email</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+<style>
+:root { --blue:#2563EB; --blue-dark:#1d4ed8; --text:#1e293b; --text-muted:#64748b; --border:#e2e8f0; --bg:#f1f5f9; --white:#fff; --green:#22c55e; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'DM Sans',sans-serif; background:var(--bg); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:1rem; }
+</style>
+</head>
+<body>
+<a href="/" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to Login</a>
+<div class="box">
+  <div class="box-header">
+    <i class="fa-regular fa-envelope"></i>
+    <h1>Check Your Email</h1>
+    <p>Password reset link sent</p>
+  </div>
+  <div class="box-body check-body">
+    <div class="check-icon"><i class="fa-solid fa-check"></i></div>
+    <h2>Email Sent Successfully</h2>
+    <p>We've sent a password reset link to your email address. Please check your inbox and follow the instructions to reset your password.</p>
+    <a href="/" class="btn-primary" style="text-decoration:none;display:inline-flex;width:auto;padding:.875rem 2rem;"><i class="fa-solid fa-arrow-left"></i> Back to Login</a>
+    <div class="resend">Didn't receive? <a href="/forgot-password">Resend email</a></div>
+  </div>
+</div>
+</body>
+</html>

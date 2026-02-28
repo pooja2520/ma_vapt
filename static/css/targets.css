@@ -1,0 +1,33 @@
+/* Targets Pages */
+.type-btns { display: flex; gap: .5rem; flex-wrap: wrap; }
+.type-btn { display: flex; align-items: center; gap: .4rem; padding: .4rem .875rem; border: 1.5px solid var(--border); border-radius: 8px; background: #fff; font-size: .8rem; font-weight: 600; cursor: pointer; color: var(--text-muted); transition: all .2s; }
+.type-btn.active { border-color: var(--blue); color: var(--blue); background: var(--blue-light); }
+
+/* ── Severity & Status Badges ─────────────────────────────── */
+.bx  { display: inline-flex; align-items: center; gap: .2rem; padding: .2rem .55rem; border-radius: 6px; font-size: .72rem; font-weight: 700; white-space: nowrap; border: 1.5px solid; }
+.bx.bc  { background: #fff1f2; color: #be123c; border-color: #fda4af; }  /* Critical — red    */
+.bx.bh  { background: #fff7ed; color: #c2410c; border-color: #fdba74; }  /* High     — orange */
+.bx.bm  { background: #fefce8; color: #a16207; border-color: #fde047; }  /* Medium   — amber  */
+.bx.bl  { background: #f0fdf4; color: #15803d; border-color: #86efac; }  /* Low      — green  */
+.bx.bi  { background: #eff6ff; color: #1d4ed8; border-color: #93c5fd; }  /* Info     — blue   */
+
+/* Type badges */
+.bx.bwb { background: #eff6ff; color: #1d4ed8; border-color: #93c5fd; }  /* Web  */
+.bx.bap { background: #faf5ff; color: #7c3aed; border-color: #c4b5fd; }  /* API  */
+.bx.bip { background: #f0fdf4; color: #15803d; border-color: #86efac; }  /* IP   */
+
+/* Status badges */
+.bx.bcp { background: #f0fdf4; color: #15803d; border-color: #86efac; }  /* Completed — green */
+.bx.bpd { background: #fefce8; color: #a16207; border-color: #fde047; }  /* Pending   — amber */
+.bx.bsc { background: #eff6ff; color: #1d4ed8; border-color: #93c5fd; }  /* Scanning  — blue  */
+
+/* Target View */
+.meta-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: .75rem; margin-bottom: 1rem; }
+.meta-card { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: .875rem; }
+.meta-card small { font-size: .68rem; color: var(--text-muted); display: block; margin-bottom: .3rem; }
+.meta-card p { font-size: .875rem; font-weight: 600; }
+.vuln-sum { display: grid; grid-template-columns: repeat(6,1fr); gap: .75rem; }
+.vs { text-align: center; padding: .75rem; border: 1px solid var(--border); border-radius: 9px; }
+.vs strong { font-size: 1.5rem; font-weight: 700; display: block; }
+.vs small { font-size: .7rem; color: var(--text-muted); }
+@media(max-width: 900px) { .meta-grid { grid-template-columns: repeat(2,1fr); } .vuln-sum { grid-template-columns: repeat(3,1fr); } }

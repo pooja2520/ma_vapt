@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}Reports - VAPT Scanner Pro{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/reports.css') }}">{% endblock %}
+{% block body %}
+<div id="_main" style="padding-top:56px;margin-left:220px;min-height:100vh;">
+<div class="content">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.625rem;">
+    <div>
+      <h1 style="font-family:'Space Grotesk',sans-serif;font-size:1.375rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:.4rem;">
+        <i class="fa-regular fa-file-lines" style="color:var(--blue)"></i> Reports &amp; Export
+      </h1>
+      <p style="font-size:.78rem;color:var(--text-muted);">View, download, and export security scan reports</p>
+    </div>
+    <div class="export-btns" style="display:flex;align-items:center;gap:.625rem;">
+      <span id="liveClock" style="font-size:.75rem;color:var(--text-muted);font-family:'Courier New',monospace;background:var(--blue-light,#eff6ff);padding:.3rem .7rem;border-radius:7px;border:1px solid var(--border);">
+        <i class="fa-regular fa-clock"></i> --:--:--
+      </span>
+      <span style="font-size:.72rem;color:#16a34a;display:flex;align-items:center;gap:.3rem;">
+        <span style="width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;animation:rpulse 2s infinite;"></span> Live
+      </span>
+      <a href="/download" class="exp-btn"><i class="fa-regular fa-file-excel"></i> Download Latest</a>
+    </div>
+  </div>
+
+
+
+
+  <div class="card">
+    <div class="ch" style="display:flex;justify-content:space-between;align-items:center;">
+      <span><i class="fa-regular fa-file-lines"></i> Recent Reports</span>
+      <div style="display:flex;gap:1rem;align-items:center;">
+        <span id="reportCount" style="font-size:.72rem;color:rgba(255,255,255,.8);font-weight:600;"></span>
+        <span id="lastUpdated" style="font-size:.68rem;color:rgba(255,255,255,.65);"></span>
+      </div>
+    </div>
+    <div class="cb" style="padding:0;" id="reportsList">
+      <div style="text-align:center;padding:2.5rem;color:var(--text-muted);" id="reportsEmpty">
+        <i class="fa-regular fa-file-lines" style="font-size:2rem;margin-bottom:.5rem;display:block;color:var(--border)"></i>
+        No reports yet. <a href="/scanning" style="color:var(--blue)">Run a scan</a> to generate your first report.
+      </div>
+    </div>
+    <div style="padding:.625rem 1rem;text-align:center;border-top:1px solid var(--border);">
+      <p style="font-size:.72rem;color:var(--text-muted);">Reports are stored for 90 days. Auto-refreshes every 10 seconds.</p>
+    </div>
+  </div>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+initLayout('/reports');
+
+// Live clock
+function updateClock() {
+    const now = new Date();
+    document.getElementById('liveClock').innerHTML =
+        `<i class="fa-regular fa-clock"></i> ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// Time-ago
+function timeAgo(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr.replace(' ', 'T'));
+    if (isNaN(d)) return '';
+    const diff = Math.floor((Date.now() - d) / 1000);
+    if (diff < 10)   return 'just now';
+    if (diff < 60)   return diff + 's ago';
+    if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff/3600) + 'h ' + (Math.floor(diff/60)%60) + 'm ago';
+    return Math.floor(diff/86400) + 'd ago';
+}
+
+function formatDateTime(dateStr) {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr.replace(' ', 'T'));
+    if (isNaN(d)) return dateStr;
+    return d.toLocaleString('en-IN', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+    });
+}
+
+// Store scan times for live ago refresh
+let reportMeta = {};
+
+async function loadReports() {
+    try {
+        const res  = await fetch('/api/reports');
+        const data = await res.json();
+        const list = data.reports || [];
+        const container = document.getElementById('reportsList');
+        const countEl   = document.getElementById('reportCount');
+        const lastUpd   = document.getElementById('lastUpdated');
+
+        countEl.textContent = list.length ? `${list.length} report${list.length>1?'s':''}` : '';
+        lastUpd.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+
+        if (list.length === 0) {
+            container.innerHTML = `<div style="text-align:center;padding:2.5rem;color:var(--text-muted);">
+                <i class="fa-regular fa-file-lines" style="font-size:2rem;margin-bottom:.5rem;display:block;color:var(--border)"></i>
+                No reports yet. <a href="/scanning" style="color:var(--blue)">Run a scan</a> to generate your first report.</div>`;
+            return;
+        }
+
+        // Save meta for time-ago refresh
+        reportMeta = {};
+        list.forEach(r => {
+            reportMeta[r.id] = r.scan_time || r.date || '';
+        });
+
+        container.innerHTML = list.map((r, idx) => {
+            const vc  = r.vuln_counts || {};
+            const badgesHtml = [
+                vc.critical ? `<span class="bx bc">${vc.critical} C</span>` : '',
+                vc.high     ? `<span class="bx bh">${vc.high} H</span>`     : '',
+                vc.medium   ? `<span class="bx bm">${vc.medium} M</span>`   : '',
+                vc.low      ? `<span class="bx bl">${vc.low} L</span>`      : '',
+                vc.info     ? `<span class="bx bi">${vc.info} I</span>`     : '',
+            ].filter(Boolean).join('');
+
+            const statusCls  = r.status === 'Completed' ? 'bac' : 'bpg';
+            const statusIcon = r.status === 'Completed' ? 'fa-circle-check' : 'fa-clock';
+
+            const scanTimeStr = r.scan_time || r.date || '';
+            const formattedDT = formatDateTime(scanTimeStr);
+            const ago         = timeAgo(scanTimeStr);
+            const isLatest    = idx === 0;
+
+            const runtime = r.runtime_seconds
+                ? `<span style="font-size:.68rem;color:var(--text-muted);display:inline-flex;align-items:center;gap:.25rem;"><i class="fa-regular fa-clock"></i> ${Math.floor(r.runtime_seconds/60)}m ${r.runtime_seconds%60}s</span>`
+                : '';
+
+            return `<div class="report-item" id="ritem-${r.id}">
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.2rem;">
+                        <strong style="font-size:.9rem;">${r.name}</strong>
+                        ${isLatest ? '<span class="badge-latest"><i class="fa-solid fa-bolt"></i> Latest</span>' : ''}
+                    </div>
+                    <div class="report-meta">
+                        <span style="font-size:.72rem;color:var(--text-muted);" title="${formattedDT}">
+                            <i class="fa-regular fa-calendar"></i> ${formattedDT}
+                        </span>
+                        <span class="time-ago" id="ago-${r.id}">(${ago})</span>
+                        <span class="bx ${statusCls}"><i class="fa-solid ${statusIcon}"></i> ${r.status}</span>
+                        <span style="font-size:.72rem;color:var(--text-muted)">${r.total} findings</span>
+                        ${runtime}
+                    </div>
+                </div>
+                <div class="report-right">
+                    <div class="vuln-counts">${badgesHtml || '<span style="font-size:.72rem;color:var(--text-muted)">No vulns</span>'}</div>
+                    <a href="/reports/${r.id}" class="btn btn-o btn-s"><i class="fa-regular fa-eye"></i> View</a>
+                    <a href="/download-report/${r.id}" class="btn btn-p btn-s"><i class="fa-solid fa-download"></i> Download</a>
+                </div>
+            </div>`;
+        }).join('');
+
+    } catch (e) {
+        console.error('Failed to load reports:', e);
+    }
+}
+
+// Refresh time-ago labels without re-fetching
+function refreshTimeAgo() {
+    Object.entries(reportMeta).forEach(([id, scanTimeStr]) => {
+        const el = document.getElementById(`ago-${id}`);
+        if (el && scanTimeStr) el.textContent = `(${timeAgo(scanTimeStr)})`;
+    });
+}
+
+loadReports();
+setInterval(loadReports, 10000);
+setInterval(refreshTimeAgo, 15000);
+</script>
+{% endblock %}

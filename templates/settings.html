@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Settings - VAPT Scanner Pro{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/settings.css') }}">{% endblock %}
+{% block body %}
+<div id="_main" style="padding-top:56px;margin-left:220px;min-height:100vh;">
+<div class="content">
+  <div class="pt"><h1><i class="fa-solid fa-gear"></i> Settings</h1><p>Manage your account and preferences</p></div>
+  <div class="settings-layout">
+    <div class="settings-nav">
+      <a class="sn-item active" onclick="showPanel('profile',this)"><i class="fa-regular fa-user"></i> Profile</a>
+      <a class="sn-item" onclick="showPanel('password',this)"><i class="fa-solid fa-lock"></i> Password</a>
+      <a class="sn-item" onclick="showPanel('apikeys',this)"><i class="fa-solid fa-key"></i> API Keys</a>
+      <a class="sn-item" onclick="showPanel('notifications',this)"><i class="fa-regular fa-bell"></i> Notifications</a>
+      <a class="sn-item" onclick="showPanel('scanlimits',this)"><i class="fa-regular fa-clock"></i> Scan Limits</a>
+      <a class="sn-item" onclick="showPanel('integrations',this)"><i class="fa-solid fa-link"></i> Integrations</a>
+    </div>
+    <div>
+      <div class="settings-panel active" id="panel-profile">
+        <div class="card"><div class="ch"><i class="fa-regular fa-user"></i> Profile</div><div class="cb">
+          <div class="fg"><label>Full Name</label><input type="text" value="{{ current_user.name if current_user else '' }}" readonly></div>
+          <div class="fg"><label>Email</label><input type="email" value="{{ current_user.email if current_user else '' }}" readonly></div>
+          <div class="fg"><label>Role</label><input type="text" value="{{ current_user.role|capitalize if current_user else '' }}" readonly></div>
+          <p style="font-size:.8rem;color:var(--text-muted);margin-top:.5rem;">Profile info is read-only. Contact your administrator to update.</p>
+        </div></div>
+      </div>
+      <div class="settings-panel" id="panel-password">
+        <div class="card"><div class="ch"><i class="fa-solid fa-lock"></i> Password</div><div class="cb">
+          <div class="fg"><label>Current Password</label><input type="password" placeholder="Enter current password"></div>
+          <div class="fg"><label>New Password</label><input type="password" placeholder="Enter new password"></div>
+          <div class="fg"><label>Confirm New Password</label><input type="password" placeholder="Confirm new password"></div>
+          <button class="btn btn-p" onclick="saved()"><i class="fa-regular fa-floppy-disk"></i> Update Password</button>
+        </div></div>
+      </div>
+      <div class="settings-panel" id="panel-apikeys">
+        <div class="card"><div class="ch"><i class="fa-solid fa-key"></i> API Keys</div><div class="cb">
+          <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:1rem;">Manage API keys for programmatic access to the scanner.</p>
+          <div class="api-key-row"><div><strong style="font-size:.875rem;display:block;margin-bottom:.2rem;">Production API Key</strong><code>sk-vapt-****-****-****-7a3f</code></div><button class="btn btn-o btn-s" onclick="alert('API key regenerated!')"><i class="fa-solid fa-rotate"></i> Regenerate</button></div>
+          <button class="btn btn-p" onclick="alert('New API key generated!')"><i class="fa-solid fa-key"></i> Generate New Key</button>
+        </div></div>
+      </div>
+      <div class="settings-panel" id="panel-notifications">
+        <div class="card"><div class="ch"><i class="fa-regular fa-bell"></i> Notifications</div><div class="cb" style="padding:0;">
+          <div class="notif-item"><span>Scan Complete</span><label class="tgl"><input type="checkbox" checked><span class="tgl-sl"></span></label></div>
+          <div class="notif-item"><span>Critical Vulnerability Found</span><label class="tgl"><input type="checkbox" checked><span class="tgl-sl"></span></label></div>
+          <div class="notif-item"><span>Weekly Summary</span><label class="tgl"><input type="checkbox" checked><span class="tgl-sl"></span></label></div>
+          <div class="notif-item"><span>Team Activity</span><label class="tgl"><input type="checkbox" checked><span class="tgl-sl"></span></label></div>
+        </div></div>
+      </div>
+      <div class="settings-panel" id="panel-scanlimits">
+        <div class="card"><div class="ch"><i class="fa-regular fa-clock"></i> Scan Limits</div><div class="cb">
+          <div class="fg"><label>Max Concurrent Scans</label><input type="number" value="5" min="1" max="20"></div>
+          <div class="fg"><label>Request Rate Limit (req/s)</label><input type="number" value="50" min="1" max="200"></div>
+          <div class="fg"><label>Max Crawl Depth</label><input type="number" value="10" min="1" max="50"></div>
+          <div class="fg"><label>Scan Timeout (minutes)</label><input type="number" value="60" min="5" max="480"></div>
+          <button class="btn btn-p" onclick="saved()"><i class="fa-regular fa-floppy-disk"></i> Save Limits</button>
+        </div></div>
+      </div>
+      <div class="settings-panel" id="panel-integrations">
+        <div class="card"><div class="ch"><i class="fa-solid fa-link"></i> Integrations</div><div class="cb" style="padding:0;">
+          <p style="font-size:.8rem;color:var(--text-muted);padding:.875rem 1rem;border-bottom:1px solid var(--border);">Connect your scanner with external tools and services.</p>
+          <div class="int-item"><div class="int-info"><h4>Slack</h4><p>Send notifications to Slack channels</p></div><span class="bx bac"><i class="fa-solid fa-circle-check"></i> Connected</span></div>
+          <div class="int-item"><div class="int-info"><h4>Jira</h4><p>Create tickets for vulnerabilities</p></div><button class="btn btn-p btn-s">Connect</button></div>
+          <div class="int-item"><div class="int-info"><h4>GitHub</h4><p>Track security issues in repos</p></div><span class="bx bac"><i class="fa-solid fa-circle-check"></i> Connected</span></div>
+          <div class="int-item"><div class="int-info"><h4>PagerDuty</h4><p>Alert on critical findings</p></div><button class="btn btn-p btn-s">Connect</button></div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+initLayout('/settings');
+function showPanel(id, el) {
+  document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sn-item').forEach(a => a.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  el.classList.add('active');
+}
+function saved() {
+  const n = document.createElement('div');
+  n.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;background:#166534;color:#fff;padding:.625rem 1.25rem;border-radius:10px;font-size:.825rem;font-weight:600;z-index:999;display:flex;align-items:center;gap:.5rem;box-shadow:0 4px 16px rgba(0,0,0,.15);';
+  n.innerHTML = '<i class="fa-solid fa-circle-check"></i> Changes saved successfully!';
+  document.body.appendChild(n);
+  setTimeout(() => n.remove(), 2500);
+}
+</script>
+{% endblock %}

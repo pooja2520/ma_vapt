@@ -1,0 +1,417 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - VAPT Scanner Pro{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+{% endblock %}
+{% block body %}
+<div id="_main" style="padding-top:56px;min-height:100vh;transition:margin-left .25s ease;">
+<div class="content">
+
+  <!-- Header -->
+  <div class="dash-header">
+    <div>
+      <h1><i class="fa-solid fa-shield-halved" style="color:var(--blue)"></i> Automated VAPT Dashboard</h1>
+      <p>Discover vulnerabilities before attackers do</p>
+    </div>
+    <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+      <span id="liveDot" class="live-dot" title="Live updates active"></span>
+      <span id="lastUpdated" style="font-size:.7rem;color:var(--text-muted);">Updating...</span>
+      <a href="/scanning" class="btn btn-p"><i class="fa-solid fa-play"></i> Start Scan</a>
+      <a href="/targets"  class="btn btn-o"><i class="fa-solid fa-crosshairs"></i> Manage Targets</a>
+    </div>
+  </div>
+
+  <!-- Live Scan Banner -->
+  <div id="liveScanBanner" class="live-banner" style="display:none;">
+    <span class="pulse-dot"></span>
+    <strong>Scan in progress</strong>
+    <span id="liveScanTarget" style="margin-left:.4rem;font-size:.8rem;opacity:.85;"></span>
+    <a href="/scanning" style="margin-left:auto;color:#fff;font-size:.78rem;font-weight:600;text-decoration:underline;">View Live →</a>
+  </div>
+
+  <!-- Stat Cards -->
+  <div class="sg">
+    <div class="sc">
+      <div class="sc-top"><i class="fa-solid fa-bug sc-icon" style="color:var(--blue)"></i><span class="sc-badge sc-badge-blue">Total</span></div>
+      <h2 id="statTotal">—</h2><p>Total Vulnerabilities</p>
+    </div>
+    <div class="sc">
+      <div class="sc-top"><i class="fa-solid fa-triangle-exclamation sc-icon" style="color:#ef4444"></i><span class="sc-badge sc-badge-red">Critical</span></div>
+      <h2 id="statCritical" style="color:#ef4444">—</h2>
+      <p>Critical <span id="pctCritical" class="sc-pct"></span></p>
+    </div>
+    <div class="sc">
+      <div class="sc-top"><i class="fa-solid fa-triangle-exclamation sc-icon" style="color:#f97316"></i><span class="sc-badge sc-badge-orange">High</span></div>
+      <h2 id="statHigh" style="color:#f97316">—</h2>
+      <p>High <span id="pctHigh" class="sc-pct"></span></p>
+    </div>
+    <div class="sc">
+      <div class="sc-top"><i class="fa-solid fa-shield-halved sc-icon" style="color:#eab308"></i><span class="sc-badge sc-badge-yellow">Medium</span></div>
+      <h2 id="statMedium" style="color:#eab308">—</h2>
+      <p>Medium <span id="pctMedium" class="sc-pct"></span></p>
+    </div>
+    <div class="sc">
+      <div class="sc-top"><i class="fa-solid fa-shield-halved sc-icon" style="color:#22c55e"></i><span class="sc-badge sc-badge-green">Low</span></div>
+      <h2 id="statLow" style="color:#22c55e">—</h2>
+      <p>Low <span id="pctLow" class="sc-pct"></span></p>
+    </div>
+    <div class="sc">
+      <div class="sc-top"><i class="fa-solid fa-circle-info sc-icon" style="color:#2563EB"></i><span class="sc-badge sc-badge-blue">Info</span></div>
+      <h2 id="statInfo" style="color:#2563EB">0</h2>
+      <p>Informational <span id="pctInfo" class="sc-pct"></span></p>
+    </div>
+  </div>
+
+  <!-- Charts Row -->
+  <div class="g2">
+    <!-- Severity Donut -->
+    <div class="card">
+      <div class="ch"><i class="fa-solid fa-chart-pie"></i> Severity Distribution</div>
+      <div class="cb" style="display:flex;flex-direction:column;align-items:center;gap:.75rem;">
+        <div style="position:relative;width:180px;height:180px;">
+          <canvas id="sevC"></canvas>
+          <div class="donut-center">
+            <strong id="donutTotal">—</strong>
+            <small>Total</small>
+          </div>
+        </div>
+        <div class="sev-legend" id="sevLegend"></div>
+        <p id="noScanMsg" style="font-size:.78rem;color:var(--text-muted);display:none;text-align:center;">No scan data yet.<br><a href="/scanning" style="color:var(--blue)">Run a scan</a> to see results.</p>
+      </div>
+    </div>
+
+    <!-- Scan Overview + Rates -->
+    <div class="card">
+      <div class="ch"><i class="fa-solid fa-bolt"></i> Scan Overview</div>
+      <div class="cb" style="display:flex;flex-direction:column;gap:.875rem;">
+        <div class="scan-stats">
+          <div class="ss"><i class="fa-solid fa-circle-check" style="color:var(--green)"></i><strong id="soCompleted">—</strong><small>Completed</small></div>
+          <div class="ss"><i class="fa-solid fa-crosshairs" style="color:var(--blue)"></i><strong id="soTargets">—</strong><small>Targets</small></div>
+          <div class="ss"><i class="fa-regular fa-file-lines" style="color:#eab308"></i><strong id="soReports">—</strong><small>Reports</small></div>
+          <div class="ss"><i class="fa-solid fa-bug" style="color:#ef4444"></i><strong id="soTotal">—</strong><small>Total Findings</small></div>
+        </div>
+
+        <!-- Overall success rate -->
+        <div class="success-block" id="successBlock" style="display:none;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem;">
+            <span style="font-size:.78rem;font-weight:600;color:var(--text);">Overall Scan Success Rate</span>
+            <span id="overallSuccessPct" style="font-size:1.1rem;font-weight:700;color:#22c55e;"></span>
+          </div>
+          <div class="prog-bar"><div id="successBar" class="prog-fill-green" style="width:0%;transition:width 1s ease;"></div></div>
+          <p style="font-size:.7rem;color:var(--text-muted);margin-top:.3rem;">% of findings that are Medium / Low severity (non-critical)</p>
+        </div>
+
+        <!-- Severity breakdown bars -->
+        <div id="sevBreakdown" style="display:none;">
+          <p style="font-size:.75rem;font-weight:700;color:var(--text);margin-bottom:.5rem;"><i class="fa-solid fa-bars-progress"></i> Severity Breakdown</p>
+          <div class="sev-row"><span class="sev-lbl" style="color:#ef4444;">Critical</span><div class="mini-bar"><div id="barCritical" class="mini-fill" style="width:0%;background:#ef4444;"></div></div><span id="barPctCritical" class="sev-pct">0%</span></div>
+          <div class="sev-row"><span class="sev-lbl" style="color:#f97316;">High</span><div class="mini-bar"><div id="barHigh" class="mini-fill" style="width:0%;background:#f97316;"></div></div><span id="barPctHigh" class="sev-pct">0%</span></div>
+          <div class="sev-row"><span class="sev-lbl" style="color:#eab308;">Medium</span><div class="mini-bar"><div id="barMedium" class="mini-fill" style="width:0%;background:#eab308;"></div></div><span id="barPctMedium" class="sev-pct">0%</span></div>
+          <div class="sev-row"><span class="sev-lbl" style="color:#22c55e;">Low</span><div class="mini-bar"><div id="barLow" class="mini-fill" style="width:0%;background:#22c55e;"></div></div><span id="barPctLow" class="sev-pct">0%</span></div>
+          <div class="sev-row"><span class="sev-lbl" style="color:#2563eb;">Info</span><div class="mini-bar"><div id="barInfo" class="mini-fill" style="width:0%;background:#2563eb;"></div></div><span id="barPctInfo" class="sev-pct">0%</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bar Chart -->
+  <div class="card" id="barChartCard" style="display:none;">
+    <div class="ch"><i class="fa-solid fa-chart-bar"></i> Scan History — Vulnerability Trends</div>
+    <div class="cb"><canvas id="barC" style="max-height:220px;"></canvas></div>
+  </div>
+
+  <!-- Per-Scan History Table -->
+  <div class="card" id="scanHistoryCard" style="display:none;">
+    <div class="ch"><i class="fa-solid fa-clock-rotate-left"></i> Per-Scan Results</div>
+    <div class="cb" style="padding:0;overflow-x:auto;">
+      <table class="dt" id="scanHistoryTable">
+        <thead>
+          <tr>
+            <th>#</th><th>Target</th><th>Date / Time</th><th>Runtime</th>
+            <th>Findings</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th style="color:#2563eb;">Info</th>
+            <th>Success Rate</th><th>Vuln Rate</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="scanHistoryBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Recent Findings -->
+  <div class="card">
+    <div class="ch"><i class="fa-solid fa-triangle-exclamation"></i> Recent Findings</div>
+    <div class="cb" style="padding:0;overflow-x:auto;">
+      <table class="dt">
+        <thead><tr><th>Vulnerability</th><th>Severity</th><th>Target</th><th>Status</th></tr></thead>
+        <tbody id="recentBody">
+          <tr><td colspan="4" style="text-align:center;padding:1.5rem;color:var(--text-muted);font-size:.825rem;">No scan data yet. <a href="/scanning" style="color:var(--blue)">Run a scan</a> to see findings here.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="padding:.75rem 1rem;text-align:right;border-top:1px solid var(--border);">
+      <a href="/vulnerabilities" class="btn btn-o btn-s">View All <i class="fa-solid fa-arrow-right"></i></a>
+    </div>
+  </div>
+
+  <!-- Security Checklist -->
+  <div class="card">
+    <div class="ch"><i class="fa-solid fa-circle-check"></i> Security Checklist</div>
+    <div class="cb">
+      <div class="cl-item"><div class="cl-circle todo"></div><div class="cl-text"><strong>Add Targets</strong><small>Add your first target URL</small></div><a href="/targets/create" class="cl-action">Start</a></div>
+      <div class="cl-item"><div class="cl-circle todo"></div><div class="cl-text"><strong>Run First Scan</strong><small>Scan your target for vulnerabilities</small></div><a href="/scanning" class="cl-action">Start</a></div>
+      <div class="cl-item"><div class="cl-circle todo"></div><div class="cl-text"><strong>Review Findings</strong><small>Review and prioritize vulnerabilities</small></div><a href="/vulnerabilities" class="cl-action">Start</a></div>
+      <div class="cl-item"><div class="cl-circle todo"></div><div class="cl-text"><strong>Download Report</strong><small>Export your security report</small></div><a href="/reports" class="cl-action">Start</a></div>
+    </div>
+  </div>
+
+  <div class="legal"><i class="fa-solid fa-triangle-exclamation"></i><span><strong>Legal Notice:</strong> Only scan systems you own or have explicit permission to test.</span></div>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+initLayout('/dashboard');
+
+let sevChart = null, barChart = null;
+
+// ── Correct severity colour palette ────────────────────────────
+const SEV_COLORS = {
+    critical: '#ef4444',
+    high:     '#f97316',
+    medium:   '#eab308',
+    low:      '#22c55e',   // ✅ GREEN
+    info:     '#2563EB',   // ✅ BLUE
+};
+
+function fmtRuntime(sec) {
+    if (sec === null || sec === undefined) return '—';
+    if (sec < 60) return sec + 's';
+    return Math.floor(sec/60) + 'm ' + (sec%60 ? sec%60+'s' : '');
+}
+
+function mkBadge(sev) {
+    const cls  = { critical:'bc', high:'bh', medium:'bm', low:'bl', info:'bi' };
+    const icon = (sev==='low'||sev==='info') ? 'fa-shield-halved' : 'fa-triangle-exclamation';
+    const cap  = sev.charAt(0).toUpperCase() + sev.slice(1);
+    return `<span class="bx ${cls[sev]||'bi'}"><i class="fa-solid ${icon}"></i> ${cap}</span>`;
+}
+
+// ── Donut ───────────────────────────────────────────────────────
+function renderDonut(s) {
+    const vals   = [s.critical, s.high, s.medium, s.low, s.info||0].map(v=>Number(v)||0);
+    const labels = ['Critical','High','Medium','Low','Info'];
+    const colors = [SEV_COLORS.critical, SEV_COLORS.high, SEV_COLORS.medium, SEV_COLORS.low, SEV_COLORS.info];
+    const total  = vals.reduce((a,b)=>a+b,0);
+    document.getElementById('donutTotal').textContent = total;
+    document.getElementById('noScanMsg').style.display = total===0 ? 'block' : 'none';
+
+    if (sevChart) {
+        sevChart.data.datasets[0].data   = vals;
+        sevChart.data.datasets[0].backgroundColor = colors;
+        sevChart.update();
+    } else {
+        sevChart = new Chart(document.getElementById('sevC'), {
+            type: 'doughnut',
+            data: { labels, datasets:[{ data:vals, backgroundColor:colors, borderWidth:3, borderColor:'#fff', hoverOffset:6 }] },
+            options: {
+                responsive:true, maintainAspectRatio:false,
+                cutout:'68%',
+                plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: ctx => ` ${ctx.label}: ${ctx.raw} (${total>0?Math.round(ctx.raw/total*100):0}%)` }}}
+            }
+        });
+    }
+
+    const leg = document.getElementById('sevLegend');
+    leg.innerHTML = labels.map((l,i)=>`
+        <span class="leg-item">
+            <span class="leg-dot" style="background:${colors[i]}"></span>
+            <span>${l}</span><strong>${vals[i]}</strong>
+            <span class="leg-pct">${total>0?Math.round(vals[i]/total*100):0}%</span>
+        </span>`).join('');
+}
+
+// ── Bar chart — separate Critical, High, Medium, Low, Info bars ─────────────
+function renderBarChart(bc) {
+    if (!bc||!bc.labels||!bc.labels.length) return;
+    document.getElementById('barChartCard').style.display = 'block';
+
+    // Scan-indexed labels so same URL shows as separate grouped bars
+    const labels = bc.labels.map((lbl, i) => `#${bc.labels.length - i} ${lbl}`);
+
+    const ds = [
+        { label:'Critical', data: bc.critical || bc.labels.map(()=>0), backgroundColor:'#ef444455', borderColor:'#ef4444', borderWidth:2, borderRadius:4 },
+        { label:'High',     data: bc.high,                             backgroundColor:'#f9731655', borderColor:'#f97316', borderWidth:2, borderRadius:4 },
+        { label:'Medium',   data: bc.medium,                           backgroundColor:'#eab30855', borderColor:'#eab308', borderWidth:2, borderRadius:4 },
+        { label:'Low',      data: bc.low,                              backgroundColor:'#22c55e55', borderColor:'#22c55e', borderWidth:2, borderRadius:4 },
+        { label:'Info',     data: bc.info || bc.labels.map(()=>0),    backgroundColor:'#2563eb55', borderColor:'#2563eb', borderWidth:2, borderRadius:4 },
+    ];
+    if (barChart) {
+        barChart.data.labels = labels;
+        barChart.data.datasets.forEach((d,i)=>{ d.data=ds[i].data; });
+        barChart.update();
+    } else {
+        barChart = new Chart(document.getElementById('barC'), {
+            type:'bar', data:{ labels, datasets:ds },
+            options:{
+                responsive:true,
+                plugins:{ legend:{ position:'bottom', labels:{ font:{size:11}, boxWidth:12 }}},
+                scales:{
+                    x:{ stacked:false, grid:{display:false}, ticks:{font:{size:10}, maxRotation:30} },
+                    y:{ beginAtZero:true, ticks:{stepSize:1,font:{size:11}}, grid:{color:'#f1f5f9'} }
+                }
+            }
+        });
+    }
+}
+
+// ── Per-scan history table ──────────────────────────────────────
+function renderScanHistory(history) {
+    if (!history||!history.length) return;
+    document.getElementById('scanHistoryCard').style.display = 'block';
+    document.getElementById('scanHistoryBody').innerHTML = history.map((h,i)=>{
+        const sp   = h.success_pct ?? 0;
+        const vp   = h.vuln_pct   ?? 0;
+        const sc   = sp>=80 ? '#22c55e' : sp>=50 ? '#eab308' : '#ef4444';
+        const vc   = vp<=10 ? '#22c55e' : vp<=30 ? '#eab308' : '#ef4444';
+        const tot  = h.total || 0;
+        const info = h.info  ?? 0;
+        const infoPct = tot > 0 ? Math.round(info/tot*100) : 0;
+        return `<tr>
+          <td style="color:var(--text-muted);font-size:.75rem;">#${h.id||i+1}</td>
+          <td style="font-size:.78rem;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${h.target}">${h.target||'—'}</td>
+          <td style="font-size:.72rem;color:var(--text-muted);">${h.scan_time||h.date||'—'}</td>
+          <td><span style="background:#f1f5f9;border-radius:6px;font-size:.78rem;">${fmtRuntime(h.runtime)}</span></td>
+          <td style="font-weight:700;">${tot}</td>
+          <td style="color:#ef4444;font-weight:700;">${h.critical}</td>
+          <td style="color:#f97316;font-weight:700;">${h.high}</td>
+          <td style="color:#eab308;font-weight:700;">${h.medium}</td>
+          <td style="color:#22c55e;font-weight:700;">${h.low}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:.3rem;">
+              <span style="color:#2563eb;font-weight:700;font-size:.78rem;">${info}</span>
+              <span style="font-size:.68rem;color:var(--text-muted);">(${infoPct}%)</span>
+            </div>
+          </td>
+          <td>
+            <div style="display:flex;align-items:center;gap:.35rem;">
+              <div style="flex:1;background:#e2e8f0;border-radius:4px;height:6px;min-width:50px;"><div style="height:6px;border-radius:4px;background:${sc};width:${sp}%;transition:width .8s;"></div></div>
+              <span style="font-size:.75rem;font-weight:700;color:${sc};min-width:36px;">${sp}%</span>
+            </div>
+          </td>
+          <td>
+            <div style="display:flex;align-items:center;gap:.35rem;">
+              <div style="flex:1;background:#e2e8f0;border-radius:4px;height:6px;min-width:50px;"><div style="height:6px;border-radius:4px;background:${vc};width:${vp}%;transition:width .8s;"></div></div>
+              <span style="font-size:.75rem;font-weight:700;color:${vc};min-width:36px;">${vp}%</span>
+            </div>
+          </td>
+          <td><span class="bx ${h.status==='Completed'?'bac':'bc'}">${h.status}</span></td>
+        </tr>`;
+    }).join('');
+}
+
+// ── Main load ───────────────────────────────────────────────────
+async function loadDashboard() {
+    try {
+        const res  = await fetch('/api/dashboard-stats');
+        const data = await res.json();
+        const s    = data.stats;
+
+        document.getElementById('statTotal').textContent    = s.total    ?? 0;
+        document.getElementById('statCritical').textContent = s.critical ?? 0;
+        document.getElementById('statHigh').textContent     = s.high     ?? 0;
+        document.getElementById('statMedium').textContent   = s.medium   ?? 0;
+        document.getElementById('statLow').textContent      = s.low      ?? 0;
+        document.getElementById('statInfo').textContent     = s.info     ?? 0;
+
+        // Severity % badges on cards
+        const sp = data.severity_pct || {};
+        ['Critical','High','Medium','Low','Info'].forEach(k => {
+            const el = document.getElementById('pct'+k);
+            if (el) el.textContent = sp[k.toLowerCase()] ? sp[k.toLowerCase()]+'%' : '';
+        });
+
+        // Scan overview
+        document.getElementById('soCompleted').textContent = data.completed_scans ?? 0;
+        document.getElementById('soTargets').textContent   = data.total_targets   ?? 0;
+        document.getElementById('soReports').textContent   = data.total_reports   ?? 0;
+        document.getElementById('soTotal').textContent     = s.total;
+
+        // Donut
+        renderDonut(s);
+
+        // Severity breakdown bars
+        if (s.total > 0) {
+            document.getElementById('sevBreakdown').style.display = 'block';
+            [['Critical','#ef4444'],['High','#f97316'],['Medium','#eab308'],['Low','#22c55e'],['Info','#2563eb']].forEach(([k])=>{
+                const pct   = sp[k.toLowerCase()] || 0;
+                const barEl = document.getElementById('bar'+k);
+                const pctEl = document.getElementById('barPct'+k);
+                if (barEl) barEl.style.width   = pct+'%';
+                if (pctEl) pctEl.textContent   = pct+'%';
+            });
+        }
+
+        // Overall success rate
+        if (data.overall_success_pct !== null && data.overall_success_pct !== undefined) {
+            document.getElementById('successBlock').style.display = 'block';
+            document.getElementById('overallSuccessPct').textContent = data.overall_success_pct + '%';
+            document.getElementById('successBar').style.width = data.overall_success_pct + '%';
+        }
+
+        // Bar chart + scan history
+        renderBarChart(data.bar_chart);
+        renderScanHistory(data.scan_history);
+
+        // Live scan banner
+        if (data.live_scan && data.live_scan.running) {
+            document.getElementById('liveScanBanner').style.display = 'flex';
+            document.getElementById('liveScanTarget').textContent = data.live_scan.target ? '— ' + data.live_scan.target : '';
+        } else {
+            document.getElementById('liveScanBanner').style.display = 'none';
+        }
+
+        // Recent findings
+        const tbody = document.getElementById('recentBody');
+        if (data.recent_vulnerabilities && data.recent_vulnerabilities.length) {
+            const _sevOrd = {critical:0, high:1, medium:2, low:3, info:4};
+            const _sorted = [...data.recent_vulnerabilities].sort((a,b) =>
+                (_sevOrd[(a.severity||'info').toLowerCase()] ?? 4) -
+                (_sevOrd[(b.severity||'info').toLowerCase()] ?? 4)
+            );
+            tbody.innerHTML = _sorted.map(v => {
+                const sev  = (v.severity||'info').toLowerCase();
+                const st = (v.status||'').toLowerCase();
+                const stCl  = st==='vulnerable' ? 'bc' : (st==='fixed' ? 'bac' : 'bac');
+                const stIco = st==='vulnerable' ? 'fa-circle-exclamation' : (st==='fixed' ? 'fa-rotate-left' : 'fa-circle-check');
+                const host = v.target ? v.target.replace(/https?:\/\//,'').split('/')[0] : '—';
+                return `<tr>
+                  <td><strong>${v.test}</strong><br><small style="color:var(--text-muted)">${(v.finding||'').substring(0,80)}${v.finding&&v.finding.length>80?'...':''}</small></td>
+                  <td>${mkBadge(sev)}</td>
+                  <td style="font-size:.78rem">${host}</td>
+                  <td><span class="bx ${stCl}"><i class="fa-solid ${stIco}"></i> ${v.status}</span></td>
+                </tr>`;
+            }).join('');
+        } else {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:1.5rem;color:var(--text-muted);font-size:.825rem;">No scan data yet. <a href="/scanning" style="color:var(--blue)">Run a scan</a> to see findings here.</td></tr>';
+        }
+
+        // Checklist
+        const items = document.querySelectorAll('.cl-item');
+        if (data.total_targets   > 0) items[0].querySelector('.cl-circle').className = 'cl-circle done';
+        if (data.completed_scans > 0) items[1].querySelector('.cl-circle').className = 'cl-circle done';
+        if (s.total              > 0) items[2].querySelector('.cl-circle').className = 'cl-circle done';
+        if (data.total_reports   > 0) items[3].querySelector('.cl-circle').className = 'cl-circle done';
+
+        document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+        document.getElementById('liveDot').classList.add('active');
+    } catch(e) {
+        console.error('Dashboard load error:', e);
+        document.getElementById('liveDot').classList.remove('active');
+    }
+}
+
+loadDashboard();
+setInterval(loadDashboard, 8000);
+</script>
+{% endblock %}

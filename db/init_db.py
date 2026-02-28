@@ -1,0 +1,139 @@
+"""Initialize database: create DB if not exists, run schema, seed admin user if empty."""
+import os
+import sys
+
+# Add project root to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from dotenv import load_dotenv
+load_dotenv()
+
+from db.config import get_db_config
+from werkzeug.security import generate_password_hash
+
+
+def init_database():
+    """Create database if not exists, run schema, seed admin if users table is empty."""
+    cfg = get_db_config()
+    db_name = cfg.pop('database')
+    cfg.pop('pool_name', None)
+    cfg.pop('pool_size', None)
+    cfg.pop('pool_reset_session', None)
+    cfg.pop('autocommit', None)
+
+    import mysql.connector
+    conn = mysql.connector.connect(**cfg)
+    conn.autocommit = True
+    cur = conn.cursor()
+
+    # 1. Create database if not exists
+    cur.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
+    cur.execute(f"USE `{db_name}`")
+
+    # 2. Run schema - create tables if not exist
+    schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
+    with open(schema_path, 'r', encoding='utf-8') as f:
+        schema_sql = f.read()
+
+    # Remove comment lines
+    schema_clean = '\n'.join(
+        line for line in schema_sql.split('\n')
+        if line.strip() and not line.strip().startswith('--')
+    )
+
+    # Execute as multi-statement (more reliable than split)
+    try:
+        for result in cur.execute(schema_clean, multi=True):
+            if result.with_rows:
+                result.fetchall()
+    except Exception as e:
+        # Fallback: execute each statement individually
+        for stmt in schema_clean.split(';'):
+            stmt = stmt.strip()
+            if stmt:
+                try:
+                    cur.execute(stmt)
+                except Exception as ex:
+                    err = str(ex).lower()
+                    if 'already exists' not in err and 'duplicate' not in err:
+                        raise RuntimeError(f"Schema failed: {ex}") from ex
+
+    # 3. Seed admin user only if no users exist
+    cur.execute("SELECT COUNT(*) FROM users")
+    if cur.fetchone()[0] == 0:
+        cur.execute(
+            "INSERT INTO users (email, name, password_hash, role) VALUES (%s, %s, %s, %s)",
+            ('admin@vapt.pro', 'Admin User', generate_password_hash('Admin@1234'), 'admin')
+        )
+        print("[+] Seeded admin user: admin@vapt.pro / Admin@1234")
+
+    # 4. Migration: add user_id to existing tables (for DBs created before multi-tenancy)
+    def column_exists(table, col):
+        cur.execute("""
+            SELECT 1 FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = %s
+        """, (db_name, table, col))
+        return cur.fetchone() is not None
+
+    def run_safe(sql, msg=""):
+        try:
+            cur.execute(sql)
+            return True
+        except Exception as e:
+            if 'duplicate' not in str(e).lower() and 'exists' not in str(e).lower():
+                print(f"[!] Migration warning: {msg or sql} - {e}")
+            return False
+
+    if not column_exists('targets', 'scan_config_json'):
+        cur.execute("ALTER TABLE targets ADD COLUMN scan_config_json TEXT AFTER vuln_counts_json")
+        print("[+] Migration: added scan_config_json to targets")
+
+    if not column_exists('targets', 'user_id'):
+        cur.execute("ALTER TABLE targets ADD COLUMN user_id INT NOT NULL DEFAULT 1 AFTER id")
+        cur.execute("SELECT id FROM users WHERE email = 'admin@vapt.pro' LIMIT 1")
+        admin_row = cur.fetchone()
+        if admin_row:
+            cur.execute("UPDATE targets SET user_id = %s", (admin_row[0],))
+        run_safe("ALTER TABLE targets ADD CONSTRAINT fk_targets_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE")
+        run_safe("ALTER TABLE targets DROP INDEX url", "drop url index")
+        run_safe("ALTER TABLE targets ADD UNIQUE KEY uk_targets_user_url (user_id, url)")
+        print("[+] Migration: added user_id to targets")
+    if not column_exists('vulnerabilities', 'user_id'):
+        cur.execute("ALTER TABLE vulnerabilities ADD COLUMN user_id INT NOT NULL DEFAULT 1 AFTER id")
+        cur.execute("SELECT id FROM users WHERE email = 'admin@vapt.pro' LIMIT 1")
+        admin_row = cur.fetchone()
+        if admin_row:
+            cur.execute("UPDATE vulnerabilities SET user_id = %s", (admin_row[0],))
+        run_safe("ALTER TABLE vulnerabilities ADD CONSTRAINT fk_vuln_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE")
+        run_safe("ALTER TABLE vulnerabilities ADD INDEX idx_vuln_user (user_id)")
+        print("[+] Migration: added user_id to vulnerabilities")
+    if not column_exists('reports', 'user_id'):
+        cur.execute("ALTER TABLE reports ADD COLUMN user_id INT NOT NULL DEFAULT 1 AFTER id")
+        cur.execute("SELECT id FROM users WHERE email = 'admin@vapt.pro' LIMIT 1")
+        admin_row = cur.fetchone()
+        if admin_row:
+            cur.execute("UPDATE reports SET user_id = %s", (admin_row[0],))
+        run_safe("ALTER TABLE reports ADD CONSTRAINT fk_reports_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE")
+        run_safe("ALTER TABLE reports ADD INDEX idx_reports_user (user_id)")
+        print("[+] Migration: added user_id to reports")
+
+    cur.close()
+    conn.close()
+    print(f"[+] Database '{db_name}' initialized successfully.")
+
+
+def test_connection():
+    """Test that we can connect to the database."""
+    from db.queries import get_pool
+    try:
+        pool = get_pool()
+        conn = pool.get_connection()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"[!] Database connection failed: {e}")
+        return False
+
+
+if __name__ == '__main__':
+    init_database()

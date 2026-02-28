@@ -1,0 +1,661 @@
+{% extends "base.html" %}
+{% block title %}Vulnerabilities - VAPT Scanner Pro{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vulnerabilities.css') }}">
+<style>
+/* ── Analytics Strip ───────────────────────────── */
+.analytics-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:.75rem;margin-bottom:1rem;}
+.acard{background:#fff;border:1px solid var(--border);border-radius:12px;padding:.875rem 1rem;position:relative;overflow:hidden;}
+.acard::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;border-radius:12px 0 0 12px;}
+.acard.ac-crit::before{background:#ef4444;}
+.acard.ac-high::before{background:#f97316;}
+.acard.ac-med::before{background:#f59e0b;}
+.acard.ac-low::before{background:#16a34a;}
+.acard.ac-fix::before{background:#22c55e;}
+.acard.ac-info::before{background:#2563eb;}
+.acard.ac-info .av{color:#2563eb;}
+.acard small{font-size:.68rem;color:var(--text-muted);display:block;margin-bottom:.25rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;}
+.acard .av{font-size:1.5rem;font-weight:800;font-family:'Space Grotesk',sans-serif;line-height:1;}
+.acard .ap{font-size:.72rem;margin-top:.3rem;color:var(--text-muted);}
+.acard .ap span{font-weight:700;}
+.acard.ac-crit .av{color:#ef4444;}
+.acard.ac-high .av{color:#f97316;}
+.acard.ac-med .av{color:#f59e0b;}
+.acard.ac-low .av{color:#16a34a;}
+.acard.ac-fix .av{color:#22c55e;}
+
+/* ── Charts Row ────────────────────────────────── */
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:1rem;min-width:0;}
+.chart-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:1rem;min-width:0;overflow:hidden;}
+.chart-card .ch{font-size:.8rem;font-weight:700;color:#fff;margin-bottom:.75rem;display:flex;align-items:center;gap:.5rem;}
+.chart-wrap{position:relative;height:220px;width:100%;min-width:0;overflow:hidden;}
+@media(max-width:1100px){.chart-wrap{height:200px;}}
+@media(max-width:900px){.charts-row{grid-template-columns:1fr;}.chart-wrap{height:220px;}}
+@media(max-width:600px){.chart-wrap{height:190px;}}
+
+/* ── Scan Groups ───────────────────────────────── */
+.scan-group{margin-bottom:1rem;}
+.sg-header{background:#fff;border:1px solid var(--border);border-radius:12px;padding:.75rem 1rem;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;transition:border-color .15s;}
+.sg-header:hover{border-color:var(--blue);}
+.sg-header.open{border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom-color:transparent;}
+.sg-meta{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;}
+.sg-url{font-weight:700;font-size:.875rem;color:var(--text);font-family:'Space Grotesk',sans-serif;}
+.sg-date{font-size:.72rem;color:var(--text-muted);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.2rem .5rem;}
+.sg-label-new{font-size:.65rem;font-weight:700;background:#22c55e;color:#fff;border-radius:5px;padding:.15rem .45rem;text-transform:uppercase;letter-spacing:.05em;}
+.sg-label-old{font-size:.65rem;font-weight:700;background:var(--border);color:var(--text-muted);border-radius:5px;padding:.15rem .45rem;text-transform:uppercase;letter-spacing:.05em;}
+.sg-counts{display:flex;gap:.4rem;align-items:center;}
+.sg-body{background:#fff;border:1px solid var(--border);border-top:none;border-bottom-left-radius:12px;border-bottom-right-radius:12px;overflow:hidden;display:none;}
+.sg-body.open{display:block;}
+
+/* ── Progress bars inside analytics ───────────── */
+.prog-bar{height:5px;background:#f1f5f9;border-radius:99px;margin-top:.4rem;overflow:hidden;}
+.prog-fill{height:100%;border-radius:99px;transition:width .6s ease;}
+
+/* Live pulse dot */
+.live-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;margin-right:.35rem;box-shadow:0 0 0 0 rgba(34,197,94,.4);animation:pulse-live 1.8s infinite;}
+@keyframes pulse-live{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.4);}50%{box-shadow:0 0 0 6px rgba(34,197,94,0);}}
+
+/* Scan selector tabs */
+.scan-tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;}
+.scan-tab{padding:.35rem .75rem;border-radius:8px;font-size:.75rem;font-weight:600;border:1.5px solid var(--border);background:#fff;cursor:pointer;color:var(--text-muted);transition:all .15s;font-family:'DM Sans',sans-serif;}
+.scan-tab.active{border-color:var(--blue);background:var(--blue);color:#fff;}
+
+/* Filter row update */
+.filter-row{display:flex;gap:.625rem;align-items:center;flex-wrap:wrap;}
+.filter-row select{padding:.475rem .75rem;border:1.5px solid var(--border);border-radius:8px;font-size:.8rem;font-family:'DM Sans',sans-serif;color:var(--text);outline:none;background:#fff;cursor:pointer;}
+.filter-row select:focus{border-color:var(--blue);}
+
+/* Severity badge overrides — Low (teal) vs Info (slate) */
+/* ── Severity badges — distinct professional palette ── */
+.bsev-low{display:inline-flex;align-items:center;gap:.3rem;padding:.2rem .6rem;border-radius:6px;font-size:.72rem;font-weight:700;background:#f0fdf4;color:#16a34a;border:1.5px solid #86efac;}
+.bsev-info{display:inline-flex;align-items:center;gap:.3rem;padding:.2rem .6rem;border-radius:6px;font-size:.72rem;font-weight:700;background:#eff6ff;color:#2563eb;border:1.5px solid #93c5fd;}
+
+/* Override global badge classes for severity consistency */
+.bx.bc{background:#fff1f2;color:#be123c;border:1.5px solid #fda4af;}
+.bx.bh{background:#fff7ed;color:#c2410c;border:1.5px solid #fdba74;}
+.bx.bm{background:#fefce8;color:#a16207;border:1.5px solid #fde047;}
+.bx.bl{background:#f0fdf4;color:#16a34a;border:1.5px solid #86efac;}
+.bx.bac{background:#f0fdf4;color:#15803d;border:1.5px solid #86efac;}
+.bx.bop{background:#eff6ff;color:#2563eb;border:1.5px solid #93c5fd;}
+.bx.bx-err{background:#fef3c7;color:#92400e;border:1.5px solid #fcd34d;}
+
+/* Report dl button */
+.dl-report{display:inline-flex;align-items:center;gap:.35rem;padding:.35rem .75rem;border-radius:8px;font-size:.75rem;font-weight:600;border:1.5px solid var(--border);background:#fff;cursor:pointer;color:var(--text);text-decoration:none;transition:all .15s;}
+.dl-report:hover{border-color:var(--blue);color:var(--blue);}
+</style>
+{% endblock %}
+{% block body %}
+<div id="_main">
+<div class="content">
+
+  <!-- Header -->
+  <div class="pt">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;">
+      <div>
+        <h1><i class="fa-solid fa-bug"></i> Vulnerabilities</h1>
+        <p id="vulnSubtitle">Central findings repository</p>
+      </div>
+      <div style="display:flex;align-items:center;gap:.5rem;">
+        <span class="live-dot"></span>
+        <span style="font-size:.75rem;color:var(--text-muted);font-weight:600;">Live Updates</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Analytics Cards -->
+  <div class="analytics-grid" id="analyticsGrid">
+    <div class="acard ac-crit"><small>Critical</small><div class="av" id="ac-crit">0</div><div class="ap"><span id="acp-crit">0</span>% of total</div><div class="prog-bar"><div class="prog-fill" id="apb-crit" style="width:0%;background:#ef4444;"></div></div></div>
+    <div class="acard ac-high"><small>High</small><div class="av" id="ac-high">0</div><div class="ap"><span id="acp-high">0</span>% of total</div><div class="prog-bar"><div class="prog-fill" id="apb-high" style="width:0%;background:#f97316;"></div></div></div>
+    <div class="acard ac-med"><small>Medium</small><div class="av" id="ac-med">0</div><div class="ap"><span id="acp-med">0</span>% of total</div><div class="prog-bar"><div class="prog-fill" id="apb-med" style="width:0%;background:#f59e0b;"></div></div></div>
+    <div class="acard ac-low"><small>Low</small><div class="av" id="ac-low">0</div><div class="ap"><span id="acp-low">0</span>% of total</div><div class="prog-bar"><div class="prog-fill" id="apb-low" style="width:0%;background:#16a34a;"></div></div></div>
+    <div class="acard ac-info"><small>Info</small><div class="av" id="ac-info">0</div><div class="ap"><span id="acp-info">0</span>% of total</div><div class="prog-bar"><div class="prog-fill" id="apb-info" style="width:0%;background:#2563eb;"></div></div></div>
+    <div class="acard ac-fix"><small>Fixed</small><div class="av" id="ac-fix">0</div><div class="ap"><span id="acp-fix">0</span>% resolved</div><div class="prog-bar"><div class="prog-fill" id="apb-fix" style="width:0%;background:#22c55e;"></div></div></div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="ch"><i class="fa-solid fa-chart-pie" style="color:#fff"></i> Severity Distribution</div>
+      <div class="chart-wrap"><canvas id="chartPie"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="ch"><i class="fa-solid fa-chart-bar" style="color:#fff"></i> Vulnerabilities per Scan</div>
+      <div class="chart-wrap"><canvas id="chartBar"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="card" style="margin-bottom:1rem;">
+    <div class="cb" style="padding:.75rem 1rem;">
+      <div class="filter-row">
+        <div style="flex:1;position:relative;">
+          <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:.75rem;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:.825rem;"></i>
+          <input id="vsearch" oninput="filterAndRender()" style="width:100%;padding:.5rem .75rem .5rem 2.25rem;border:1.5px solid var(--border);border-radius:8px;font-size:.825rem;font-family:'DM Sans',sans-serif;outline:none;" placeholder="Search vulnerabilities...">
+        </div>
+        <select id="sevFilter" onchange="filterAndRender()">
+          <option value="">All Severities</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+          <option value="info">Info</option>
+        </select>
+        <select id="statFilter" onchange="filterAndRender()">
+          <option value="">All Status</option>
+          <option value="vulnerable">Vulnerable</option>
+          <option value="fixed">Fixed</option>
+          <option value="complete">Complete</option>
+          <option value="success">Success</option>
+          <option value="secure">Secure</option>
+        </select>
+        <select id="urlFilter" onchange="filterAndRender()">
+          <option value="">All Targets</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Grouped scan results -->
+  <div id="scanGroups">
+    <div style="text-align:center;padding:3rem;color:var(--text-muted);">
+      <i class="fa-solid fa-shield-halved" style="font-size:2rem;margin-bottom:.5rem;display:block;color:var(--border)"></i>
+      Loading findings...
+    </div>
+  </div>
+
+</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+initLayout('/vulnerabilities');
+
+/* ─────────── CONSTANTS ─────────── */
+const SKIP_TESTS = ['dns resolution','ping test','port scan','service detection','vulnerability scan'];
+
+const SEV_ORDER = {'critical':0,'high':1,'medium':2,'low':3,'info':4};
+
+function isSkippedTest(v) {
+  return SKIP_TESTS.includes((v.Test||'').toLowerCase().trim());
+}
+
+/* ─────────── STATE ─────────── */
+let rawVulns  = [];   // ALL vulns from API — used for analytics/counts (matches dashboard)
+let allVulns  = [];   // display vulns — skips noise tests (dns/ping/port/service)
+let pieChart  = null;
+let barChart  = null;
+// Tracks which group keys are open — persists across re-renders & polls
+const openGroups = new Set();
+
+/* ─────────── SEVERITY HELPERS ─────────── */
+function sevClass(s){
+  s=(s||'').toLowerCase();
+  if(s==='critical') return 'bc';
+  if(s==='high')     return 'bh';
+  if(s==='medium')   return 'bm';
+  if(s==='low')      return 'bsev-low';
+  return 'bsev-info';
+}
+function sevIcon(s){
+  s=(s||'').toLowerCase();
+  if(s==='critical'||s==='high'||s==='medium') return 'fa-triangle-exclamation';
+  if(s==='low') return 'fa-shield-halved';
+  return 'fa-shield-halved';
+}
+function statClass(s){
+  s=(s||'').toLowerCase();
+  if(s==='vulnerable')  return 'bc';
+  if(s==='fixed')       return 'bac';
+  if(s==='complete'||s==='success'||s==='secure') return 'bac';
+  if(s==='error')       return 'bx-err';
+  return 'bop';
+}
+function statIcon(s){
+  s=(s||'').toLowerCase();
+  if(s==='fixed'||s==='secure'||s==='success'||s==='complete') return 'fa-circle-check';
+  if(s==='vulnerable') return 'fa-circle-exclamation';
+  if(s==='error')      return 'fa-circle-xmark';
+  return 'fa-circle-check';
+}
+
+/* ─────────── ANALYTICS ─────────── */
+function updateAnalytics() {
+  // rawVulns = full unfiltered list → counts match Dashboard & Targets exactly
+  const src   = rawVulns;
+  const total = src.length || 1;
+  const crit  = src.filter(v=>(v.Severity||'').toLowerCase()==='critical').length;
+  const high  = src.filter(v=>(v.Severity||'').toLowerCase()==='high').length;
+  const med   = src.filter(v=>(v.Severity||'').toLowerCase()==='medium').length;
+  const low   = src.filter(v=>(v.Severity||'').toLowerCase()==='low').length;
+  const info  = src.filter(v=>(v.Severity||'').toLowerCase()==='info').length;
+  const fixed = src.filter(v=>(v._display_status||'').toLowerCase()==='fixed').length;
+
+  const set = (id, val, pct) => {
+    const el = document.getElementById(id);
+    if(el) el.textContent = val;
+    const ep = document.getElementById('acp-'+id.replace('ac-',''));
+    if(ep) ep.textContent = pct;
+    const bar = document.getElementById('apb-'+id.replace('ac-',''));
+    if(bar) bar.style.width = pct+'%';
+  };
+
+  set('ac-crit', crit, Math.round(crit/total*100));
+  set('ac-high', high, Math.round(high/total*100));
+  set('ac-med',  med,  Math.round(med/total*100));
+  set('ac-low',  low,  Math.round(low/total*100));
+
+  document.getElementById('ac-info').textContent = info;
+  document.getElementById('acp-info').textContent = Math.round(info/total*100);
+  document.getElementById('apb-info').style.width = Math.round(info/total*100)+'%';
+
+  const vulnItems = src.filter(v=>(v.Status||'').toLowerCase()==='vulnerable').length || 1;
+  const fixedPct  = Math.round(fixed/vulnItems*100);
+  document.getElementById('ac-fix').textContent  = fixed;
+  document.getElementById('acp-fix').textContent = fixedPct;
+  document.getElementById('apb-fix').style.width = fixedPct+'%';
+}
+
+/* ─────────── CHARTS ─────────── */
+function updateCharts() {
+  // Use rawVulns so chart totals match dashboard numbers exactly
+  const src   = rawVulns;
+  const crit  = src.filter(v=>(v.Severity||'').toLowerCase()==='critical').length;
+  const high  = src.filter(v=>(v.Severity||'').toLowerCase()==='high').length;
+  const med   = src.filter(v=>(v.Severity||'').toLowerCase()==='medium').length;
+  const low   = src.filter(v=>(v.Severity||'').toLowerCase()==='low').length;
+  const info  = src.filter(v=>(v.Severity||'').toLowerCase()==='info').length;
+
+  const pieData = {
+    labels: ['Critical','High','Medium','Low','Info'],
+    datasets:[{
+      data:[crit,high,med,low,info],
+      backgroundColor:['#be123c','#c2410c','#a16207','#16a34a','#2563eb'],
+      borderWidth:3, borderColor:'#fff',
+      hoverOffset: 8
+    }]
+  };
+
+  if(pieChart){ pieChart.data = pieData; pieChart.update(); }
+  else {
+    const ctx = document.getElementById('chartPie').getContext('2d');
+    pieChart = new Chart(ctx,{
+      type:'doughnut',
+      data: pieData,
+      options:{
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins:{
+          legend:{position:'right',labels:{font:{size:10},boxWidth:9,padding:10,
+            color:'#374151',
+            generateLabels:(chart)=>{
+              const d=chart.data;
+              return d.labels.map((l,i)=>({
+                text:l,
+                fillStyle:d.datasets[0].backgroundColor[i],
+                strokeStyle:'#fff',
+                lineWidth:2,
+                index:i
+              }));
+            }
+          }}
+        }
+      }
+    });
+  }
+
+  // Bar — group by scan session using rawVulns for accurate totals
+  const groups = {};
+  src.forEach(v=>{
+    const key = (v.target_url||'unknown').replace(/https?:\/\//,'').split('/')[0] + ' @ ' + (v.scan_date||'?');
+    if(!groups[key]) groups[key] = {crit:0,high:0,med:0,low:0,info:0};
+    const sev = (v.Severity||'').toLowerCase();
+    if(sev==='critical')    groups[key].crit++;
+    else if(sev==='high')   groups[key].high++;
+    else if(sev==='medium') groups[key].med++;
+    else if(sev==='low')    groups[key].low++;
+    else                    groups[key].info++;
+  });
+
+  const labels = Object.keys(groups).map(k=>{
+    const parts = k.split(' @ ');
+    const host  = parts[0].split('.').slice(0,2).join('.').substring(0,12);
+    const dt    = (parts[1]||'').replace(/^\d{4}-/,'');   // "MM-DD HH:MM"
+    return [host, dt];
+  });
+
+  const barData = {
+    labels,
+    datasets:[
+      {label:'Critical',data:Object.values(groups).map(g=>g.crit),backgroundColor:'#be123c',borderRadius:4},
+      {label:'High',    data:Object.values(groups).map(g=>g.high),backgroundColor:'#c2410c',borderRadius:4},
+      {label:'Medium',  data:Object.values(groups).map(g=>g.med), backgroundColor:'#a16207',borderRadius:4},
+      {label:'Low',     data:Object.values(groups).map(g=>g.low), backgroundColor:'#16a34a',borderRadius:4},
+      {label:'Info',    data:Object.values(groups).map(g=>g.info),backgroundColor:'#2563eb',borderRadius:4},
+    ]
+  };
+
+  if(barChart){ barChart.data = barData; barChart.update(); }
+  else {
+    const ctx2 = document.getElementById('chartBar').getContext('2d');
+    barChart = new Chart(ctx2,{
+      type:'bar',
+      data: barData,
+      options:{
+        responsive: true,
+        maintainAspectRatio: false,
+        layout:{ padding:{ bottom:4 } },
+        plugins:{
+          legend:{
+            position:'top',
+            labels:{ font:{size:10}, boxWidth:10, padding:8 }
+          }
+        },
+        scales:{
+          x:{
+            stacked:true,
+            grid:{ display:false },
+            ticks:{ font:{size:9}, maxRotation:30, minRotation:20, autoSkip:false }
+          },
+          y:{
+            stacked:true,
+            ticks:{ font:{size:10} },
+            grid:{ color:'#f1f5f9' }
+          }
+        }
+      }
+    });
+  }
+}
+
+/* ─────────── URL FILTER ─────────── */
+function populateUrlFilter() {
+  const sel = document.getElementById('urlFilter');
+  const current = sel.value;
+  const urls = [...new Set(allVulns.map(v=>v.target_url).filter(Boolean))];
+  // Rebuild options
+  sel.innerHTML = '<option value="">All Targets</option>';
+  urls.forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = u;
+    opt.textContent = u.replace(/https?:\/\//,'').split('/')[0];
+    sel.appendChild(opt);
+  });
+  if(current) sel.value = current;
+}
+
+/* ─────────── FILTER & RENDER ─────────── */
+function filterAndRender() {
+  const q    = document.getElementById('vsearch').value.toLowerCase();
+  const sev  = document.getElementById('sevFilter').value.toLowerCase();
+  const stat = document.getElementById('statFilter').value.toLowerCase();
+  const url  = document.getElementById('urlFilter').value;
+
+  let filtered = allVulns.filter(v => {
+    const ds = (v._display_status || v.Status || '').toLowerCase();
+    const mQ    = !q    || (v.Test||'').toLowerCase().includes(q) || (v.Finding||'').toLowerCase().includes(q) || (v.target_url||'').toLowerCase().includes(q);
+    const mSev  = !sev  || (v.Severity||'').toLowerCase() === sev;
+    const mStat = !stat || ds===stat || (v.Status||'').toLowerCase()===stat;
+    const mUrl  = !url  || v.target_url === url;
+    return mQ && mSev && mStat && mUrl;
+  });
+
+  renderGroups(filtered);
+}
+
+/* ─────────── GROUP BY (target_url + scan_date) ─────────── */
+function renderGroups(vulns) {
+  const container = document.getElementById('scanGroups');
+
+  if(!vulns || vulns.length===0){
+    container.innerHTML = `<div style="text-align:center;padding:3rem;color:var(--text-muted);">
+      <i class="fa-solid fa-shield-halved" style="font-size:2rem;margin-bottom:.5rem;display:block;color:var(--border)"></i>
+      No vulnerabilities found. <a href="/scanning" style="color:var(--blue)">Run a scan</a> to discover findings.
+    </div>`;
+    return;
+  }
+
+  // Group by target+date
+  const groupMap = {};
+  vulns.forEach(v=>{
+    const key = (v.target_url||'') + '|||' + (v.scan_date||'');
+    if(!groupMap[key]) groupMap[key]={url:v.target_url||'',date:v.scan_date||'',items:[]};
+    groupMap[key].items.push(v);
+  });
+
+  // Also build raw group map from rawVulns (unfiltered) for accurate stats
+  const rawGroupMap = {};
+  rawVulns.forEach(v=>{
+    const key = (v.target_url||'') + '|||' + (v.scan_date||'');
+    if(!rawGroupMap[key]) rawGroupMap[key]={crit:0,high:0,med:0,low:0,info:0,vulnerable:0,fixed:0,total:0};
+    const g   = rawGroupMap[key];
+    const sev = (v.Severity||'').toLowerCase();
+    if(sev==='critical')    g.crit++;
+    else if(sev==='high')   g.high++;
+    else if(sev==='medium') g.med++;
+    else if(sev==='low')    g.low++;
+    else                    g.info++;
+    const st = (v._display_status||v.Status||'').toLowerCase();
+    if(st==='vulnerable') g.vulnerable++;
+    if(st==='fixed')      g.fixed++;
+    g.total++;
+  });
+
+  // Sort groups newest first
+  const groups = Object.values(groupMap).sort((a,b)=>{
+    return new Date(b.date) - new Date(a.date) || 0;
+  });
+
+  // Sort each group's items by severity order: Critical > High > Medium > Low > Info
+  groups.forEach(g => {
+    g.items.sort((a,b) => {
+      const sa = SEV_ORDER[(a.Severity||'info').toLowerCase()] ?? 4;
+      const sb = SEV_ORDER[(b.Severity||'info').toLowerCase()] ?? 4;
+      return sa - sb;
+    });
+  });
+
+  const latestKey = groups[0] ? groups[0].url+'|||'+groups[0].date : '';
+
+  container.innerHTML = groups.map((g, gi)=>{
+    const groupKey = g.url+'|||'+g.date;
+    const isOpen   = openGroups.has(groupKey);
+    const isLatest = (groupKey === latestKey);
+    const host = g.url.replace(/https?:\/\//,'').split('/')[0];
+
+    // Use raw counts (unfiltered) for all stats — matches dashboard numbers
+    const rg         = rawGroupMap[groupKey] || {crit:0,high:0,med:0,low:0,info:0,vulnerable:0,fixed:0,total:0};
+    const rawTotal   = rg.total;
+    const vulnItems  = rg.vulnerable;
+    const fixedItems = rg.fixed;
+    const critC      = rg.crit;
+    const highC      = rg.high;
+    const medC       = rg.med;
+
+    const sevPct  = sev => rawTotal ? Math.round((rg[sev==='medium'?'med':sev] || 0)/rawTotal*100) : 0;
+    const fixedPct= (vulnItems+fixedItems) ? Math.round(fixedItems/(vulnItems+fixedItems)*100) : 0;
+
+    // Find linked report
+    const reportLink = g.url ? `/reports` : null;
+    // Encode groupKey safely for inline onclick
+    const encodedKey = encodeURIComponent(groupKey);
+
+    return `<div class="scan-group" data-gi="${gi}" data-key="${groupKey}">
+      <div class="sg-header${isOpen?' open':''}" onclick="toggleGroup('${encodedKey}', ${gi})">
+        <div class="sg-meta">
+          <span class="sg-url"><i class="fa-solid fa-crosshairs" style="color:var(--blue);margin-right:.3rem;font-size:.8rem;"></i>${host}</span>
+          <span class="sg-date"><i class="fa-regular fa-clock" style="margin-right:.2rem;"></i>${g.date||'—'}</span>
+          ${isLatest?'<span class="sg-label-new">Latest</span>':'<span class="sg-label-old">Previous</span>'}
+        </div>
+        <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
+          <div class="sg-counts">
+            ${critC?`<span class="bx bc" style="font-size:.68rem;padding:.15rem .4rem;"><i class="fa-solid fa-triangle-exclamation"></i> ${critC} Crit</span>`:''}
+            ${highC?`<span class="bx bh" style="font-size:.68rem;padding:.15rem .4rem;"><i class="fa-solid fa-triangle-exclamation"></i> ${highC} High</span>`:''}
+            ${medC?`<span class="bx bm" style="font-size:.68rem;padding:.15rem .4rem;"><i class="fa-solid fa-triangle-exclamation"></i> ${medC} Med</span>`:''}
+          </div>
+          <span style="font-size:.72rem;color:var(--text-muted);">${rawTotal} finding${rawTotal!==1?'s':''} &nbsp;|&nbsp; <span style="color:#22c55e;font-weight:700;">${fixedPct}% fixed</span></span>
+          ${reportLink?`<a href="${reportLink}" class="dl-report" title="View Reports" onclick="event.stopPropagation()"><i class="fa-regular fa-file-lines"></i> Reports</a>`:''}
+          <i class="fa-solid fa-chevron-${isOpen?'up':'down'}" id="chevron-${gi}" style="color:var(--text-muted);font-size:.75rem;"></i>
+        </div>
+      </div>
+
+      <!-- Mini stats bar -->
+      <div class="sg-body${isOpen?' open':''}" id="sgbody-${gi}">
+        <div style="padding:.625rem 1rem;background:#f8fafc;border-bottom:1px solid var(--border);display:flex;gap:1.5rem;flex-wrap:wrap;">
+          <div style="font-size:.72rem;"><span style="color:var(--text-muted);">Critical:</span> <strong style="color:#ef4444;">${rawTotal?Math.round(rg.crit/rawTotal*100):0}%</strong></div>
+          <div style="font-size:.72rem;"><span style="color:var(--text-muted);">High:</span> <strong style="color:#f97316;">${rawTotal?Math.round(rg.high/rawTotal*100):0}%</strong></div>
+          <div style="font-size:.72rem;"><span style="color:var(--text-muted);">Medium:</span> <strong style="color:#f59e0b;">${rawTotal?Math.round(rg.med/rawTotal*100):0}%</strong></div>
+          <div style="font-size:.72rem;"><span style="color:var(--text-muted);">Low:</span> <strong style="color:#16a34a;">${rawTotal?Math.round(rg.low/rawTotal*100):0}%</strong></div>
+          <div style="font-size:.72rem;"><span style="color:var(--text-muted);">Info:</span> <strong style="color:#2563eb;">${rawTotal?Math.round(rg.info/rawTotal*100):0}%</strong></div>
+          <div style="font-size:.72rem;"><span style="color:var(--text-muted);">Vulnerable:</span> <strong style="color:#ef4444;">${vulnItems}</strong></div>
+          <div style="font-size:.72rem;"><span style="color:var(--text-muted);">Fixed:</span> <strong style="color:#22c55e;">${fixedItems}</strong></div>
+          <div style="font-size:.72rem;"><span style="color:var(--text-muted);">Resolution:</span> <strong style="color:#22c55e;">${fixedPct}%</strong></div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="dt">
+            <thead>
+              <tr>
+                <th>Vulnerability</th>
+                <th>Severity</th>
+                <th>Path</th>
+                <th>Status</th>
+                <th style="text-align:right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>${renderRows(g.items)}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderRows(items) {
+  let lastExplicitPath = null; // only tracks actual Vulnerable Path values, not target_url fallbacks
+
+  return items.map(v => {
+    const sev        = v.Severity||'Info';
+    const dispStatus = v._display_status || v.Status || 'Unknown';
+    const isActionable = (v.Status||'').toLowerCase()==='vulnerable';
+    const isFixed    = (dispStatus||'').toLowerCase()==='fixed';
+
+    // Determine if there's a real explicit path vs just the target URL
+    const explicitPath = (v['Vulnerable Path'] && v['Vulnerable Path']!=='N/A' && v['Vulnerable Path'].trim()!=='' && v['Vulnerable Path'].trim()!=='—')
+                          ? v['Vulnerable Path'].trim() : null;
+    const displayPath  = explicitPath || v.target_url || null;
+
+    let pathHtml;
+    if (!displayPath) {
+      pathHtml = '<span style="color:var(--border)">—</span>';
+    } else if (explicitPath && explicitPath === lastExplicitPath) {
+      // Only deduplicate real Vulnerable Path values, not target_url fallbacks
+      const short = explicitPath.replace(/https?:\/\//,'').split('/')[0];
+      pathHtml = `<span title="${explicitPath}" style="font-size:.72rem;color:var(--text);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px;">${short}</span>`;
+    } else {
+      // Show full path (explicit or target_url fallback)
+      const display = displayPath.replace(/https?:\/\//,'');
+      const short   = display.length > 38 ? display.substring(0,38)+'…' : display;
+      pathHtml = `<span title="${displayPath}" style="font-size:.74rem;color:var(--text);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:155px;cursor:help;">${short}</span>`;
+    }
+
+    // Update lastExplicitPath only for real paths
+    if (explicitPath) lastExplicitPath = explicitPath;
+    else lastExplicitPath = null;
+
+    const fixBtn = isActionable
+      ? `<button class="btn ${isFixed?'btn-o':'btn-p'} btn-s" onclick="toggleFix(${v.id},this)" title="${isFixed?'Mark as Open':'Mark as Fixed'}">
+          <i class="fa-solid ${isFixed?'fa-rotate-left':'fa-circle-check'}"></i> ${isFixed?'Unfix':'Mark Fixed'}
+         </button>`
+      : '';
+
+    return `<tr data-id="${v.id}">
+      <td>
+        <strong>${v.Test||'Unknown'}</strong><br>
+        <small style="color:var(--text-muted);font-size:.73rem">${(v.Finding||'').substring(0,80)}${(v.Finding||'').length>80?'...':''}</small>
+      </td>
+      <td><span class="bx ${sevClass(sev)}"><i class="fa-solid ${sevIcon(sev)}"></i> ${sev}</span></td>
+      <td style="max-width:200px;">${pathHtml}</td>
+      <td id="status-${v.id}"><span class="bx ${statClass(dispStatus)}"><i class="fa-solid ${statIcon(dispStatus)}"></i> ${dispStatus}</span></td>
+      <td style="text-align:right;white-space:nowrap">
+        <a href="/vulnerabilities/${v.id}" class="btn btn-o btn-s" title="View Details"><i class="fa-regular fa-eye"></i></a>
+        ${fixBtn}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+/* ─────────── TOGGLE GROUP ─────────── */
+function toggleGroup(encodedKey, gi) {
+  const groupKey = decodeURIComponent(encodedKey);
+  const body    = document.getElementById('sgbody-'+gi);
+  const chevron = document.getElementById('chevron-'+gi);
+  const header  = body ? body.previousElementSibling : null;
+  if(!body) return;
+  const isNowOpen = body.classList.toggle('open');
+  if(header) header.classList.toggle('open', isNowOpen);
+  if(chevron) chevron.className = `fa-solid fa-chevron-${isNowOpen?'up':'down'}`;
+  // Persist open state so re-renders (polls) don't collapse it
+  if(isNowOpen) openGroups.add(groupKey);
+  else          openGroups.delete(groupKey);
+}
+
+/* ─────────── TOGGLE FIX ─────────── */
+async function toggleFix(id, btn) {
+  try {
+    btn.disabled = true;
+    const res  = await fetch(`/api/vulnerabilities/${id}/fix`, {method:'POST'});
+    const data = await res.json();
+    if(data.status==='success') {
+      const isFixed = data.fixed;
+      const newSt   = data.new_status;
+      // Update status cell
+      document.querySelectorAll(`#status-${id}`).forEach(el=>{
+        el.innerHTML=`<span class="bx ${statClass(newSt)}"><i class="fa-solid ${statIcon(newSt)}"></i> ${newSt}</span>`;
+      });
+      // Update button
+      btn.innerHTML   = `<i class="fa-solid ${isFixed?'fa-rotate-left':'fa-circle-check'}"></i> ${isFixed?'Unfix':'Mark Fixed'}`;
+      btn.className   = `btn ${isFixed?'btn-o':'btn-p'} btn-s`;
+      btn.disabled    = false;
+      // Patch local data in both arrays so analytics stay accurate
+      [allVulns, rawVulns].forEach(arr => {
+        const v = arr.find(x=>x.id===id);
+        if(v){ v._fixed=isFixed; v._display_status=newSt; }
+      });
+      updateAnalytics();
+      updateCharts();
+    } else { btn.disabled=false; }
+  } catch(e){ console.error(e); btn.disabled=false; }
+}
+
+/* ─────────── INIT ─────────── */
+let firstLoad = true;
+async function loadVulnerabilities() {
+  try {
+    const res  = await fetch('/api/vulnerabilities');
+    const data = await res.json();
+    // rawVulns = everything → for analytics/counts matching dashboard & targets
+    rawVulns = (data.vulnerabilities || []);
+    // allVulns = skip pure-noise tests (DNS/Ping/Port/Service) → for table display only
+    allVulns = rawVulns.filter(v => !isSkippedTest(v));
+    updateAnalytics();
+    updateCharts();
+    populateUrlFilter();
+    filterAndRender();
+    // Subtitle shows RAW total — same number shown on Dashboard & Targets
+    const total = rawVulns.length;
+    document.getElementById('vulnSubtitle').textContent =
+      `Central findings repository — ${total} finding${total!==1?'s':''}`;
+    firstLoad = false;
+  } catch(e){ console.error(e); }
+}
+
+loadVulnerabilities();
+// Poll every 5s — fast live updates in sync with active scans
+setInterval(loadVulnerabilities, 5000);
+
+window.addEventListener('resize', () => {
+  if (pieChart) pieChart.resize();
+  if (barChart) barChart.resize();
+});
+</script>
+{% endblock %}

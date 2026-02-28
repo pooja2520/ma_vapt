@@ -1,0 +1,10 @@
+Flask
+pandas
+openpyxl
+requests
+beautifulsoup4
+lxml
+mysql-connector-python>=8.0.0
+python-dotenv>=1.0.0
+pytest>=7.0.0
+playwright>=1.40.0

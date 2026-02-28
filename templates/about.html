@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}About - VAPT Scanner Pro{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">{% endblock %}
+{% block body %}
+<div id="_main" style="padding-top:56px;margin-left:220px;min-height:100vh;">
+<div class="content">
+  <div class="about-hero">
+    <small><i class="fa-solid fa-shield-halved"></i> ABOUT US</small>
+    <h2>Advanced VAPT Scanner Pro</h2>
+    <p>Built by security professionals, for security professionals. Our mission is to make comprehensive vulnerability assessment accessible to everyone.</p>
+  </div>
+  <div class="stat-row">
+    <div class="stat-card2"><div class="si"><i class="fa-solid fa-crosshairs"></i></div><strong>10,000+</strong><small>Scans Completed</small></div>
+    <div class="stat-card2"><div class="si"><i class="fa-solid fa-users"></i></div><strong>500+</strong><small>Active Users</small></div>
+    <div class="stat-card2"><div class="si"><i class="fa-solid fa-award"></i></div><strong>99.9%</strong><small>Uptime</small></div>
+    <div class="stat-card2"><div class="si"><i class="fa-solid fa-globe"></i></div><strong>50+</strong><small>Countries</small></div>
+  </div>
+  <div class="card">
+    <div class="ch"><i class="fa-solid fa-bolt"></i> Our Mission</div>
+    <div class="cb mission-text">
+      <p>Advanced VAPT Scanner Pro was created to bridge the gap between enterprise-grade security testing tools and accessibility. We believe that every organization, regardless of size, should have access to comprehensive vulnerability assessment capabilities.</p>
+      <p>Our tool combines automated reconnaissance, intelligent web crawling, and thorough vulnerability testing into a single, easy-to-use platform. Whether you're a security professional, IT administrator, or developer, our scanner helps you identify and remediate security issues before they can be exploited.</p>
+      <p>We are committed to ethical security testing and provide our tools only for authorized use. All scans should only be performed on systems you own or have explicit permission to test.</p>
+    </div>
+  </div>
+  <div class="g2">
+    <div class="card">
+      <div class="ch"><i class="fa-solid fa-code"></i> Technology Stack</div>
+      <div class="cb">
+        <div style="display:flex;flex-direction:column;gap:.5rem;">
+          <div style="display:flex;justify-content:space-between;font-size:.825rem;padding:.4rem 0;border-bottom:1px solid var(--border);"><span>Engine</span><span style="font-weight:600">Custom DAST Engine v4.2</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:.825rem;padding:.4rem 0;border-bottom:1px solid var(--border);"><span>OWASP Coverage</span><span style="font-weight:600">Top 10 (2021)</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:.825rem;padding:.4rem 0;border-bottom:1px solid var(--border);"><span>CVE Database</span><span style="font-weight:600">Updated Daily</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:.825rem;padding:.4rem 0;"><span>API Version</span><span style="font-weight:600">v2.1</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="ch"><i class="fa-regular fa-envelope"></i> Contact &amp; Support</div>
+      <div class="cb">
+        <div style="display:flex;flex-direction:column;gap:.625rem;">
+          <div style="display:flex;align-items:center;gap:.625rem;font-size:.825rem;"><i class="fa-regular fa-envelope" style="color:var(--blue);width:18px"></i><a href="mailto:support@vapt.pro" style="color:var(--blue);text-decoration:none">support@vapt.pro</a></div>
+          <div style="display:flex;align-items:center;gap:.625rem;font-size:.825rem;"><i class="fa-solid fa-globe" style="color:var(--blue);width:18px"></i><a href="#" style="color:var(--blue);text-decoration:none">docs.vapt.pro</a></div>
+          <div style="display:flex;align-items:center;gap:.625rem;font-size:.825rem;"><i class="fa-brands fa-github" style="color:var(--blue);width:18px"></i><a href="#" style="color:var(--blue);text-decoration:none">github.com/vapt-scanner</a></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}<script>initLayout('/about');</script>{% endblock %}

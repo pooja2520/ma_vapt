@@ -1,0 +1,657 @@
+{% extends "base.html" %}
+{% block title %}Scanning - VAPT Scanner Pro{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/scanning.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/scanner.css') }}">
+{% endblock %}
+{% block body %}
+<div id="_main">
+<div class="content">
+  <div class="pt">
+    <h1><i class="fa-solid fa-magnifying-glass"></i> Security Scan</h1>
+    <p>Configure and run comprehensive VAPT scans</p>
+  </div>
+
+  <div class="g2">
+    <!-- LEFT: Scan Config -->
+    <div class="card">
+      <div class="ch"><i class="fa-solid fa-shield-halved"></i> Scan Configuration</div>
+      <div class="cb">
+        <div class="fg">
+          <label>Load Saved Target <span style="color:var(--text-muted);font-weight:400;font-size:.75rem;">(auto-fills URL &amp; auth)</span></label>
+          <select id="targetSelect" onchange="loadTargetConfig()">
+            <option value="">— Select a target to auto-fill —</option>
+          </select>
+        </div>
+        <div class="fg"><label>Target URL / IP</label><input type="text" id="targetInput" placeholder="https://example.com or IP address"></div>
+        <div class="fg">
+          <label>Authentication Method</label>
+          <select id="loginType" onchange="handleLoginTypeChange()">
+            <option value="none">No Authentication</option>
+            <option value="basic">HTTP Basic Auth</option>
+            <option value="form">Form-Based Login</option>
+          </select>
+        </div>
+
+        <!-- Basic Auth -->
+        <div id="basicAuthFields" class="auth-fields" style="display:none;">
+          <div class="auth-section-header"><span class="auth-icon">🔐</span><h3>HTTP Basic Authentication</h3></div>
+          <div class="fg"><label>Username</label><input type="text" id="basicUsername" placeholder="Enter username" class="input-field"></div>
+          <div class="fg"><label>Password</label><input type="password" id="basicPassword" placeholder="Enter password" class="input-field"></div>
+        </div>
+
+        <!-- Form Auth -->
+        <div id="formAuthFields" class="auth-fields" style="display:none;">
+          <div class="auth-section-header"><span class="auth-icon">📋</span><h3>Form-Based Authentication</h3></div>
+          <div class="fg">
+            <label>Login Page URL</label>
+            <div style="display:flex;gap:.5rem;">
+              <input type="url" id="formLoginUrl" placeholder="https://example.com/login" class="input-field" style="flex:1;">
+              <button type="button" id="detectBtn" class="btn btn-o" onclick="detectLoginFields()" title="Auto-detect field names"><i class="fa-solid fa-wand-magic-sparkles" id="detectBtnIcon"></i> <span id="detectBtnText">Detect</span></button>
+            </div>
+          </div>
+          <div class="fg"><label>Username</label><input type="text" id="formUsername" placeholder="Enter username" class="input-field"></div>
+          <div class="fg"><label>Password</label><input type="password" id="formPassword" placeholder="Enter password" class="input-field"></div>
+          <div class="fg"><label>Username Field Name</label><input type="text" id="formUsernameField" placeholder="username" class="input-field"></div>
+          <div class="fg"><label>Password Field Name</label><input type="text" id="formPasswordField" placeholder="password" class="input-field"></div>
+          <div class="fg"><label>Success Indicator</label><input type="text" id="formSuccessIndicator" placeholder="e.g. Dashboard, Welcome, Logout" class="input-field"></div>
+        </div>
+
+        <!-- Alerts -->
+        <div id="errorMessage"       class="alert alert-error"   style="display:none;"><span class="alert-icon">⚠️</span><span id="errorText"></span></div>
+        <div id="authSuccessMessage" class="alert alert-success" style="display:none;"><span class="alert-icon">✅</span><span id="authSuccessText"></span></div>
+        <div id="progressMessage"    class="alert alert-info"    style="display:none;"><span class="alert-icon">⚙️</span><span id="progressText"></span></div>
+
+        <div style="display:flex;gap:.625rem;flex-wrap:wrap;margin-top:.5rem;">
+          <button id="scanBtn" onclick="handleScan()" class="btn btn-p" style="flex:1;justify-content:center;">
+            <span id="btnIcon">🔍</span> <span id="btnText">Test Auth &amp; Start Scan</span>
+          </button>
+          <button id="newScanBtn" onclick="handleNewScan()" class="btn btn-o" style="display:none;"><i class="fa-solid fa-rotate"></i> New Scan</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Scan Progress + Live Logs -->
+    <div class="card">
+      <div class="ch"><i class="fa-solid fa-spinner"></i> Scan Progress</div>
+      <div class="cb">
+        <div class="scan-progress">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span id="phaseLabel" style="font-size:.82rem;font-weight:600;color:var(--text);">Ready</span>
+            <span id="pctLabel"   style="font-size:.82rem;font-weight:600;color:var(--blue);">0%</span>
+          </div>
+          <div class="prog-bar"><div class="prog-fill" id="progFill" style="width:0%"></div></div>
+        </div>
+        <div class="phase-grid">
+          <div class="phase" id="ph1"><i class="fa-solid fa-network-wired"></i>Recon</div>
+          <div class="phase" id="ph2"><i class="fa-solid fa-shield-halved"></i>Headers</div>
+          <div class="phase" id="ph3"><i class="fa-solid fa-magnifying-glass"></i>Crawl</div>
+          <div class="phase" id="ph4"><i class="fa-solid fa-bug"></i>Vulnerability</div>
+        </div>
+        <div class="card" style="margin-top:.875rem;margin-bottom:0;">
+          <div class="ch" style="padding:.5rem .875rem;font-size:.8rem;display:flex;justify-content:space-between;align-items:center;">
+            <span><i class="fa-regular fa-file-lines"></i> Scan Logs</span>
+            <span id="logStatus" style="font-size:.7rem;color:var(--text-muted);">Idle</span>
+          </div>
+          <div class="scan-log" id="scanLog"
+               style="height:280px;overflow-y:auto;background:#0f172a;padding:.75rem;font-family:'Courier New',monospace;font-size:.72rem;line-height:1.6;border-radius:0 0 10px 10px;">
+            <span class="log-info" style="color:#64748b;">No scan logs yet. Configure and start a scan.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Test Coverage -->
+  <div id="testCoverageSection" style="display:none;">
+    <div class="card">
+      <div class="ch"><i class="fa-solid fa-list-check"></i> Test Coverage</div>
+      <div class="cb"><p style="font-size:.825rem;color:var(--text-muted);">Comprehensive VAPT tests were performed across all discovered paths.</p></div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="resultsSection" style="display:none;">
+    <div class="card">
+      <div class="ch"><i class="fa-solid fa-bug"></i> Scan Results</div>
+      <div class="cb">
+        <div id="resultsContainer"></div>
+        <div style="margin-top:1rem;text-align:right;">
+          <button id="downloadBtn" onclick="handleDownload()" class="btn btn-p"><i class="fa-solid fa-download"></i> Download Report</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature Cards -->
+  <div class="feat-grid">
+    <div class="feat-card">
+      <h4><i class="fa-solid fa-network-wired" style="color:var(--blue)"></i> Recon &amp; Detection</h4>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> DNS Resolution</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Port Scanning</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Service Detection</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> WAF Detection</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Rate Limiting</div>
+    </div>
+    <div class="feat-card">
+      <h4><i class="fa-solid fa-shield-halved" style="color:var(--green)"></i> Headers &amp; Session</h4>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> CSP Headers</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Security Headers</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> CSRF Protection</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Session Timeout</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Open Redirect</div>
+    </div>
+    <div class="feat-card">
+      <h4><i class="fa-solid fa-magnifying-glass" style="color:var(--yellow)"></i> Intelligent Crawling</h4>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> URL Discovery</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Form Detection</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> API Endpoint Mapping</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> JS Analysis</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Sitemap Parsing</div>
+    </div>
+    <div class="feat-card">
+      <h4><i class="fa-solid fa-bug" style="color:var(--red)"></i> Vulnerability Testing</h4>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> SQL Injection</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> XSS</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Command Injection</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> SSRF</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> XXE</div>
+    </div>
+  </div>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+<script>
+initLayout('/scanning');
+
+// ═══════════════════════════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════════════════════════
+const SCAN_KEY       = 'vapt_active_scan';
+const SCAN_LOG_KEY   = 'vapt_scan_logs';
+const SCAN_PHASE_KEY = 'vapt_scan_phase';
+const PREFILL_KEY    = 'vapt_prefill';     // set by targets.html / target-create.html
+
+// ═══════════════════════════════════════════════════════════════
+//  PERSISTENCE HELPERS
+// ═══════════════════════════════════════════════════════════════
+function persistScanConfig(target, loginType, authData) {
+    localStorage.setItem(SCAN_KEY, JSON.stringify({
+        target, loginType, authData,
+        startedAt: Date.now(), status: 'running',
+        phase: 1, phaseName: 'Network Security Testing', progress: 0,
+    }));
+    localStorage.setItem(SCAN_LOG_KEY, JSON.stringify([]));
+}
+
+function persistPhase(phase, name, progress) {
+    try {
+        const s = JSON.parse(localStorage.getItem(SCAN_KEY) || '{}');
+        s.phase = phase; s.phaseName = name; s.progress = progress;
+        localStorage.setItem(SCAN_KEY, JSON.stringify(s));
+    } catch(e) {}
+}
+
+function persistLogs(lines) {
+    try {
+        const logs = JSON.parse(localStorage.getItem(SCAN_LOG_KEY) || '[]');
+        lines.forEach(l => { if (!logs.includes(l)) logs.push(l); });
+        localStorage.setItem(SCAN_LOG_KEY, JSON.stringify(logs.slice(-500)));
+    } catch(e) {}
+}
+
+function persistScanComplete(status) {
+    try {
+        const s = JSON.parse(localStorage.getItem(SCAN_KEY) || '{}');
+        s.status = status;
+        s.progress = status === 'completed' ? 100 : s.progress;
+        s.finishedAt = Date.now();
+        localStorage.setItem(SCAN_KEY, JSON.stringify(s));
+    } catch(e) {}
+}
+
+function clearScanState() {
+    localStorage.removeItem(SCAN_KEY);
+    localStorage.removeItem(SCAN_LOG_KEY);
+    localStorage.removeItem(SCAN_PHASE_KEY);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  FORM HELPERS
+// ═══════════════════════════════════════════════════════════════
+function readFormConfig() {
+    const loginType = document.getElementById('loginType').value;
+    const authData  = {};
+    if (loginType === 'basic') {
+        authData.basicUsername = document.getElementById('basicUsername').value;
+        authData.basicPassword = document.getElementById('basicPassword').value;
+    } else if (loginType === 'form') {
+        authData.formLoginUrl         = document.getElementById('formLoginUrl').value;
+        authData.formUsername         = document.getElementById('formUsername').value;
+        authData.formPassword         = document.getElementById('formPassword').value;
+        authData.formUsernameField    = document.getElementById('formUsernameField').value;
+        authData.formPasswordField    = document.getElementById('formPasswordField').value;
+        authData.formSuccessIndicator = document.getElementById('formSuccessIndicator').value;
+    }
+    return { loginType, authData };
+}
+
+function restoreFormConfig(state) {
+    if (!state) return;
+    if (state.target) document.getElementById('targetInput').value = state.target;
+
+    const lt = state.loginType || 'none';
+    document.getElementById('loginType').value               = lt;
+    document.getElementById('basicAuthFields').style.display = 'none';
+    document.getElementById('formAuthFields').style.display  = 'none';
+
+    if (lt === 'basic') {
+        document.getElementById('basicAuthFields').style.display = 'block';
+    } else if (lt === 'form') {
+        document.getElementById('formAuthFields').style.display = 'block';
+    }
+
+    const d = state.authData || {};
+    if (d.basicUsername)        document.getElementById('basicUsername').value        = d.basicUsername;
+    if (d.basicPassword)        document.getElementById('basicPassword').value        = d.basicPassword;
+    if (d.formLoginUrl)         document.getElementById('formLoginUrl').value         = d.formLoginUrl;
+    if (d.formUsername)         document.getElementById('formUsername').value         = d.formUsername;
+    if (d.formPassword)         document.getElementById('formPassword').value         = d.formPassword;
+    if (d.formUsernameField)    document.getElementById('formUsernameField').value    = d.formUsernameField;
+    if (d.formPasswordField)    document.getElementById('formPasswordField').value    = d.formPasswordField;
+    if (d.formSuccessIndicator) document.getElementById('formSuccessIndicator').value = d.formSuccessIndicator;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  UI STATE HELPERS
+// ═══════════════════════════════════════════════════════════════
+function restoreProgressUI(state) {
+    if (!state) return;
+    const pct = state.progress || 0;
+    document.getElementById('progFill').style.width = pct + '%';
+    document.getElementById('pctLabel').textContent  = pct + '%';
+    const phaseMap = {
+        1: 'Network Security Testing', 2: 'Web Crawling & Path Discovery',
+        3: 'OWASP Top 10 Testing',     4: 'Generating Report',
+    };
+    const cp = state.phase || 1;
+    document.getElementById('phaseLabel').textContent = state.phaseName || phaseMap[cp] || 'Scanning…';
+    [1,2,3,4].forEach(n => {
+        const el = document.getElementById('ph' + n);
+        if (!el) return;
+        el.classList.remove('active', 'done');
+        if (n < cp)  el.classList.add('done');
+        if (n === cp) el.classList.add('active');
+    });
+}
+
+function restoreLogUI(savedLogs) {
+    if (!savedLogs || !savedLogs.length) return;
+    document.getElementById('scanLog').innerHTML = '';
+    savedLogs.forEach(appendLog);
+}
+
+function appendLog(line) {
+    const logEl = document.getElementById('scanLog');
+    if (logEl.querySelector('.log-info')) logEl.innerHTML = '';
+    const span = document.createElement('span');
+    span.style.display = 'block';
+    if      (line.includes('❌') || line.includes('Error'))  span.style.color = '#f87171';
+    else if (line.includes('✅') || line.includes('done'))    span.style.color = '#34d399';
+    else if (line.includes('🚀') || line.includes('Phase'))   span.style.color = '#60a5fa';
+    else if (line.includes('🕷') || line.includes('Crawl'))   span.style.color = '#fbbf24';
+    else                                                       span.style.color = '#94a3b8';
+    span.textContent = line;
+    logEl.appendChild(span);
+    logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setScanRunningUI() {
+    document.getElementById('scanBtn').disabled             = true;
+    document.getElementById('btnIcon').textContent          = '⏳';
+    document.getElementById('btnText').textContent          = 'Scanning…';
+    document.getElementById('logStatus').textContent        = '🔴 Live';
+    document.getElementById('logStatus').style.color        = '#34d399';
+    document.getElementById('newScanBtn').style.display     = 'none';
+    document.getElementById('resultsSection').style.display = 'none';
+}
+
+function setScanIdleUI() {
+    document.getElementById('scanBtn').disabled         = false;
+    document.getElementById('btnIcon').textContent      = '🔍';
+    document.getElementById('btnText').textContent      = 'Test Auth & Start Scan';
+    document.getElementById('logStatus').textContent    = 'Idle';
+    document.getElementById('logStatus').style.color    = 'var(--text-muted)';
+    document.getElementById('newScanBtn').style.display = 'inline-flex';
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  POLLING
+// ═══════════════════════════════════════════════════════════════
+let pollTimer   = null;
+let knownLogLen = 0;
+
+function startPolling() {
+    stopPolling();
+    knownLogLen = 0;
+    pollTimer = setInterval(pollScanState, 2000);
+    pollScanState();
+}
+
+function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function pollScanState() {
+    try {
+        const res  = await fetch('/api/scan-logs');
+        const data = await res.json();
+        const newLines = data.logs.slice(knownLogLen);
+        if (newLines.length) {
+            newLines.forEach(appendLog);
+            persistLogs(newLines);
+            knownLogLen = data.logs.length;
+        }
+        // Use server's phase/progress when available (exact values), else infer from logs
+        if (data.phase != null && data.progress != null) {
+            updateProgressFromServer(data);
+        } else {
+            updatePhaseFromLogs(data.logs);
+        }
+        if (!data.running) { stopPolling(); await onScanFinished(); }
+    } catch(e) {}
+}
+
+function updateProgressFromServer(data) {
+    const phase = data.phase || 1, progress = data.progress || 0, phaseName = data.phase_name || '';
+    document.getElementById('progFill').style.width   = progress + '%';
+    document.getElementById('pctLabel').textContent   = progress + '%';
+    document.getElementById('phaseLabel').textContent = phaseName || 'Scanning…';
+    [1,2,3,4].forEach(n => {
+        const el = document.getElementById('ph' + n);
+        if (!el) return;
+        el.classList.remove('active', 'done');
+        if (n < phase)   el.classList.add('done');
+        if (n === phase) el.classList.add('active');
+    });
+    persistPhase(phase, phaseName, progress);
+}
+
+function updatePhaseFromLogs(logs) {
+    let phase = 1, phaseName = 'Network Security Testing', progress = 5;
+    logs.forEach(line => {
+        if (line.includes('PHASE 1') || line.includes('Network Security'))             { phase=1; phaseName='Network Security Testing';      progress=10; }
+        if (line.includes('PHASE 2') || line.includes('Crawling') || line.includes('Starting crawler')) { phase=2; phaseName='Web Crawling & Path Discovery'; progress=35; }
+        if (line.includes('Crawl done') || line.includes('crawl_complete'))            { phase=2; phaseName='Crawl Complete';                 progress=50; }
+        if (line.includes('PHASE 3') || line.includes('OWASP'))                        { phase=3; phaseName='OWASP Top 10 Testing';           progress=65; }
+        if (line.includes('PHASE 4') || line.includes('Generating Report'))            { phase=4; phaseName='Generating Report';              progress=90; }
+        if (line.includes('Scan complete') || line.includes('✅ Scan complete'))        { phase=4; phaseName='Scan Complete';                  progress=100; }
+    });
+    document.getElementById('progFill').style.width   = progress + '%';
+    document.getElementById('pctLabel').textContent   = progress + '%';
+    document.getElementById('phaseLabel').textContent = phaseName;
+    [1,2,3,4].forEach(n => {
+        const el = document.getElementById('ph' + n);
+        if (!el) return;
+        el.classList.remove('active', 'done');
+        if (n < phase)   el.classList.add('done');
+        if (n === phase) el.classList.add('active');
+    });
+    persistPhase(phase, phaseName, progress);
+}
+
+async function onScanFinished() {
+    try {
+        const res  = await fetch('/scan-status');
+        const data = await res.json();
+        if (data.status === 'success') {
+            persistScanComplete('completed');
+            setScanIdleUI();
+            document.getElementById('phaseLabel').textContent               = '✅ Scan Complete';
+            document.getElementById('pctLabel').textContent                 = '100%';
+            document.getElementById('progFill').style.width                 = '100%';
+            document.getElementById('testCoverageSection').style.display    = 'block';
+            document.getElementById('resultsSection').style.display         = 'block';
+            if (typeof displayResults === 'function' && data.results) displayResults(data.results);
+        } else if (data.status === 'error') {
+            persistScanComplete('error');
+            setScanIdleUI();
+            document.getElementById('phaseLabel').textContent = '❌ Scan Failed';
+        }
+    } catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  BANNERS
+// ═══════════════════════════════════════════════════════════════
+function showPrefillBanner(targetUrl) {
+    if (document.getElementById('prefillBanner')) return;
+    const banner = document.createElement('div');
+    banner.id = 'prefillBanner';
+    banner.style.cssText = 'background:#1a3326;border:1.5px solid #22c55e;border-radius:9px;padding:.625rem 1rem;margin-bottom:.875rem;font-size:.8rem;color:#86efac;display:flex;align-items:center;gap:.5rem;';
+    banner.innerHTML = `<i class="fa-solid fa-circle-check" style="color:#22c55e;flex-shrink:0;"></i>
+        <span>Target auto-filled: <strong style="color:#fff">${targetUrl}</strong></span>
+        <span style="margin-left:auto;font-size:.7rem;color:#64748b;">from Targets ✓</span>`;
+    const g2 = document.querySelector('.content .g2');
+    if (g2) g2.parentNode.insertBefore(banner, g2);
+}
+
+function showReconnectBanner(target) {
+    if (document.getElementById('reconnectBanner')) return;
+    const banner = document.createElement('div');
+    banner.id = 'reconnectBanner';
+    banner.style.cssText = 'background:#1e3a5f;border:1px solid #3b82f6;border-radius:9px;padding:.625rem 1rem;margin-bottom:.875rem;font-size:.8rem;color:#93c5fd;display:flex;align-items:center;gap:.5rem;';
+    banner.innerHTML = `<i class="fa-solid fa-rotate fa-spin" style="color:#60a5fa;flex-shrink:0;"></i>
+        <span>Reconnected to active scan: <strong style="color:#fff">${target}</strong></span>
+        <span style="margin-left:auto;font-size:.7rem;color:#64748b;">Refresh-safe ✓</span>`;
+    const g2 = document.querySelector('.content .g2');
+    if (g2) g2.parentNode.insertBefore(banner, g2);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  TARGET SELECTOR (load saved targets, auto-fill on select)
+// ═══════════════════════════════════════════════════════════════
+async function loadTargetsIntoSelect() {
+  try {
+    const res = await fetch('/api/targets');
+    const data = await res.json();
+    const sel = document.getElementById('targetSelect');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— Select a target to auto-fill —</option>';
+    (data.targets || []).forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = `${t.name || t.url} (${t.url})`;
+      sel.appendChild(opt);
+    });
+  } catch(e) {}
+}
+
+async function detectLoginFields() {
+  const url = document.getElementById('formLoginUrl').value.trim();
+  if (!url) { alert('Enter Login Page URL first'); return; }
+  const btn = document.getElementById('detectBtn');
+  const icon = document.getElementById('detectBtnIcon');
+  const text = document.getElementById('detectBtnText');
+  const origIcon = icon.className;
+  const origText = text.textContent;
+  btn.disabled = true;
+  icon.className = 'fa-solid fa-spinner fa-spin';
+  text.textContent = 'Detecting...';
+  try {
+    const res = await fetch('/api/detect-login-fields', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ login_url: url })
+    });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      document.getElementById('formUsernameField').value = data.username_field || 'username';
+      document.getElementById('formPasswordField').value = data.password_field || 'password';
+      if (data.api_login_url) {
+        document.getElementById('formLoginUrl').value = data.api_login_url;
+      }
+      const errEl = document.getElementById('errorMessage');
+      if (errEl) errEl.style.display = 'none';
+      const okEl = document.getElementById('authSuccessMessage');
+      const okText = document.getElementById('authSuccessText');
+      if (okEl && okText) {
+        okText.textContent = data.message || ('Field names: ' + data.username_field + ', ' + data.password_field);
+        okEl.style.display = 'flex';
+      }
+    } else {
+      alert(data.message || 'Could not detect fields');
+    }
+  } catch (e) { alert('Detection failed: ' + e.message); }
+  finally {
+    btn.disabled = false;
+    icon.className = origIcon;
+    text.textContent = origText;
+  }
+}
+
+async function loadTargetConfig() {
+  const id = document.getElementById('targetSelect').value;
+  if (!id) return;
+  try {
+    const res = await fetch(`/api/targets/${id}`);
+    const data = await res.json();
+    if (data.status !== 'ok') return;
+    const t = data.target;
+    const authConfig = t.auth_config || { type: 'none' };
+    const prefill = {
+      target:    t.url,
+      loginType: authConfig.type || 'none',
+      authData:  authConfig,
+    };
+    restoreFormConfig(prefill);
+    showPrefillBanner(t.url);
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PAGE INIT
+//  Priority:
+//    1. vapt_prefill present  → came from Targets / target-create
+//    2. active scan running   → reconnect
+//    3. completed / error     → clear, show fresh
+//    4. nothing               → fresh page
+// ═══════════════════════════════════════════════════════════════
+async function initScanPage() {
+    const autostart = new URLSearchParams(window.location.search).get('autostart') === '1';
+
+    // Populate target selector
+    loadTargetsIntoSelect();
+
+    // ── Priority 1: prefill from Targets page ─────────────────
+    let prefill;
+    try { prefill = JSON.parse(localStorage.getItem(PREFILL_KEY)); } catch(e) {}
+
+    if (prefill && prefill.target) {
+        localStorage.removeItem(PREFILL_KEY);   // consume once
+        clearScanState();                        // discard any stale scan
+        restoreFormConfig(prefill);
+        showPrefillBanner(prefill.target);
+        if (autostart) setTimeout(() => handleScan(), 300);
+        return;
+    }
+
+    // ── Priority 2 / 3: existing scan state or server has running scan ─────
+    let saved;
+    try { saved = JSON.parse(localStorage.getItem(SCAN_KEY)); } catch(e) {}
+    // If no saved state, still check server — user may have closed tab and reopened
+    if (!saved) {
+        try {
+            const res = await fetch('/api/scan-logs');
+            const data = await res.json();
+            if (data.running && data.target) {
+                saved = {
+                    status: 'running', target: data.target,
+                    phase: data.phase, phaseName: data.phase_name, progress: data.progress,
+                };
+            }
+        } catch(e) {}
+    }
+    if (!saved) return;
+
+    if (saved.status === 'running') {
+        restoreFormConfig(saved);
+        try {
+            const res  = await fetch('/api/scan-logs');
+            const data = await res.json();
+            if (data.running) {
+                // Use server's logs (source of truth) — scan keeps running when you navigate away
+                const logs = data.logs || [];
+                restoreLogUI(logs);
+                knownLogLen = logs.length;
+                localStorage.setItem(SCAN_LOG_KEY, JSON.stringify(logs));
+                // Use server's exact phase/progress, not stale localStorage
+                const serverState = {
+                    phase: data.phase || 1,
+                    phaseName: data.phase_name || '',
+                    progress: data.progress || 0,
+                };
+                restoreProgressUI(serverState);
+                persistPhase(serverState.phase, serverState.phaseName, serverState.progress);
+                setScanRunningUI();
+                showReconnectBanner(data.target || saved.target);
+                startPolling();
+            } else {
+                // Scan finished while away — fetch results and show completed state
+                const statusRes = await fetch('/scan-status');
+                const statusData = await statusRes.json();
+                if (statusData.status === 'success' && statusData.results) {
+                    persistScanComplete('completed');
+                    setScanIdleUI();
+                    restoreProgressUI({ phase: 4, phaseName: '✅ Scan Complete', progress: 100 });
+                    document.getElementById('testCoverageSection').style.display = 'block';
+                    document.getElementById('resultsSection').style.display = 'block';
+                    if (typeof displayResults === 'function') displayResults(statusData.results);
+                    restoreLogUI(data.logs || []);
+                } else if (statusData.status === 'error') {
+                    persistScanComplete('error');
+                    setScanIdleUI();
+                    restoreProgressUI({ phase: 4, phaseName: '❌ Scan Failed', progress: 100 });
+                    restoreLogUI(data.logs || []);
+                } else {
+                    clearScanState();
+                }
+            }
+        } catch(e) {
+            restoreProgressUI(saved);
+            restoreLogUI(JSON.parse(localStorage.getItem(SCAN_LOG_KEY) || '[]'));
+        }
+    } else if (saved.status === 'completed' || saved.status === 'error') {
+        clearScanState();
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  WRAP handleScan / handleNewScan
+// ═══════════════════════════════════════════════════════════════
+const _origHandleScan    = typeof handleScan    === 'function' ? handleScan    : null;
+const _origHandleNewScan = typeof handleNewScan === 'function' ? handleNewScan : null;
+
+window.handleScan = async function() {
+    const target = document.getElementById('targetInput').value.trim();
+    const { loginType, authData } = readFormConfig();
+    if (!target) { if (_origHandleScan) return _origHandleScan(); return; }
+    persistScanConfig(target, loginType, authData);
+    history.replaceState({}, '', '/scanning');
+    setScanRunningUI();
+    startPolling();
+    if (_origHandleScan) _origHandleScan();
+};
+
+window.handleNewScan = function() {
+    clearScanState();
+    stopPolling();
+    knownLogLen = 0;
+    if (_origHandleNewScan) _origHandleNewScan();
+};
+
+initScanPage();
+</script>
+{% endblock %}

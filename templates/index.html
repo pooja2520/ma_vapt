@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VAPT Scanner Pro - Sign In</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+<style>
+:root { --blue:#2563EB; --blue-dark:#1d4ed8; --blue-light:#EFF6FF; --text:#1e293b; --text-muted:#64748b; --border:#e2e8f0; --bg:#f1f5f9; --white:#fff; --red:#ef4444; --green:#22c55e; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'DM Sans',sans-serif; background:var(--bg); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:1rem; }
+</style>
+</head>
+<body>
+<div class="login-box">
+  <div class="login-header">
+    <i class="fa-solid fa-shield-halved"></i>
+    <h1>Advanced VAPT Scanner Pro</h1>
+    <p>Sign in to your account</p>
+  </div>
+  <div class="login-body">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+    <div class="{{ 'success-msg' if category == 'info' else 'error-msg' }}" style="display:flex;">
+      <i class="fa-solid {{ 'fa-circle-check' if category == 'info' else 'fa-circle-exclamation' }}"></i>&nbsp;{{ message }}
+    </div>
+    {% endfor %}
+    {% endwith %}
+    <form method="POST" action="/login">
+      <div class="form-group">
+        <label><i class="fa-regular fa-envelope"></i> Email Address</label>
+        <input type="email" id="email" name="email" placeholder="Enter your email" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label><i class="fa-solid fa-lock"></i> Password</label>
+        <div class="pass-wrap">
+          <input type="password" id="password" name="password" placeholder="Enter your password" autocomplete="current-password">
+          <button type="button" onclick="togglePass()"><i class="fa-regular fa-eye" id="eyeIcon"></i></button>
+        </div>
+        <a href="/forgot-password" class="forgot-link">Forgot password?</a>
+      </div>
+      <button type="submit" class="btn-primary"><i class="fa-solid fa-shield-halved"></i> Sign In</button>
+    </form>
+    <div class="signup-note">Don't have an account? <a href="{{ url_for('signup') }}">Sign up</a></div>
+    <div class="secure-note"><i class="fa-solid fa-lock"></i> Your data is encrypted and secure</div>
+  </div>
+</div>
+<script>
+function togglePass() {
+  const p = document.getElementById('password');
+  const i = document.getElementById('eyeIcon');
+  p.type = p.type === 'password' ? 'text' : 'password';
+  i.className = p.type === 'password' ? 'fa-regular fa-eye' : 'fa-regular fa-eye-slash';
+}
+</script>
+</body>
+</html>

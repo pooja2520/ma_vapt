@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Features - VAPT Scanner Pro{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">{% endblock %}
+{% block body %}
+<div id="_main" style="padding-top:56px;margin-left:220px;min-height:100vh;">
+<div class="content">
+  <div class="feat-hero">
+    <small><i class="fa-solid fa-bolt"></i> POWERFUL FEATURES</small>
+    <h2>Enterprise-Grade Security Testing</h2>
+    <p>Our comprehensive suite of tools helps you identify vulnerabilities before attackers do.</p>
+  </div>
+  <div class="feat-cards">
+    <div class="fc"><div class="fc-icon"><i class="fa-solid fa-network-wired"></i></div><h3>Network Security Testing</h3><p>Comprehensive network reconnaissance including DNS resolution, port scanning, and service detection.</p></div>
+    <div class="fc"><div class="fc-icon"><i class="fa-solid fa-globe"></i></div><h3>Web Application Security</h3><p>Analyze security headers, SSL/TLS configuration, and server information disclosure.</p></div>
+    <div class="fc"><div class="fc-icon"><i class="fa-solid fa-magnifying-glass"></i></div><h3>Automated Web Crawling</h3><p>Intelligent path discovery to find all accessible URLs, forms, and API endpoints.</p></div>
+    <div class="fc"><div class="fc-icon"><i class="fa-solid fa-bug"></i></div><h3>Vulnerability Testing</h3><p>Test for SQL injection, XSS, directory listing, and other common vulnerabilities.</p></div>
+    <div class="fc"><div class="fc-icon"><i class="fa-solid fa-lock"></i></div><h3>Authentication Testing</h3><p>Support for multiple authentication methods including Basic, Bearer, API Key, and OAuth 2.0.</p></div>
+    <div class="fc"><div class="fc-icon"><i class="fa-regular fa-file-lines"></i></div><h3>Detailed Reporting</h3><p>Generate comprehensive reports with remediation steps for each finding.</p></div>
+    <div class="fc"><div class="fc-icon"><i class="fa-solid fa-bolt"></i></div><h3>Real-time Scanning</h3><p>Live scan logs and progress tracking with phase-by-phase status updates.</p></div>
+    <div class="fc"><div class="fc-icon"><i class="fa-solid fa-link"></i></div><h3>Third-Party Integrations</h3><p>Connect with Slack, Jira, GitHub, and PagerDuty to automate your security workflow.</p></div>
+    <div class="fc"><div class="fc-icon"><i class="fa-solid fa-chart-line"></i></div><h3>Trend Analytics</h3><p>Track mean time to fix, vulnerability aging, and compare against industry benchmarks.</p></div>
+  </div>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}<script>initLayout('/features');</script>{% endblock %}

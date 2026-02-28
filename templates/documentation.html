@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Documentation - VAPT Scanner Pro{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">{% endblock %}
+{% block body %}
+<div id="_main" style="padding-top:56px;margin-left:220px;min-height:100vh;">
+<div class="content">
+  <div class="doc-hero">
+    <small><i class="fa-solid fa-book-open"></i> DOCUMENTATION</small>
+    <h2>Learn How to Use VAPT Scanner</h2>
+    <p>Comprehensive guides and API references to help you get the most out of our security testing tools.</p>
+  </div>
+  <div class="doc-grid">
+    <div class="dc"><div class="dc-header"><i class="fa-solid fa-terminal"></i> Getting Started</div><div class="dc-body"><p>Learn how to set up and configure your first security scan.</p><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Installation</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Configuration</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> First Scan</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Authentication Setup</a></div></div>
+    <div class="dc"><div class="dc-header"><i class="fa-solid fa-code"></i> API Reference</div><div class="dc-body"><p>Complete API documentation for integrating scans into your workflow.</p><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> REST API</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Webhooks</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Rate Limits</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Error Handling</a></div></div>
+    <div class="dc"><div class="dc-header"><i class="fa-solid fa-shield-halved"></i> Security Best Practices</div><div class="dc-body"><p>Guidelines for responsible vulnerability testing.</p><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Legal Considerations</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Scope Definition</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Safe Testing</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Reporting</a></div></div>
+    <div class="dc"><div class="dc-header"><i class="fa-regular fa-file-lines"></i> Advanced Configuration</div><div class="dc-body"><p>Fine-tune your scans for specific environments and needs.</p><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Custom Rules</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Exclusions</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Scan Profiles</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Performance Tuning</a></div></div>
+    <div class="dc"><div class="dc-header"><i class="fa-solid fa-shield-halved"></i> OWASP Top 10 Mapping</div><div class="dc-body"><p>How our findings map to OWASP Top 10 categories.</p><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> A01 Broken Access Control</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> A03 Injection</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> A05 Misconfiguration</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> A07 Auth Failures</a></div></div>
+    <div class="dc"><div class="dc-header"><i class="fa-regular fa-file-lines"></i> Legal &amp; Compliance</div><div class="dc-body"><p>Understanding authorized testing and legal boundaries.</p><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Legal Usage</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Compliance Frameworks</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Audit Logs</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Data Retention</a></div></div>
+  </div>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}<script>initLayout('/documentation');</script>{% endblock %}

@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Edit Target - VAPT Scanner Pro{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/targets.css') }}">{% endblock %}
+{% block body %}
+<div id="_main" style="padding-top:56px;min-height:100vh;">
+<div class="content">
+  <a href="/targets/{{ target_id }}/view" class="back-a"><i class="fa-solid fa-arrow-left"></i> Back to Target</a>
+  <div class="pt"><h1><i class="fa-solid fa-crosshairs"></i> Edit Target</h1><p>Update target configuration</p></div>
+  <div class="card" style="max-width:680px;">
+    <div class="cb">
+      <div class="fg"><label>Target Name <span style="color:var(--red)">*</span></label><input type="text" id="tName" placeholder="e.g. Production Web App"></div>
+      <div class="fg"><label>URL / IP Address <span style="color:var(--red)">*</span></label><input type="text" id="tUrl" placeholder="e.g. https://app.example.com"></div>
+      <div class="fg">
+        <label>Target Type</label>
+        <div class="type-btns">
+          <button class="type-btn active" id="typeWeb" onclick="selType(this)"><i class="fa-solid fa-globe"></i> Web</button>
+          <button class="type-btn" id="typeApi" onclick="selType(this)"><i class="fa-solid fa-code"></i> API</button>
+          <button class="type-btn" id="typeIp"  onclick="selType(this)"><i class="fa-solid fa-wifi"></i> IP</button>
+        </div>
+      </div>
+      <div class="fg"><label>Description</label><textarea id="tDesc" placeholder="Optional description..."></textarea></div>
+
+      <!-- Authentication Method (saved for scan prefill) -->
+      <div class="fg">
+        <label>Authentication Method <span style="color:var(--text-muted);font-weight:400;font-size:.75rem;">(saved for scan auto-fill)</span></label>
+        <select id="tAuth" onchange="showAuth()">
+          <option value="none">No Authentication</option>
+          <option value="basic">HTTP Basic Auth</option>
+          <option value="form">Form-Based Login</option>
+        </select>
+      </div>
+      <div id="basicAuthFields" style="display:none;border:1.5px solid var(--border);border-radius:10px;padding:1rem;margin-bottom:.75rem;">
+        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.875rem;">
+          <span style="font-size:1.1rem;">🔐</span>
+          <h3 style="margin:0;font-size:.875rem;font-weight:600;color:var(--text);">HTTP Basic Authentication</h3>
+        </div>
+        <div class="fg"><label>Username</label><input type="text" id="basicUsername" placeholder="Enter username"></div>
+        <div class="fg"><label>Password</label><input type="password" id="basicPassword" placeholder="Enter password"></div>
+      </div>
+      <div id="formAuthFields" style="display:none;border:1.5px solid var(--border);border-radius:10px;padding:1rem;margin-bottom:.75rem;">
+        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.875rem;">
+          <span style="font-size:1.1rem;">📋</span>
+          <h3 style="margin:0;font-size:.875rem;font-weight:600;color:var(--text);">Form-Based Authentication</h3>
+        </div>
+        <div class="fg">
+          <label>Login Page URL</label>
+          <div style="display:flex;gap:.5rem;">
+            <input type="url" id="formLoginUrl" placeholder="https://example.com/login" style="flex:1;">
+            <button type="button" class="btn btn-o" onclick="detectLoginFields()" title="Auto-detect field names"><i class="fa-solid fa-wand-magic-sparkles"></i> Detect</button>
+          </div>
+        </div>
+        <div class="fg"><label>Username</label><input type="text" id="formUsername" placeholder="Enter username"></div>
+        <div class="fg"><label>Password</label><input type="password" id="formPassword" placeholder="Enter password"></div>
+        <div class="fg"><label>Username Field Name</label><input type="text" id="formUsernameField" placeholder="username"></div>
+        <div class="fg"><label>Password Field Name</label><input type="text" id="formPasswordField" placeholder="password"></div>
+        <div class="fg"><label>Success Indicator</label><input type="text" id="formSuccessIndicator" placeholder="e.g. Dashboard, Welcome, Logout"></div>
+      </div>
+
+      <div style="display:flex;gap:.625rem;">
+        <button class="btn btn-p" onclick="save()"><i class="fa-regular fa-floppy-disk"></i> Save Changes</button>
+        <a href="/targets/{{ target_id }}/view" class="btn btn-o">Cancel</a>
+      </div>
+    </div>
+  </div>
+</div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+initLayout('/targets');
+const TARGET_ID = {{ target_id }};
+
+function selType(b) {
+  document.querySelectorAll('.type-btn').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+}
+
+function showAuth() {
+  const v = document.getElementById('tAuth').value;
+  document.getElementById('basicAuthFields').style.display = v === 'basic' ? 'block' : 'none';
+  document.getElementById('formAuthFields').style.display  = v === 'form'  ? 'block' : 'none';
+}
+
+async function detectLoginFields() {
+  const url = document.getElementById('formLoginUrl').value.trim();
+  if (!url) { alert('Enter Login Page URL first'); return; }
+  try {
+    const res = await fetch('/api/detect-login-fields', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ login_url: url })
+    });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      document.getElementById('formUsernameField').value = data.username_field || 'username';
+      document.getElementById('formPasswordField').value = data.password_field || 'password';
+      if (data.api_login_url) document.getElementById('formLoginUrl').value = data.api_login_url;
+    } else {
+      alert(data.message || 'Could not detect fields');
+    }
+  } catch (e) { alert('Detection failed: ' + e.message); }
+}
+
+// Load existing data
+async function loadData() {
+  try {
+    const res  = await fetch(`/api/targets/${TARGET_ID}`);
+    const data = await res.json();
+    if (data.status !== 'ok') return;
+    const t = data.target;
+    document.getElementById('tName').value = t.name || '';
+    document.getElementById('tUrl').value  = t.url  || '';
+    document.getElementById('tDesc').value = t.description || '';
+    // Set active type button
+    const ttype = (t.type||'Web').toLowerCase();
+    document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+    if (ttype === 'api') document.getElementById('typeApi').classList.add('active');
+    else if (ttype === 'ip') document.getElementById('typeIp').classList.add('active');
+    else document.getElementById('typeWeb').classList.add('active');
+
+    // Auth config
+    const ac = t.auth_config || {};
+    document.getElementById('tAuth').value = ac.type || 'none';
+    showAuth();
+    if (ac.basicUsername) document.getElementById('basicUsername').value = ac.basicUsername;
+    if (ac.basicPassword) document.getElementById('basicPassword').value = ac.basicPassword;
+    if (ac.formLoginUrl) document.getElementById('formLoginUrl').value = ac.formLoginUrl;
+    if (ac.formUsername) document.getElementById('formUsername').value = ac.formUsername;
+    if (ac.formPassword) document.getElementById('formPassword').value = ac.formPassword;
+    if (ac.formUsernameField) document.getElementById('formUsernameField').value = ac.formUsernameField;
+    if (ac.formPasswordField) document.getElementById('formPasswordField').value = ac.formPasswordField;
+    if (ac.formSuccessIndicator) document.getElementById('formSuccessIndicator').value = ac.formSuccessIndicator;
+  } catch(e) { console.error(e); }
+}
+
+async function save() {
+  const n = document.getElementById('tName').value.trim();
+  const u = document.getElementById('tUrl').value.trim();
+  if (!n || !u) { alert('Name and URL are required.'); return; }
+  const activeType = document.querySelector('.type-btn.active');
+  const ttype = activeType ? activeType.textContent.trim() : 'Web';
+  const desc  = document.getElementById('tDesc').value.trim();
+  const authType = document.getElementById('tAuth').value;
+  const authConfig = { type: authType };
+  if (authType === 'basic') {
+    authConfig.basicUsername = document.getElementById('basicUsername').value.trim();
+    authConfig.basicPassword = document.getElementById('basicPassword').value;
+  } else if (authType === 'form') {
+    authConfig.formLoginUrl          = document.getElementById('formLoginUrl').value.trim();
+    authConfig.formUsername         = document.getElementById('formUsername').value.trim();
+    authConfig.formPassword         = document.getElementById('formPassword').value;
+    authConfig.formUsernameField    = document.getElementById('formUsernameField').value.trim() || 'username';
+    authConfig.formPasswordField    = document.getElementById('formPasswordField').value.trim() || 'password';
+    authConfig.formSuccessIndicator = document.getElementById('formSuccessIndicator').value.trim();
+  }
+  try {
+    const res  = await fetch(`/api/targets/${TARGET_ID}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ name: n, url: u, type: ttype, description: desc, auth_config: authConfig })
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      window.location.href = '/targets/{{ target_id }}/view';
+    } else {
+      alert('Error: ' + (data.message || 'Could not save.'));
+    }
+  } catch(e) { alert('Network error: ' + e.message); }
+}
+
+loadData();
+</script>
+{% endblock %}

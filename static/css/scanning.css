@@ -1,0 +1,26 @@
+/* Scanning Page */
+.btn:disabled { opacity: 0.7; cursor: not-allowed; }
+.profile-btns { display: flex; gap: .4rem; }
+.pb { padding: .35rem .75rem; border-radius: 8px; border: 1.5px solid var(--border); background: #fff; font-size: .78rem; font-weight: 600; cursor: pointer; color: var(--text-muted); transition: all .2s; }
+.pb.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+.scan-progress { margin: 0 0 .875rem; }
+.prog-bar { height: 8px; background: var(--border); border-radius: 8px; overflow: hidden; margin: .4rem 0; }
+.prog-fill { height: 100%; background: linear-gradient(90deg,#2563EB,#22c55e); border-radius: 8px; transition: width .5s; }
+.phase-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: .5rem; }
+.phase { text-align: center; padding: .5rem; border-radius: 9px; border: 1.5px solid var(--border); font-size: .72rem; font-weight: 600; color: var(--text-muted); }
+.phase.done { background: #f0fdf4; border-color: var(--green); color: #16a34a; }
+.phase.active { background: var(--blue-light); border-color: var(--blue); color: var(--blue); }
+.phase i { font-size: 1.1rem; display: block; margin-bottom: .25rem; }
+.scan-log { background: #0f172a; border-radius: 9px; padding: .75rem; height: 200px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: .72rem; line-height: 1.6; }
+.log-info { color: #94a3b8; }
+.log-ok { color: #22c55e; }
+.log-warn { color: #f97316; }
+.log-err { color: #ef4444; }
+.feat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: .75rem; margin-top: 1rem; }
+.feat-card { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: .875rem; }
+.feat-card h4 { font-size: .8rem; font-weight: 700; margin-bottom: .625rem; color: var(--text); display: flex; align-items: center; gap: .375rem; }
+.feat-card h4 i { font-size: .875rem; }
+.feat-item { display: flex; align-items: center; gap: .375rem; font-size: .72rem; color: var(--text-muted); margin-bottom: .3rem; }
+.feat-item i { color: var(--green); font-size: .7rem; }
+@media(max-width: 900px) { .feat-grid { grid-template-columns: repeat(2,1fr); } }
+@media(max-width: 600px) { .feat-grid { grid-template-columns: 1fr 1fr; } .phase-grid { grid-template-columns: repeat(2,1fr); } }

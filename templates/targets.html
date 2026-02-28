@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}Targets - VAPT Scanner Pro{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/targets.css') }}">{% endblock %}
+{% block body %}
+<div id="_main" style="padding-top:56px;min-height:100vh;">
+<div class="content">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.625rem;">
+    <div>
+      <h1 style="font-family:'Space Grotesk',sans-serif;font-size:1.375rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:.4rem;">
+        <i class="fa-solid fa-crosshairs" style="color:var(--blue)"></i> Target Management
+      </h1>
+      <p style="font-size:.78rem;color:var(--text-muted);">Manage your scanning targets and assets</p>
+    </div>
+    <a href="/targets/create" class="btn btn-p"><i class="fa-solid fa-plus"></i> Add Target</a>
+  </div>
+
+  <div class="card" style="margin-bottom:1rem;">
+    <div class="cb" style="padding:.75rem 1rem;">
+      <div style="position:relative;">
+        <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:.75rem;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:.825rem;"></i>
+        <input id="searchTarget" oninput="filterTable()" style="width:100%;padding:.575rem .75rem .575rem 2.25rem;border:1.5px solid var(--border);border-radius:9px;font-size:.825rem;font-family:'DM Sans',sans-serif;outline:none;" placeholder="Search targets by name or URL...">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cb" style="padding:0;overflow-x:auto;">
+      <table class="dt" id="targetTable">
+        <thead>
+          <tr>
+            <th>Target</th><th>Type</th><th>Last Scan</th><th>Scans</th><th>Status</th><th>Vulnerabilities</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tBody">
+          <tr id="emptyRow">
+            <td colspan="7" style="text-align:center;padding:2.5rem;color:var(--text-muted);">
+              <i class="fa-solid fa-crosshairs" style="font-size:2rem;margin-bottom:.5rem;display:block;color:var(--border)"></i>
+              No targets yet. <a href="/targets/create" style="color:var(--blue)">Add a target</a> or <a href="/scanning" style="color:var(--blue)">run a scan</a> — targets are auto-created when you scan.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+initLayout('/targets');
+
+let allTargets = [];
+
+async function loadTargets() {
+    try {
+        const res  = await fetch('/api/targets');
+        const data = await res.json();
+        allTargets = data.targets || [];
+        renderTargets(allTargets);
+    } catch (e) {
+        console.error('Failed to load targets:', e);
+    }
+}
+
+function typeClass(t) {
+    t = (t||'').toLowerCase();
+    if (t === 'api') return 'bap';
+    if (t === 'ip')  return 'bip';
+    return 'bwb';
+}
+function typeIcon(t) {
+    t = (t||'').toLowerCase();
+    if (t === 'api') return 'fa-code';
+    if (t === 'ip')  return 'fa-wifi';
+    return 'fa-globe';
+}
+
+function renderTargets(targets) {
+    const tbody = document.getElementById('tBody');
+    if (!targets || targets.length === 0) {
+        tbody.innerHTML = `<tr id="emptyRow"><td colspan="7" style="text-align:center;padding:2.5rem;color:var(--text-muted);">
+            <i class="fa-solid fa-crosshairs" style="font-size:2rem;margin-bottom:.5rem;display:block;color:var(--border)"></i>
+            No targets match your search. <a href="/scanning" style="color:var(--blue)">Run a scan</a> to auto-add targets.
+        </td></tr>`;
+        return;
+    }
+    tbody.innerHTML = targets.map(t => {
+        const vc   = t.vuln_counts || {};
+        const tCls = typeClass(t.type);
+        const tIco = typeIcon(t.type);
+
+        const rawStatus  = (t.status || '').toLowerCase();
+        const scanStatus = (t.scan_status || '').toLowerCase();
+        let stCls, stIco, stLbl;
+        if (scanStatus === 'running' || scanStatus === 'scanning') {
+            stCls = 'bsc'; stIco = 'fa-spinner fa-spin'; stLbl = 'Scanning';
+        } else if (scanStatus === 'completed' || rawStatus === 'completed') {
+            stCls = 'bcp'; stIco = 'fa-circle-check'; stLbl = 'Completed';
+        } else if (scanStatus === 'pending' || rawStatus === 'pending') {
+            stCls = 'bpd'; stIco = 'fa-clock'; stLbl = 'Pending';
+        } else if (t.last_scan && t.last_scan !== 'Never') {
+            stCls = 'bcp'; stIco = 'fa-circle-check'; stLbl = 'Completed';
+        } else {
+            stCls = 'bpd'; stIco = 'fa-clock'; stLbl = 'Pending';
+        }
+
+        const badgesHtml = [
+            vc.critical ? `<span class="bx bc">${vc.critical}C</span>` : '',
+            vc.high     ? `<span class="bx bh">${vc.high}H</span>`     : '',
+            vc.medium   ? `<span class="bx bm">${vc.medium}M</span>`   : '',
+            vc.low      ? `<span class="bx bl">${vc.low}L</span>`      : '',
+            vc.info     ? `<span class="bx bi">${vc.info}I</span>`     : '',
+        ].filter(Boolean).join(' ') || '<span style="font-size:.72rem;color:var(--text-muted)">None yet</span>';
+
+        const scanCount = t.scan_count || 0;
+        const scanCountHtml = scanCount > 0
+            ? `<span style="display:inline-flex;align-items:center;gap:.25rem;font-size:.78rem;font-weight:700;color:var(--blue);">
+                <i class="fa-solid fa-rotate" style="font-size:.7rem;"></i>${scanCount}</span>`
+            : `<span style="font-size:.72rem;color:var(--text-muted);">—</span>`;
+
+        return `<tr data-name="${(t.name||'').toLowerCase()}" data-url="${(t.url||'').toLowerCase()}">
+            <td>
+                <strong>${t.name}</strong><br>
+                <small style="color:var(--blue)">${t.url}</small>
+            </td>
+            <td><span class="bx ${tCls}"><i class="fa-solid ${tIco}"></i> ${t.type}</span></td>
+            <td style="font-size:.78rem;color:var(--text);">${t.last_scan || 'Never'}</td>
+            <td>${scanCountHtml}</td>
+            <td><span class="bx ${stCls}"><i class="fa-solid ${stIco}"></i> ${stLbl}</span></td>
+            <td>${badgesHtml}</td>
+            <td>
+                <a href="/targets/${t.id}/view" class="btn btn-o btn-s" title="View"><i class="fa-regular fa-eye"></i></a>
+                <button class="btn btn-p btn-s" onclick="scanTarget(${t.id})" title="Scan this target"><i class="fa-solid fa-play"></i></button>
+                <a href="/targets/${t.id}/edit" class="btn btn-o btn-s" title="Edit"><i class="fa-regular fa-pen-to-square"></i></a>
+                <button class="btn btn-d btn-s" onclick="deleteTarget(${t.id}, this)" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function filterTable() {
+    const q = document.getElementById('searchTarget').value.toLowerCase();
+    const filtered = allTargets.filter(t =>
+        (t.name||'').toLowerCase().includes(q) ||
+        (t.url||'').toLowerCase().includes(q)
+    );
+    renderTargets(filtered);
+}
+
+async function deleteTarget(id, btn) {
+    if (!confirm('Delete this target?')) return;
+    try {
+        const res = await fetch(`/api/targets/${id}`, { method: 'DELETE' });
+        const d   = await res.json();
+        if (d.status === 'success') {
+            allTargets = allTargets.filter(t => t.id !== id);
+            renderTargets(allTargets);
+        }
+    } catch (e) { alert('Delete failed: ' + e.message); }
+}
+
+// ── Scan button: fetch full target details (including auth_config),
+//    write prefill to localStorage, navigate to scanning page ──────
+async function scanTarget(id) {
+    try {
+        const res  = await fetch(`/api/targets/${id}`);
+        const data = await res.json();
+
+        if (data.status !== 'ok') {
+            alert('Could not load target details.');
+            return;
+        }
+
+        const t          = data.target;
+        const authConfig = t.auth_config || { type: 'none' };
+
+        const prefill = {
+            target:    t.url,
+            loginType: authConfig.type || 'none',
+            authData:  authConfig,
+        };
+
+        localStorage.setItem('vapt_prefill', JSON.stringify(prefill));
+        window.location.href = '/scanning?autostart=1';
+
+    } catch(e) {
+        // Fallback: no auth info, just prefill URL
+        const target = allTargets.find(t => t.id === id);
+        if (target) {
+            localStorage.setItem('vapt_prefill', JSON.stringify({ target: target.url, loginType: 'none', authData: {} }));
+            window.location.href = '/scanning?autostart=1';
+        }
+    }
+}
+
+loadTargets();
+setInterval(loadTargets, 5000);
+</script>
+{% endblock %}

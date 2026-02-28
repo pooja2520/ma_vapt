@@ -1,0 +1,161 @@
+/* ── Dashboard Page ──────────────────────────────────────────── */
+
+/* Header */
+.dash-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: .625rem;
+}
+.dash-header h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 1.375rem;
+    font-weight: 700;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+}
+.dash-header p { font-size: .78rem; color: var(--text-muted); margin-top: .1rem; }
+
+/* Live dot */
+.live-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: background .3s;
+}
+.live-dot.active {
+    background: #22c55e;
+    box-shadow: 0 0 0 3px rgba(34,197,94,.25);
+    animation: livePulse 2s ease-in-out infinite;
+}
+@keyframes livePulse { 0%,100%{ box-shadow:0 0 0 3px rgba(34,197,94,.25); } 50%{ box-shadow:0 0 0 6px rgba(34,197,94,.1); } }
+
+/* Live scan banner */
+.live-banner {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    background: linear-gradient(90deg, #2563EB, #1d4ed8);
+    color: #fff;
+    padding: .6rem 1rem;
+    border-radius: 9px;
+    font-size: .825rem;
+    font-weight: 600;
+    margin-bottom: .875rem;
+}
+.pulse-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #fff;
+    animation: livePulse 1s ease-in-out infinite;
+    flex-shrink: 0;
+}
+
+/* ── Stat Grid ────────────────────────────────────────────────── */
+.sg { display: grid; grid-template-columns: repeat(6, 1fr); gap: .625rem; margin-bottom: 1rem; }
+@media(max-width:1100px){ .sg { grid-template-columns: repeat(3,1fr); } }
+@media(max-width:600px) { .sg { grid-template-columns: repeat(2,1fr); } }
+
+.sc {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: .875rem;
+    transition: box-shadow .2s;
+}
+.sc:hover { box-shadow: 0 4px 16px rgba(0,0,0,.07); }
+.sc-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: .4rem; }
+.sc-icon { font-size: 1.2rem; }
+.sc h2 { font-family: 'Space Grotesk', sans-serif; font-size: 1.5rem; font-weight: 700; color: var(--text); margin-bottom: .15rem; }
+.sc p  { font-size: .72rem; color: var(--text-muted); display: flex; align-items: center; gap: .25rem; }
+.sc-pct { font-size: .68rem; font-weight: 600; color: var(--text-muted); background: var(--bg); padding: 1px 5px; border-radius: 5px; }
+
+/* Severity badges on cards */
+.sc-badge { font-size: .62rem; font-weight: 700; padding: 2px 7px; border-radius: 20px; text-transform: uppercase; letter-spacing: .03em; }
+.sc-badge-blue   { background: #dbeafe; color: #1d4ed8; }
+.sc-badge-red    { background: #fee2e2; color: #b91c1c; }
+.sc-badge-orange { background: #ffedd5; color: #c2410c; }
+.sc-badge-yellow { background: #fef9c3; color: #a16207; }
+.sc-badge-green  { background: #dcfce7; color: #15803d; }
+
+/* ── Donut chart ─────────────────────────────────────────────── */
+.donut-center {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+}
+.donut-center strong { display: block; font-size: 1.4rem; font-weight: 700; color: var(--text); }
+.donut-center small  { font-size: .65rem; color: var(--text-muted); }
+
+/* Donut legend */
+.sev-legend { display: flex; flex-wrap: wrap; gap: .35rem; justify-content: center; }
+.leg-item {
+    display: flex; align-items: center; gap: .25rem;
+    font-size: .7rem; color: var(--text-muted);
+    background: var(--bg); padding: 3px 8px; border-radius: 20px;
+}
+.leg-item strong { color: var(--text); font-size: .75rem; }
+.leg-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.leg-pct { color: var(--text-muted); font-size: .68rem; }
+
+/* ── Scan Stats Grid ─────────────────────────────────────────── */
+.scan-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: .625rem; }
+.ss { text-align: center; padding: .75rem .5rem; border: 1px solid var(--border); border-radius: 9px; }
+.ss i { font-size: 1.25rem; margin-bottom: .3rem; display: block; }
+.ss strong { font-size: 1.2rem; font-weight: 700; display: block; color: var(--text); }
+.ss small   { font-size: .68rem; color: var(--text-muted); }
+
+/* ── Success Rate Block ──────────────────────────────────────── */
+.success-block {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 9px;
+    padding: .75rem;
+}
+.prog-bar { height: 8px; background: var(--border); border-radius: 8px; overflow: hidden; margin: .4rem 0; }
+.prog-fill-green { height: 100%; background: linear-gradient(90deg, #22c55e, #16a34a); border-radius: 8px; }
+
+/* ── Severity Breakdown Bars ─────────────────────────────────── */
+.sev-row { display: flex; align-items: center; gap: .5rem; margin-bottom: .35rem; }
+.sev-lbl { font-size: .72rem; font-weight: 600; width: 55px; flex-shrink: 0; }
+.mini-bar { flex: 1; background: #e2e8f0; border-radius: 6px; height: 8px; overflow: hidden; }
+.mini-fill { height: 100%; border-radius: 6px; transition: width .8s ease; }
+.sev-pct { font-size: .7rem; font-weight: 700; color: var(--text-muted); width: 36px; text-align: right; flex-shrink: 0; }
+
+/* ── Per-scan history table ──────────────────────────────────── */
+.dt th, .dt td { padding: .6rem .875rem; font-size: .78rem; }
+.dt th { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+
+/* ── Vulnerability badges ────────────────────────────────────── */
+.bx { display: inline-flex; align-items: center; gap: .25rem; padding: 3px 8px; border-radius: 6px; font-size: .72rem; font-weight: 700; white-space: nowrap; }
+.bc  { background: #fee2e2; color: #b91c1c; }   /* critical — red      */
+.bh  { background: #ffedd5; color: #c2410c; }   /* high     — orange   */
+.bm  { background: #fef9c3; color: #a16207; }   /* medium   — yellow   */
+.bl  { background: #dcfce7; color: #15803d; }   /* low      — GREEN ✅ */
+.bi  { background: #dbeafe; color: #1d4ed8; }   /* info     — BLUE  ✅ */
+.bac { background: #dcfce7; color: #15803d; }   /* secure/completed    */
+
+/* ── Checklist ───────────────────────────────────────────────── */
+.cl-item { display: flex; align-items: center; gap: .625rem; padding: .5rem 0; border-bottom: 1px solid var(--border); }
+.cl-item:last-child { border-bottom: none; }
+.cl-circle { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.cl-circle.done { background: #f0fdf4; border: 2px solid var(--green); }
+.cl-circle.todo { background: var(--bg); border: 2px solid var(--border); }
+.cl-text { flex: 1; }
+.cl-text strong { font-size: .78rem; font-weight: 600; display: block; }
+.cl-text small  { font-size: .68rem; color: var(--text-muted); }
+.cl-action { color: var(--blue); font-size: .75rem; font-weight: 600; text-decoration: none; }
+
+/* ── Legend (donut label row) ────────────────────────────────── */
+.lgd { display: flex; flex-wrap: wrap; gap: .625rem; justify-content: center; margin-top: .625rem; }
+.lgd span { font-size: .7rem; color: var(--text-muted); display: flex; align-items: center; gap: .25rem; }
+.lgd-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+/* ── Legal notice ────────────────────────────────────────────── */
+.legal { display: flex; align-items: center; gap: .5rem; background: #fffbeb; border: 1px solid #fde68a; padding: .625rem 1rem; border-radius: 9px; font-size: .78rem; color: #92400e; margin-top: .25rem; }
