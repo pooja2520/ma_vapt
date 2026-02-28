@@ -415,8 +415,69 @@ def api_dashboard_stats():
 @login_required
 def api_targets():
     import db
-    targets = db.get_all_targets(_uid())
-    return jsonify({'targets': targets})
+    uid = _uid()
+    targets = db.get_all_targets(uid)
+
+    # Determine if a scan is currently running and which target URL it's for
+    asc = _get_active_scan(uid) if uid else {}
+    live_target_url = asc.get('target', '').strip().lower() if asc.get('running') else None
+
+    enriched = []
+    for t in targets:
+        t = dict(t)
+
+        # ── 1. Inject vuln_counts if missing ─────────────────────────────
+        if 'vuln_counts' not in t or not t['vuln_counts']:
+            try:
+                vulns = db.get_vulnerabilities_by_target_url(t['url'], uid, limit=10000)
+                vc = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0}
+                for v in vulns:
+                    sev = (v.get('severity') or v.get('Severity', '')).lower()
+                    if sev in vc:
+                        vc[sev] += 1
+                t['vuln_counts'] = vc
+            except Exception:
+                t['vuln_counts'] = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0}
+
+        # ── 2. Inject scan_count if missing ──────────────────────────────
+        if 'scan_count' not in t or t['scan_count'] is None:
+            try:
+                reports = db.get_reports(uid)
+                t['scan_count'] = sum(
+                    1 for r in reports
+                    if (r.get('target_url') or '').strip().lower() == t['url'].strip().lower()
+                )
+            except Exception:
+                t['scan_count'] = 0
+
+        # ── 3. Inject last_scan if missing ───────────────────────────────
+        if 'last_scan' not in t or not t['last_scan']:
+            try:
+                reports = db.get_reports(uid)
+                target_reports = [
+                    r for r in reports
+                    if (r.get('target_url') or '').strip().lower() == t['url'].strip().lower()
+                ]
+                t['last_scan'] = target_reports[0]['date'] if target_reports else 'Never'
+            except Exception:
+                t['last_scan'] = 'Never'
+
+        # ── 4. Overlay live scan_status if this target is currently scanning
+        if live_target_url and t.get('url', '').strip().lower() == live_target_url:
+            t['scan_status'] = 'running'
+        elif 'scan_status' not in t:
+            # Derive from last_scan / existing status
+            existing_status = (t.get('status') or '').lower()
+            if existing_status in ('running', 'scanning'):
+                t['scan_status'] = 'running'
+            elif t.get('last_scan') and t['last_scan'] != 'Never':
+                t['scan_status'] = 'completed'
+            else:
+                t['scan_status'] = 'pending'
+
+        enriched.append(t)
+
+    return jsonify({'targets': enriched})
 
 
 @app.route('/api/targets', methods=['POST'])
@@ -990,6 +1051,15 @@ def scan():
         asc['started_at'] = datetime.now().isoformat()
         res.clear()
 
+        # Mark target as "scanning" in DB so targets page shows live status
+        try:
+            import db as _db_mod
+            _tgt = _db_mod.get_or_create_target(target, uid)
+            if _tgt:
+                _db_mod.update_target(_tgt['id'], uid, status='scanning')
+        except Exception:
+            pass
+
         while not uq.empty():
             try:
                 uq.get_nowait()
@@ -1059,6 +1129,14 @@ def scan():
                     db.scan_completion_transaction(
                         target, raw_results, filename, scan_time, sc, _runtime, user_id
                     )
+
+                    # Mark target status as completed
+                    try:
+                        _tgt2 = db.get_or_create_target(target, user_id)
+                        if _tgt2:
+                            db.update_target(_tgt2['id'], user_id, status='completed')
+                    except Exception:
+                        pass
 
                     res['last_file'] = filename
                     res['last_result'] = result
