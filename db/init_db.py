@@ -96,7 +96,7 @@ def init_database():
             cur.execute("UPDATE targets SET user_id = %s", (admin_row[0],))
         run_safe("ALTER TABLE targets ADD CONSTRAINT fk_targets_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE")
         run_safe("ALTER TABLE targets DROP INDEX url", "drop url index")
-        run_safe("ALTER TABLE targets ADD UNIQUE KEY uk_targets_user_url (user_id, url)")
+        run_safe("ALTER TABLE targets ADD UNIQUE KEY uk_targets_user_url (user_id, url(767))")
         print("[+] Migration: added user_id to targets")
     if not column_exists('vulnerabilities', 'user_id'):
         cur.execute("ALTER TABLE vulnerabilities ADD COLUMN user_id INT NOT NULL DEFAULT 1 AFTER id")

@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS targets (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE KEY uk_targets_user_url (user_id, url)
+    UNIQUE KEY uk_targets_user_url (user_id, url(767))
 );
 
 CREATE TABLE IF NOT EXISTS scan_history (
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS reports (
     runtime_seconds INT,
     scan_time VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_reports_target (target_url),
+    INDEX idx_reports_target (target_url(767)),
     INDEX idx_reports_user (user_id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
