@@ -117,6 +117,39 @@ def init_database():
         run_safe("ALTER TABLE reports ADD INDEX idx_reports_user (user_id)")
         print("[+] Migration: added user_id to reports")
 
+    # Signup profile columns and OTP table
+    for col, defn in [
+        ('first_name', 'VARCHAR(255) NULL'),
+        ('last_name', 'VARCHAR(255) NULL'),
+        ('organization', 'VARCHAR(255) NULL'),
+        ('job_title', 'VARCHAR(255) NULL'),
+        ('country', 'VARCHAR(10) NULL'),
+        ('experience_level', 'VARCHAR(50) NULL'),
+        ('referral_source', 'VARCHAR(50) NULL'),
+        ('bio', 'TEXT NULL'),
+    ]:
+        if not column_exists('users', col):
+            cur.execute(f"ALTER TABLE users ADD COLUMN {col} {defn}")
+            print(f"[+] Migration: added users.{col}")
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS signup_otps (
+            email VARCHAR(255) NOT NULL PRIMARY KEY,
+            otp_hash VARCHAR(255) NOT NULL,
+            expires_at DATETIME NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    print("[+] signup_otps table ready")
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS password_reset_otps (
+            email VARCHAR(255) NOT NULL PRIMARY KEY,
+            otp_hash VARCHAR(255) NOT NULL,
+            expires_at DATETIME NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    print("[+] password_reset_otps table ready")
+
     cur.close()
     conn.close()
     print(f"[+] Database '{db_name}' initialized successfully.")

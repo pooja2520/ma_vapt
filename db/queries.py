@@ -34,25 +34,141 @@ def get_user_by_email(email):
     """Get user by email. Returns dict or None."""
     with get_connection() as conn:
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT id, email, name, password_hash, role FROM users WHERE email = %s", (email,))
+        cur.execute("""
+            SELECT id, email, name, first_name, last_name, organization, role, job_title, country,
+                   experience_level, referral_source, bio, password_hash
+            FROM users WHERE email = %s
+        """, (email,))
         return cur.fetchone()
 
 
-def create_user(email, name, password_hash, role='user'):
+def create_user(
+    email,
+    name,
+    password_hash,
+    role='user',
+    first_name=None,
+    last_name=None,
+    organization=None,
+    job_title=None,
+    country=None,
+    experience_level=None,
+    referral_source=None,
+    bio=None,
+):
     """Create a new user. Returns new user dict or None on duplicate email."""
     with get_connection() as conn:
         cur = conn.cursor(dictionary=True)
         try:
-            cur.execute(
-                "INSERT INTO users (email, name, password_hash, role) VALUES (%s, %s, %s, %s)",
-                (email, name, password_hash, role)
-            )
+            cur.execute("""
+                INSERT INTO users (
+                    email, name, password_hash, role,
+                    first_name, last_name, organization, job_title, country,
+                    experience_level, referral_source, bio
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                email, name, password_hash, role,
+                first_name or None, last_name or None, organization or None,
+                job_title or None, country or None, experience_level or None,
+                referral_source or None, bio or None,
+            ))
             uid = cur.lastrowid
-            return {'id': uid, 'email': email, 'name': name, 'password_hash': password_hash, 'role': role}
+            return {
+                'id': uid, 'email': email, 'name': name, 'password_hash': password_hash, 'role': role,
+                'first_name': first_name, 'last_name': last_name, 'organization': organization,
+                'job_title': job_title, 'country': country, 'experience_level': experience_level,
+                'referral_source': referral_source, 'bio': bio,
+            }
         except Exception as e:
             if 'Duplicate' in str(e) or 1062 in (e.errno if hasattr(e, 'errno') else []):
                 return None
             raise
+
+
+def save_signup_otp(email, otp_hash, expires_at):
+    """Store or replace OTP for signup verification. email is normalized (lower)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO signup_otps (email, otp_hash, expires_at)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE otp_hash = VALUES(otp_hash), expires_at = VALUES(expires_at)
+            """,
+            (email, otp_hash, expires_at),
+        )
+
+
+def verify_signup_otp(email, otp_plain):
+    """Verify OTP for email. Returns True if valid and not expired."""
+    from werkzeug.security import check_password_hash
+    with get_connection() as conn:
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            "SELECT otp_hash, expires_at FROM signup_otps WHERE email = %s",
+            (email,),
+        )
+        row = cur.fetchone()
+    if not row:
+        return False
+    from datetime import datetime
+    if datetime.utcnow() > row['expires_at']:
+        return False
+    return check_password_hash(row['otp_hash'], otp_plain)
+
+
+def delete_signup_otp(email):
+    """Remove OTP record after successful signup."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM signup_otps WHERE email = %s", (email,))
+
+
+def save_password_reset_otp(email, otp_hash, expires_at):
+    """Store or replace OTP for password reset. email is normalized (lower)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO password_reset_otps (email, otp_hash, expires_at)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE otp_hash = VALUES(otp_hash), expires_at = VALUES(expires_at)
+            """,
+            (email, otp_hash, expires_at),
+        )
+
+
+def verify_password_reset_otp(email, otp_plain):
+    """Verify password reset OTP for email. Returns True if valid and not expired."""
+    from werkzeug.security import check_password_hash
+    with get_connection() as conn:
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            "SELECT otp_hash, expires_at FROM password_reset_otps WHERE email = %s",
+            (email,),
+        )
+        row = cur.fetchone()
+    if not row:
+        return False
+    from datetime import datetime
+    if datetime.utcnow() > row['expires_at']:
+        return False
+    return check_password_hash(row['otp_hash'], otp_plain)
+
+
+def delete_password_reset_otp(email):
+    """Remove password reset OTP after successful reset."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM password_reset_otps WHERE email = %s", (email,))
+
+
+def update_user_password_by_email(email, password_hash):
+    """Update password for user by email. Returns True if updated."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET password_hash = %s WHERE email = %s", (password_hash, email))
+        return cur.rowcount > 0
 
 
 def get_all_targets(user_id):

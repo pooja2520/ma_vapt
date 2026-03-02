@@ -835,17 +835,23 @@ body::before {
 
     <!--
       Hidden form — submits to Flask /signup POST.
-      Field names match what app.py expects:
-        name             → first_name + " " + last_name
-        email            → email
-        password         → password
-        confirm_password → confirm_password
+      Field names match what app.py expects.
     -->
     <form method="POST" action="{{ url_for('signup') }}" id="signupForm" style="display:none;">
       <input type="hidden" id="h_name"             name="name">
       <input type="hidden" id="h_email"            name="email">
       <input type="hidden" id="h_password"         name="password">
       <input type="hidden" id="h_confirm_password" name="confirm_password">
+      <input type="hidden" id="h_first_name"       name="first_name">
+      <input type="hidden" id="h_last_name"        name="last_name">
+      <input type="hidden" id="h_organization"     name="organization">
+      <input type="hidden" id="h_role"            name="role">
+      <input type="hidden" id="h_job_title"       name="job_title">
+      <input type="hidden" id="h_country"         name="country">
+      <input type="hidden" id="h_experience"      name="experience">
+      <input type="hidden" id="h_referral"        name="referral">
+      <input type="hidden" id="h_bio"             name="bio">
+      <input type="hidden" id="h_otp"             name="otp">
     </form>
 
     <div class="signin-note" id="signinNote">Already have an account? <a href="{{ url_for('index') }}">Sign in</a></div>
@@ -949,11 +955,30 @@ function goToStep2() {
 
 function goToStep3() {
   hideError();
-  document.getElementById('verifyEmailDisplay').textContent =
-    document.getElementById('emailInput').value.trim();
-  goToStep(3);
-  startOtpTimer();
-  setTimeout(() => document.getElementById('otp1').focus(), 300);
+  const email = document.getElementById('emailInput').value.trim();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return showError('Please enter a valid email address.');
+  }
+  // Request server to send OTP first; only then show step 3
+  fetch('{{ url_for("signup_send_otp") }}', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email })
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) {
+        showError(data.error || 'Failed to send verification code.');
+        return;
+      }
+      document.getElementById('verifyEmailDisplay').textContent = email;
+      goToStep(3);
+      startOtpTimer();
+      setTimeout(() => document.getElementById('otp1').focus(), 300);
+    })
+    .catch(() => {
+      showError('Could not send verification code. Please try again.');
+    });
 }
 
 /* ── OTP inputs ────────────────────────────────── */
@@ -1017,8 +1042,23 @@ function updateTimerDisplay(s) {
 }
 
 function resendCode() {
-  showToast('Verification code resent!');
-  startOtpTimer();
+  const email = document.getElementById('emailInput').value.trim();
+  if (!email) return;
+  fetch('{{ url_for("signup_send_otp") }}', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email })
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        showToast('Verification code resent!');
+        startOtpTimer();
+      } else {
+        showError(data.error || 'Failed to resend code.');
+      }
+    })
+    .catch(() => showError('Could not resend code. Please try again.'));
 }
 
 /* ── Form submit → Flask /signup ───────────────── */
@@ -1027,14 +1067,23 @@ function submitForm() {
   const otp = getOtpValue();
   if (otp.length < 6) return showError('Please enter the complete 6-digit verification code.');
 
-  // Combine first + last name into the single `name` field Flask expects
   const firstName = document.getElementById('first_name').value.trim();
   const lastName  = document.getElementById('last_name').value.trim();
 
   document.getElementById('h_name').value             = (firstName + ' ' + lastName).trim();
-  document.getElementById('h_email').value            = document.getElementById('emailInput').value.trim();
+  document.getElementById('h_email').value             = document.getElementById('emailInput').value.trim();
   document.getElementById('h_password').value         = document.getElementById('password').value;
   document.getElementById('h_confirm_password').value = document.getElementById('confirmPassword').value;
+  document.getElementById('h_first_name').value       = firstName;
+  document.getElementById('h_last_name').value        = lastName;
+  document.getElementById('h_organization').value     = document.getElementById('organization').value.trim();
+  document.getElementById('h_role').value             = document.getElementById('role').value || 'user';
+  document.getElementById('h_job_title').value        = document.getElementById('job_title').value.trim();
+  document.getElementById('h_country').value          = document.getElementById('country').value || '';
+  document.getElementById('h_experience').value       = document.getElementById('experience').value || '';
+  document.getElementById('h_referral').value        = document.getElementById('referral').value || '';
+  document.getElementById('h_bio').value             = document.getElementById('bio').value.trim();
+  document.getElementById('h_otp').value              = otp;
 
   const btn = document.getElementById('verifyBtn');
   btn.disabled = true;

@@ -6,7 +6,7 @@ import queue
 import threading
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from vapt_auto import perform_vapt_scan
 
@@ -136,6 +136,34 @@ def log(msg, uid):
     _get_update_queue(uid).put({'type': 'log', 'message': line})
 
 
+def _send_email(to_email, subject, body_text, body_html=None):
+    """Send email using .env MAIL_* settings. body_html optional for multipart. Returns True on success."""
+    host = os.environ.get('MAIL_SERVER', '')
+    port = int(os.environ.get('MAIL_PORT', '587'))
+    username = os.environ.get('MAIL_USERNAME', '')
+    password = os.environ.get('MAIL_PASSWORD', '')
+    if not host or not username or not password:
+        return False
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = username
+        msg['To'] = to_email
+        msg.attach(MIMEText(body_text, 'plain'))
+        if body_html:
+            msg.attach(MIMEText(body_html, 'html'))
+        with smtplib.SMTP(host, port) as server:
+            server.starttls()
+            server.login(username, password)
+            server.sendmail(username, [to_email], msg.as_string())
+        return True
+    except Exception:
+        return False
+
+
 # ─────────────────────────────────────────────
 #  AUTH ROUTES
 # ─────────────────────────────────────────────
@@ -175,13 +203,56 @@ def signup_page():
     return render_template('signup.html')
 
 
+@app.route('/signup/send-otp', methods=['POST'])
+def signup_send_otp():
+    """Generate OTP, store hashed, send email. Expects JSON { email }."""
+    import db
+    data = request.get_json(force=True, silent=True) or {}
+    email = (data.get('email') or '').strip().lower()
+    if not email or '@' not in email:
+        return jsonify({'ok': False, 'error': 'Valid email is required.'}), 400
+    if db.get_user_by_email(email):
+        return jsonify({'ok': False, 'error': 'An account with this email already exists.'}), 400
+    import random
+    otp_plain = ''.join(str(random.randint(0, 9)) for _ in range(6))
+    otp_hash = generate_password_hash(otp_plain)
+    expires_at = datetime.utcnow() + timedelta(minutes=10)
+    db.save_signup_otp(email, otp_hash, expires_at)
+    subject = 'Verify your email — VAPT Scanner Pro'
+    body_text = (
+        f'Your VAPT Scanner Pro verification code is: {otp_plain}\n\n'
+        'This code expires in 10 minutes. Do not share it with anyone.\n\n'
+        'If you did not request this code, you can safely ignore this email.'
+    )
+    body_html = render_template(
+        'emails/verification_code.html',
+        otp_code=otp_plain,
+        expiry_minutes=10,
+        product_name='VAPT Scanner Pro',
+    )
+    if not _send_email(email, subject, body_text, body_html):
+        return jsonify({'ok': False, 'error': 'Failed to send verification email. Please try again later.'}), 500
+    return jsonify({'ok': True})
+
+
 @app.route('/signup', methods=['POST'])
 def signup():
     import db
-    name = request.form.get('name', '').strip()
+    first_name = request.form.get('first_name', '').strip()
+    last_name = request.form.get('last_name', '').strip()
+    name = request.form.get('name', '').strip() or f'{first_name} {last_name}'.strip()
     email = request.form.get('email', '').strip().lower()
     password = request.form.get('password', '').strip()
     confirm = request.form.get('confirm_password', '').strip()
+    otp = request.form.get('otp', '').strip()
+    role = request.form.get('role', '').strip() or 'user'
+    organization = request.form.get('organization', '').strip() or None
+    job_title = request.form.get('job_title', '').strip() or None
+    country = request.form.get('country', '').strip() or None
+    experience = request.form.get('experience', '').strip() or None
+    referral = request.form.get('referral', '').strip() or None
+    bio = request.form.get('bio', '').strip() or None
+
     if not all([name, email, password]):
         flash('Name, email and password are required.', 'error')
         return redirect(url_for('signup_page'))
@@ -191,10 +262,31 @@ def signup():
     if password != confirm:
         flash('Passwords do not match.', 'error')
         return redirect(url_for('signup_page'))
-    user = db.create_user(email, name, generate_password_hash(password), role='user')
+    if len(otp) != 6:
+        flash('Please enter the complete 6-digit verification code.', 'error')
+        return redirect(url_for('signup_page'))
+    if not db.verify_signup_otp(email, otp):
+        flash('Invalid or expired verification code. Please request a new code.', 'error')
+        return redirect(url_for('signup_page'))
+
+    user = db.create_user(
+        email=email,
+        name=name,
+        password_hash=generate_password_hash(password),
+        role=role,
+        first_name=first_name or None,
+        last_name=last_name or None,
+        organization=organization,
+        job_title=job_title,
+        country=country,
+        experience_level=experience,
+        referral_source=referral,
+        bio=bio,
+    )
     if user is None:
         flash('An account with this email already exists. Please sign in.', 'error')
         return redirect(url_for('index'))
+    db.delete_signup_otp(email)
     flash('Account created successfully! Please sign in.', 'info')
     return redirect(url_for('index'))
 
@@ -209,6 +301,78 @@ def logout():
 @app.route('/forgot-password')
 def forgot_password():
     return render_template('forgot-password.html')
+
+
+@app.route('/forgot-password/send-otp', methods=['POST'])
+def forgot_password_send_otp():
+    """Send password reset OTP to email. Expects JSON { email }."""
+    import db
+    import random
+    data = request.get_json(force=True, silent=True) or {}
+    email = (data.get('email') or '').strip().lower()
+    if not email or '@' not in email:
+        return jsonify({'ok': False, 'error': 'Valid email is required.'}), 400
+    user = db.get_user_by_email(email)
+    if not user:
+        return jsonify({'ok': False, 'error': 'No account found with this email address.'}), 400
+    otp_plain = ''.join(str(random.randint(0, 9)) for _ in range(6))
+    otp_hash = generate_password_hash(otp_plain)
+    expires_at = datetime.utcnow() + timedelta(minutes=10)
+    db.save_password_reset_otp(email, otp_hash, expires_at)
+    subject = 'Reset your password — VAPT Scanner Pro'
+    body_text = (
+        f'Your password reset code is: {otp_plain}\n\n'
+        'This code expires in 10 minutes. Do not share it with anyone.\n\n'
+        'If you did not request a password reset, you can safely ignore this email.'
+    )
+    body_html = render_template(
+        'emails/password_reset_code.html',
+        otp_code=otp_plain,
+        expiry_minutes=10,
+        product_name='VAPT Scanner Pro',
+    )
+    if not _send_email(email, subject, body_text, body_html):
+        return jsonify({'ok': False, 'error': 'Failed to send verification email. Please try again later.'}), 500
+    return jsonify({'ok': True})
+
+
+@app.route('/reset-password', methods=['GET'])
+def reset_password_page():
+    email = request.args.get('email', '').strip().lower()
+    if not email:
+        flash('Please request a password reset from the forgot password page.', 'error')
+        return redirect(url_for('forgot_password'))
+    return render_template('reset-password.html', email=email)
+
+
+@app.route('/reset-password', methods=['POST'])
+def reset_password():
+    import db
+    email = request.form.get('email', '').strip().lower()
+    otp = request.form.get('otp', '').strip()
+    password = request.form.get('password', '').strip()
+    confirm = request.form.get('confirm_password', '').strip()
+    if not email or '@' not in email:
+        flash('Invalid email.', 'error')
+        return redirect(url_for('forgot_password'))
+    if len(otp) != 6:
+        flash('Please enter the complete 6-digit verification code.', 'error')
+        return redirect(url_for('reset_password_page', email=email))
+    if len(password) < 8:
+        flash('Password must be at least 8 characters.', 'error')
+        return redirect(url_for('reset_password_page', email=email))
+    if password != confirm:
+        flash('Passwords do not match.', 'error')
+        return redirect(url_for('reset_password_page', email=email))
+    if not db.verify_password_reset_otp(email, otp):
+        flash('Invalid or expired verification code. Please request a new code.', 'error')
+        return redirect(url_for('reset_password_page', email=email))
+    if not db.update_user_password_by_email(email, generate_password_hash(password)):
+        flash('Something went wrong. Please try again.', 'error')
+        return redirect(url_for('reset_password_page', email=email))
+    db.delete_password_reset_otp(email)
+    flash('Password reset successfully. Please sign in with your new password.', 'info')
+    return redirect(url_for('index'))
 
 
 @app.route('/check-email')
