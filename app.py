@@ -561,9 +561,10 @@ def api_vulnerabilities():
     """Return all live vulnerabilities with optional filters."""
     import db
     severity_filter = request.args.get('severity', '').lower() or None
-    status_filter = request.args.get('status', '').lower() or None
-    search = request.args.get('q', '').lower() or None
-    result = db.get_vulnerabilities(_uid(), severity_filter=severity_filter, status_filter=status_filter, search=search)
+    status_filter   = request.args.get('status', '').lower() or None
+    search          = request.args.get('q', '').lower() or None
+    target_url      = request.args.get('target_url', '') or None
+    result = db.get_vulnerabilities(_uid(), severity_filter=severity_filter, status_filter=status_filter, search=search, target_url=target_url)
     return jsonify({'vulnerabilities': result, 'total': len(result)})
 
 
