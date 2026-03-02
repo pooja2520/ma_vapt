@@ -22,9 +22,6 @@
     </div>
   </div>
 
-
-
-
   <div class="card">
     <div class="ch" style="display:flex;justify-content:space-between;align-items:center;">
       <span><i class="fa-regular fa-file-lines"></i> Recent Reports</span>
@@ -65,9 +62,9 @@ function timeAgo(dateStr) {
     const d = new Date(dateStr.replace(' ', 'T'));
     if (isNaN(d)) return '';
     const diff = Math.floor((Date.now() - d) / 1000);
-    if (diff < 10)   return 'just now';
-    if (diff < 60)   return diff + 's ago';
-    if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+    if (diff < 10)    return 'just now';
+    if (diff < 60)    return diff + 's ago';
+    if (diff < 3600)  return Math.floor(diff/60) + 'm ago';
     if (diff < 86400) return Math.floor(diff/3600) + 'h ' + (Math.floor(diff/60)%60) + 'm ago';
     return Math.floor(diff/86400) + 'd ago';
 }
@@ -82,8 +79,27 @@ function formatDateTime(dateStr) {
     });
 }
 
-// Store scan times for live ago refresh
 let reportMeta = {};
+
+// Fetch live fixed count for a given report's target URL
+async function fetchFixedCount(targetUrl) {
+    try {
+        const res  = await fetch(`/api/vulnerabilities?target_url=${encodeURIComponent(targetUrl)}`);
+        const data = await res.json();
+        const vulns = data.vulnerabilities || [];
+        const fixed = vulns.filter(v => {
+            const st = (v._display_status || v.Status || '').toLowerCase();
+            return st === 'fixed' || v._fixed;
+        }).length;
+        const total = vulns.filter(v => {
+            const t = (v.Test||'').toLowerCase().trim();
+            return !['dns resolution','ping test','port scan','service detection','vulnerability scan'].includes(t);
+        }).length;
+        return { fixed, total };
+    } catch (e) {
+        return { fixed: 0, total: 0 };
+    }
+}
 
 async function loadReports() {
     try {
@@ -104,12 +120,10 @@ async function loadReports() {
             return;
         }
 
-        // Save meta for time-ago refresh
         reportMeta = {};
-        list.forEach(r => {
-            reportMeta[r.id] = r.scan_time || r.date || '';
-        });
+        list.forEach(r => { reportMeta[r.id] = r.scan_time || r.date || ''; });
 
+        // Render initial HTML without fixed counts (fast), then fetch live fixed counts async
         container.innerHTML = list.map((r, idx) => {
             const vc  = r.vuln_counts || {};
             const badgesHtml = [
@@ -146,22 +160,55 @@ async function loadReports() {
                         <span class="bx ${statusCls}"><i class="fa-solid ${statusIcon}"></i> ${r.status}</span>
                         <span style="font-size:.72rem;color:var(--text-muted)">${r.total} findings</span>
                         ${runtime}
+                        <!-- Live fixed count badge (populated async) -->
+                        <span id="fixed-badge-${r.id}" style="display:none;" class="bx bf">
+                            <i class="fa-solid fa-circle-check"></i> <span id="fixed-cnt-${r.id}">0</span> fixed
+                        </span>
                     </div>
                 </div>
                 <div class="report-right">
                     <div class="vuln-counts">${badgesHtml || '<span style="font-size:.72rem;color:var(--text-muted)">No vulns</span>'}</div>
+                    <!-- Inline resolution bar -->
+                    <div id="res-bar-${r.id}" style="width:90px;display:none;">
+                        <div style="height:5px;background:var(--border);border-radius:4px;overflow:hidden;">
+                            <div id="res-fill-${r.id}" style="height:100%;background:linear-gradient(90deg,#2563EB,#22c55e);border-radius:4px;width:0%;transition:width .5s;"></div>
+                        </div>
+                        <div style="font-size:.62rem;color:var(--text-muted);text-align:center;margin-top:.1rem;" id="res-pct-${r.id}"></div>
+                    </div>
                     <a href="/reports/${r.id}" class="btn btn-o btn-s"><i class="fa-regular fa-eye"></i> View</a>
                     <a href="/download-report/${r.id}" class="btn btn-p btn-s"><i class="fa-solid fa-download"></i> Download</a>
                 </div>
             </div>`;
         }).join('');
 
+        // Async: fetch live fixed counts for each report
+        list.forEach(r => {
+            if (r.target_url) {
+                fetchFixedCount(r.target_url).then(({ fixed, total }) => {
+                    if (fixed > 0) {
+                        const badge = document.getElementById(`fixed-badge-${r.id}`);
+                        const cnt   = document.getElementById(`fixed-cnt-${r.id}`);
+                        const bar   = document.getElementById(`res-bar-${r.id}`);
+                        const fill  = document.getElementById(`res-fill-${r.id}`);
+                        const pct   = document.getElementById(`res-pct-${r.id}`);
+                        if (badge && cnt) { cnt.textContent = fixed; badge.style.display = 'inline-flex'; }
+                        if (bar && fill && pct && total > 0) {
+                            const p = Math.round((fixed / total) * 100);
+                            bar.style.display  = 'block';
+                            fill.style.width   = `${p}%`;
+                            pct.textContent    = `${p}% fixed`;
+                        }
+                    }
+                });
+            }
+        });
+
     } catch (e) {
         console.error('Failed to load reports:', e);
     }
 }
 
-// Refresh time-ago labels without re-fetching
+// Refresh time-ago labels
 function refreshTimeAgo() {
     Object.entries(reportMeta).forEach(([id, scanTimeStr]) => {
         const el = document.getElementById(`ago-${id}`);
