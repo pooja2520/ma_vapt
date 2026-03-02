@@ -112,6 +112,79 @@
     <div class="acard ac-fix"><small>Fixed</small><div class="av" id="ac-fix">0</div><div class="ap"><span id="acp-fix">0</span>% resolved</div><div class="prog-bar"><div class="prog-fill" id="apb-fix" style="width:0%;background:#22c55e;"></div></div></div>
   </div>
 
+  <!-- ── Pre-Scan / Re-Scan Intelligence Panel ─────────────────────────── -->
+  <div id="preScanPanel" style="display:none;margin-bottom:1rem;">
+    <!-- Progress banner -->
+    <div style="background:linear-gradient(135deg,#1e3a5f,#1a4731);border-radius:14px;padding:1.25rem 1.5rem;color:#fff;margin-bottom:.75rem;position:relative;overflow:hidden;">
+      <div style="position:absolute;top:0;right:0;width:160px;height:160px;background:rgba(255,255,255,.03);border-radius:50%;transform:translate(40px,-40px);pointer-events:none;"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;">
+        <div>
+          <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.55);margin-bottom:.3rem;">
+            <i class="fa-solid fa-rotate"></i> Re-Scan Intelligence
+          </div>
+          <div style="font-size:1.05rem;font-weight:700;" id="psp-target">—</div>
+          <div style="font-size:.78rem;color:rgba(255,255,255,.65);margin-top:.2rem;" id="psp-subtitle">Loading scan history...</div>
+        </div>
+        <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
+          <div style="text-align:center;">
+            <div style="font-size:2rem;font-weight:800;color:#4ade80;font-family:'Space Grotesk',sans-serif;" id="psp-fixed-num">0</div>
+            <div style="font-size:.65rem;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.05em;">Fixed</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:2rem;font-weight:800;color:#f87171;font-family:'Space Grotesk',sans-serif;" id="psp-vuln-num">0</div>
+            <div style="font-size:.65rem;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.05em;">Remaining</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:2rem;font-weight:800;color:#60a5fa;font-family:'Space Grotesk',sans-serif;" id="psp-pct">0%</div>
+            <div style="font-size:.65rem;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.05em;">Resolved</div>
+          </div>
+        </div>
+      </div>
+      <!-- Progress bar -->
+      <div style="height:6px;background:rgba(255,255,255,.15);border-radius:6px;margin-top:1rem;overflow:hidden;">
+        <div id="psp-fill" style="height:100%;background:linear-gradient(90deg,#4ade80,#22d3ee);border-radius:6px;width:0%;transition:width .8s ease;"></div>
+      </div>
+    </div>
+
+    <!-- Two columns: Fixed | Remaining vulnerabilities -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;">
+
+      <!-- Fixed Vulnerabilities -->
+      <div style="background:#fff;border:1.5px solid #86efac;border-radius:12px;overflow:hidden;">
+        <div style="background:linear-gradient(90deg,#166534,#15803d);padding:.625rem 1rem;display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:.82rem;font-weight:700;color:#fff;display:flex;align-items:center;gap:.4rem;">
+            <i class="fa-solid fa-circle-check"></i> Confirmed Fixed
+          </span>
+          <span id="psp-fixed-badge" style="font-size:.68rem;background:rgba(255,255,255,.2);color:#fff;padding:.1rem .45rem;border-radius:5px;font-weight:700;">0</span>
+        </div>
+        <div id="psp-fixed-list" style="max-height:320px;overflow-y:auto;padding:.5rem 0;">
+          <div style="text-align:center;padding:1.5rem;color:var(--text-muted);font-size:.8rem;">
+            <i class="fa-solid fa-shield-halved" style="font-size:1.5rem;color:#86efac;display:block;margin-bottom:.5rem;"></i>
+            No fixed vulnerabilities yet
+          </div>
+        </div>
+      </div>
+
+      <!-- Remaining Vulnerabilities + Solutions -->
+      <div style="background:#fff;border:1.5px solid #fda4af;border-radius:12px;overflow:hidden;">
+        <div style="background:linear-gradient(90deg,#881337,#be123c);padding:.625rem 1rem;display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:.82rem;font-weight:700;color:#fff;display:flex;align-items:center;gap:.4rem;">
+            <i class="fa-solid fa-triangle-exclamation"></i> Still Vulnerable — Solutions
+          </span>
+          <span id="psp-vuln-badge" style="font-size:.68rem;background:rgba(255,255,255,.2);color:#fff;padding:.1rem .45rem;border-radius:5px;font-weight:700;">0</span>
+        </div>
+        <div id="psp-vuln-list" style="max-height:320px;overflow-y:auto;padding:.5rem 0;">
+          <div style="text-align:center;padding:1.5rem;color:var(--text-muted);font-size:.8rem;">
+            <i class="fa-solid fa-circle-check" style="font-size:1.5rem;color:#86efac;display:block;margin-bottom:.5rem;"></i>
+            All clear!
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <!-- ── End Pre-Scan Panel ──────────────────────────────────────────────── -->
+
   <!-- Charts -->
   <div class="charts-row">
     <div class="chart-card">
@@ -627,6 +700,129 @@ async function toggleFix(id, btn) {
   } catch(e){ console.error(e); btn.disabled=false; }
 }
 
+/* ─────────── PRE-SCAN INTELLIGENCE PANEL ─────────── */
+let _preScanTarget = '';
+
+function sevBadgeHtml(sev) {
+  sev = (sev || '').toLowerCase();
+  const map = {
+    critical: ['bc', 'fa-triangle-exclamation'],
+    high:     ['bh', 'fa-triangle-exclamation'],
+    medium:   ['bm', 'fa-triangle-exclamation'],
+    low:      ['bl', 'fa-shield-halved'],
+    info:     ['bsev-info', 'fa-shield-halved'],
+  };
+  const [cls, ic] = map[sev] || ['bsev-info', 'fa-shield-halved'];
+  return `<span class="bx ${cls}" style="font-size:.65rem;padding:.1rem .4rem;"><i class="fa-solid ${ic}"></i> ${sev.charAt(0).toUpperCase()+sev.slice(1)}</span>`;
+}
+
+async function loadPreScanSummary(targetUrl) {
+  if (!targetUrl) {
+    document.getElementById('preScanPanel').style.display = 'none';
+    return;
+  }
+  _preScanTarget = targetUrl;
+  try {
+    const res  = await fetch(`/api/pre-scan-summary?target_url=${encodeURIComponent(targetUrl)}`);
+    const data = await res.json();
+
+    if (data.status !== 'success' || !data.is_rescan || data.total === 0) {
+      document.getElementById('preScanPanel').style.display = 'none';
+      return;
+    }
+
+    document.getElementById('preScanPanel').style.display = 'block';
+
+    const host = targetUrl.replace(/https?:\/\//, '').split('/')[0];
+    document.getElementById('psp-target').textContent   = host;
+    document.getElementById('psp-subtitle').textContent =
+      `Previous scan: ${data.fixed_count} fixed, ${data.vuln_count} still vulnerable out of ${data.total} total`;
+    document.getElementById('psp-fixed-num').textContent = data.fixed_count;
+    document.getElementById('psp-vuln-num').textContent  = data.vuln_count;
+    document.getElementById('psp-pct').textContent       = data.fix_pct + '%';
+    document.getElementById('psp-fill').style.width      = data.fix_pct + '%';
+    document.getElementById('psp-fixed-badge').textContent = data.fixed_count;
+    document.getElementById('psp-vuln-badge').textContent  = data.vuln_count;
+
+    // ── Fixed list ──────────────────────────────────────────────────────────
+    const fixedList = document.getElementById('psp-fixed-list');
+    if (data.fixed.length === 0) {
+      fixedList.innerHTML = `<div style="text-align:center;padding:1.5rem;color:var(--text-muted);font-size:.8rem;">
+        <i class="fa-solid fa-shield-halved" style="font-size:1.5rem;color:#86efac;display:block;margin-bottom:.5rem;"></i>
+        No fixed vulnerabilities yet
+      </div>`;
+    } else {
+      fixedList.innerHTML = data.fixed.map(v => `
+        <div style="padding:.625rem 1rem;border-bottom:1px solid #f0fdf4;display:flex;align-items:flex-start;gap:.5rem;">
+          <i class="fa-solid fa-circle-check" style="color:#22c55e;margin-top:.2rem;flex-shrink:0;font-size:.9rem;"></i>
+          <div style="min-width:0;flex:1;">
+            <div style="font-size:.8rem;font-weight:700;color:var(--text);">${v.test}</div>
+            <div style="display:flex;gap:.35rem;margin:.2rem 0;flex-wrap:wrap;align-items:center;">
+              ${sevBadgeHtml(v.severity)}
+              <span style="font-size:.68rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;" title="${v.path}">
+                ${v.path.replace(/https?:\/\//,'').substring(0,40)}
+              </span>
+            </div>
+          </div>
+        </div>`).join('');
+    }
+
+    // ── Remaining vulnerabilities with solutions ────────────────────────────
+    const vulnList = document.getElementById('psp-vuln-list');
+    if (data.vulnerable.length === 0) {
+      vulnList.innerHTML = `<div style="text-align:center;padding:1.5rem;color:var(--text-muted);font-size:.8rem;">
+        <i class="fa-solid fa-circle-check" style="font-size:1.5rem;color:#22c55e;display:block;margin-bottom:.5rem;"></i>
+        All vulnerabilities fixed! 🎉
+      </div>`;
+    } else {
+      vulnList.innerHTML = data.vulnerable.map((v, i) => {
+        const hasRem   = v.remediation && v.remediation !== 'N/A' && v.remediation.trim();
+        const hasSteps = v.steps && v.steps !== 'N/A' && v.steps.trim();
+        const stepsId  = `psp-steps-${i}`;
+        return `
+        <div style="padding:.625rem 1rem;border-bottom:1px solid #fff1f2;">
+          <div style="display:flex;align-items:flex-start;gap:.5rem;margin-bottom:.35rem;">
+            <i class="fa-solid fa-triangle-exclamation" style="color:#ef4444;margin-top:.2rem;flex-shrink:0;font-size:.85rem;"></i>
+            <div style="min-width:0;flex:1;">
+              <div style="font-size:.8rem;font-weight:700;color:var(--text);">${v.test}</div>
+              <div style="display:flex;gap:.35rem;margin:.2rem 0;flex-wrap:wrap;align-items:center;">
+                ${sevBadgeHtml(v.severity)}
+                <span style="font-size:.68rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;" title="${v.path}">
+                  ${v.path.replace(/https?:\/\//,'').substring(0,40)}
+                </span>
+              </div>
+            </div>
+          </div>
+          ${hasRem ? `
+          <div style="background:#fef9f0;border-left:3px solid #f97316;padding:.4rem .6rem;border-radius:0 6px 6px 0;margin-bottom:.3rem;">
+            <div style="font-size:.65rem;font-weight:700;color:#c2410c;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.2rem;">
+              <i class="fa-solid fa-screwdriver-wrench"></i> Remediation
+            </div>
+            <div style="font-size:.75rem;color:var(--text);line-height:1.5;">${v.remediation.substring(0,200)}${v.remediation.length>200?'…':''}</div>
+          </div>` : ''}
+          ${hasSteps ? `
+          <details id="${stepsId}">
+            <summary style="font-size:.72rem;font-weight:700;color:#1d4ed8;cursor:pointer;padding:.2rem 0;list-style:none;display:flex;align-items:center;gap:.3rem;">
+              <i class="fa-solid fa-list-check"></i> View Resolution Steps
+            </summary>
+            <div style="background:#eff6ff;border-radius:6px;padding:.5rem .6rem;margin-top:.3rem;">
+              ${v.steps.split('\n').filter(s=>s.trim()).map((s,si)=>`
+              <div style="display:flex;gap:.5rem;align-items:flex-start;margin-bottom:.3rem;">
+                <span style="width:18px;height:18px;border-radius:50%;background:#2563eb;color:#fff;font-size:.6rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:.1rem;">${si+1}</span>
+                <span style="font-size:.74rem;color:var(--text);line-height:1.5;">${s.trim()}</span>
+              </div>`).join('')}
+            </div>
+          </details>` : ''}
+        </div>`
+      }).join('');
+    }
+
+  } catch(e) {
+    console.error('Pre-scan summary error:', e);
+    document.getElementById('preScanPanel').style.display = 'none';
+  }
+}
+
 /* ─────────── INIT ─────────── */
 let firstLoad = true;
 async function loadVulnerabilities() {
@@ -645,6 +841,12 @@ async function loadVulnerabilities() {
     const total = rawVulns.length;
     document.getElementById('vulnSubtitle').textContent =
       `Central findings repository — ${total} finding${total!==1?'s':''}`;
+    // Auto-show pre-scan panel if a specific URL filter is active
+    const urlSel = document.getElementById('urlFilter');
+    const curUrl = urlSel ? urlSel.value : '';
+    if (curUrl && curUrl !== _preScanTarget) {
+      loadPreScanSummary(curUrl);
+    }
     firstLoad = false;
   } catch(e){ console.error(e); }
 }
@@ -652,6 +854,19 @@ async function loadVulnerabilities() {
 loadVulnerabilities();
 // Poll every 5s — fast live updates in sync with active scans
 setInterval(loadVulnerabilities, 5000);
+
+// When user selects a specific target URL, show the re-scan intelligence panel
+document.addEventListener('change', function(e) {
+  if (e.target && e.target.id === 'urlFilter') {
+    const url = e.target.value;
+    if (url) {
+      loadPreScanSummary(url);
+    } else {
+      document.getElementById('preScanPanel').style.display = 'none';
+      _preScanTarget = '';
+    }
+  }
+});
 
 window.addEventListener('resize', () => {
   if (pieChart) pieChart.resize();
