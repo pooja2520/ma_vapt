@@ -3,82 +3,1054 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VAPT Scanner Pro - Sign Up</title>
+<title>VAPT Scanner Pro - Create Account</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
 <style>
-:root { --blue:#2563EB; --blue-dark:#1d4ed8; --blue-light:#EFF6FF; --text:#1e293b; --text-muted:#64748b; --border:#e2e8f0; --bg:#f1f5f9; --white:#fff; --red:#ef4444; --green:#22c55e; }
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:'DM Sans',sans-serif; background:var(--bg); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:1rem; }
+:root {
+  --blue: #2563EB;
+  --blue-dark: #1d4ed8;
+  --blue-light: #EFF6FF;
+  --blue-mid: #DBEAFE;
+  --text: #1e293b;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+  --bg: #f1f5f9;
+  --white: #fff;
+  --red: #ef4444;
+  --green: #22c55e;
+  --shadow: 0 4px 24px rgba(37,99,235,0.10);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  position: relative;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%, rgba(37,99,235,0.07) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 50% at 80% 90%, rgba(37,99,235,0.05) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.signup-box {
+  background: var(--white);
+  border-radius: 18px;
+  box-shadow: var(--shadow), 0 1px 0 var(--border);
+  width: 100%;
+  max-width: 480px;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+  animation: fadeUp 0.45s cubic-bezier(.22,.68,0,1.2) both;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.signup-header {
+  background: linear-gradient(135deg, var(--blue) 0%, var(--blue-dark) 100%);
+  padding: 2rem 2rem 1.6rem;
+  text-align: center;
+  color: var(--white);
+  position: relative;
+  overflow: hidden;
+}
+
+.signup-header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+.signup-header .icon-wrap {
+  width: 58px; height: 58px;
+  background: rgba(255,255,255,0.18);
+  border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 1rem;
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,0.25);
+  font-size: 1.6rem;
+  position: relative;
+}
+
+.signup-header h1 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.3rem;
+}
+
+.signup-header p {
+  font-size: 0.88rem;
+  opacity: 0.82;
+  font-weight: 400;
+}
+
+/* Steps */
+.steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 1.2rem 2rem 0;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  flex: 1;
+  position: relative;
+}
+
+.step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 13px;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--border);
+  z-index: 0;
+  transition: background 0.4s;
+}
+
+.step.active:not(:last-child)::after,
+.step.done:not(:last-child)::after {
+  background: var(--blue);
+}
+
+.step-dot {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--white);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  position: relative;
+  z-index: 1;
+  transition: all 0.3s;
+}
+
+.step.active .step-dot {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: var(--white);
+}
+
+.step.done .step-dot {
+  border-color: var(--green);
+  background: var(--green);
+  color: var(--white);
+}
+
+.step-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.step.active .step-label { color: var(--blue); font-weight: 600; }
+.step.done .step-label { color: var(--green); }
+
+/* Body */
+.signup-body {
+  padding: 1.6rem 2rem 2rem;
+}
+
+/* Flash messages */
+.error-msg {
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  color: var(--red);
+  border-radius: 8px;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.success-msg {
+  background: #F0FDF4;
+  border: 1px solid #BBF7D0;
+  color: #166534;
+  border-radius: 8px;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Form */
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+}
+
+.form-group {
+  margin-bottom: 1rem;
+}
+
+.form-group label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.45rem;
+}
+
+.form-group label i {
+  color: var(--blue);
+  font-size: 0.78rem;
+  width: 14px;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border: 1.5px solid var(--border);
+  border-radius: 9px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--white);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  appearance: none;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.10);
+}
+
+.form-group input.error { border-color: var(--red); }
+.form-group input.ok    { border-color: var(--green); }
+.form-group input::placeholder  { color: #94a3b8; }
+.form-group textarea::placeholder { color: #94a3b8; }
+
+/* Password wrap */
+.pass-wrap { position: relative; }
+.pass-wrap input { padding-right: 2.6rem; }
+.pass-wrap button {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 0;
+  transition: color 0.2s;
+}
+.pass-wrap button:hover { color: var(--blue); }
+
+/* Strength bar */
+.strength-bar {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+.strength-bar span {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 0.3s;
+}
+.strength-bar.s1 span:nth-child(1) { background: #ef4444; }
+.strength-bar.s2 span:nth-child(1),
+.strength-bar.s2 span:nth-child(2) { background: #f97316; }
+.strength-bar.s3 span:nth-child(1),
+.strength-bar.s3 span:nth-child(2),
+.strength-bar.s3 span:nth-child(3) { background: #eab308; }
+.strength-bar.s4 span { background: #22c55e; }
+
+.strength-text {
+  font-size: 0.74rem;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+/* Select wrap */
+.select-wrap { position: relative; }
+.select-wrap::after {
+  content: '\f078';
+  font-family: 'Font Awesome 6 Free';
+  font-weight: 900;
+  position: absolute;
+  right: 0.85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  pointer-events: none;
+}
+
+/* Terms */
+.terms-check {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  margin-bottom: 1.2rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.terms-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--blue);
+}
+.terms-check a { color: var(--blue); text-decoration: none; }
+.terms-check a:hover { text-decoration: underline; }
+
+/* Buttons */
+.btn-primary {
+  width: 100%;
+  padding: 0.8rem;
+  background: var(--blue);
+  color: var(--white);
+  border: none;
+  border-radius: 10px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+  box-shadow: 0 2px 10px rgba(37,99,235,0.25);
+  letter-spacing: 0.01em;
+}
+.btn-primary:hover { background: var(--blue-dark); box-shadow: 0 4px 16px rgba(37,99,235,0.35); transform: translateY(-1px); }
+.btn-primary:active { transform: translateY(0); }
+
+.btn-secondary {
+  width: 100%;
+  padding: 0.8rem;
+  background: var(--white);
+  color: var(--blue);
+  border: 1.5px solid var(--blue);
+  border-radius: 10px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: background 0.2s, transform 0.15s;
+  margin-bottom: 0.7rem;
+}
+.btn-secondary:hover { background: var(--blue-light); transform: translateY(-1px); }
+
+.btn-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.7rem;
+}
+
+.btn-row .btn-secondary,
+.btn-row .btn-primary {
+  width: 100%;
+  height: 48px;
+  font-size: 0.95rem;
+  padding: 0;
+  justify-content: center;
+}
+
+/* OTP input */
+.otp-row {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+.otp-row input {
+  width: 46px;
+  height: 52px;
+  text-align: center;
+  font-size: 1.3rem;
+  font-weight: 700;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  color: var(--text);
+}
+.otp-row input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.10);
+}
+.otp-row input.filled { border-color: var(--blue); background: var(--blue-light); }
+
+/* Divider */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin: 1.1rem 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+.divider::before, .divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Sign in note */
+.signin-note {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 1.1rem;
+}
+.signin-note a { color: var(--blue); text-decoration: none; font-weight: 600; }
+.signin-note a:hover { text-decoration: underline; }
+
+/* Secure note */
+.secure-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 1rem;
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+.secure-note i { font-size: 0.7rem; }
+
+/* Field hint */
+.field-hint {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin-top: 0.3rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* Feature badges */
+.feature-strip {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.4rem;
+  flex-wrap: wrap;
+}
+.feature-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--blue-light);
+  color: var(--blue);
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.73rem;
+  font-weight: 600;
+}
+.feature-badge i { font-size: 0.68rem; }
+
+/* Section label */
+.section-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.7rem;
+  margin-top: 0.2rem;
+}
+
+/* Verify step */
+.verify-icon {
+  width: 70px; height: 70px;
+  background: var(--blue-light);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 1rem;
+  font-size: 1.8rem;
+  color: var(--blue);
+}
+
+.verify-info {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.verify-info h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.4rem;
+}
+
+.verify-info p {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.verify-info .email-highlight {
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.resend-link {
+  text-align: center;
+  font-size: 0.83rem;
+  color: var(--text-muted);
+  margin-top: 0.8rem;
+}
+.resend-link button {
+  background: none;
+  border: none;
+  color: var(--blue);
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.83rem;
+  font-family: 'DM Sans', sans-serif;
+}
+.resend-link button:hover { text-decoration: underline; }
+
+/* Step panels */
+.step-panel { display: none; }
+.step-panel.active { display: block; }
+
+/* OTP timer */
+.otp-timer {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin-bottom: 0.5rem;
+}
+.otp-timer span { color: var(--blue); font-weight: 600; }
+
+@media (max-width: 500px) {
+  .form-row { grid-template-columns: 1fr; }
+  .signup-body { padding: 1.4rem 1.2rem 1.6rem; }
+  .signup-header { padding: 1.6rem 1.2rem 1.3rem; }
+  .btn-row { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
-<div class="login-box">
-  <div class="login-header">
-    <i class="fa-solid fa-shield-halved"></i>
+
+<div class="signup-box">
+
+  <!-- Header -->
+  <div class="signup-header">
+    <div class="icon-wrap">
+      <i class="fa-solid fa-shield-halved"></i>
+    </div>
     <h1>Advanced VAPT Scanner Pro</h1>
-    <p>Create your account</p>
+    <p>Create your free account — start scanning in minutes</p>
   </div>
-  <div class="login-body">
+
+  <!-- Body -->
+  <div class="signup-body">
+
+    <!-- Steps indicator -->
+    <div class="steps" id="stepsBar">
+      <div class="step active" id="stepDot1">
+        <div class="step-dot" id="dot1">1</div>
+        <span class="step-label">Account</span>
+      </div>
+      <div class="step" id="stepDot2">
+        <div class="step-dot" id="dot2">2</div>
+        <span class="step-label">Profile</span>
+      </div>
+      <div class="step" id="stepDot3">
+        <div class="step-dot" id="dot3">3</div>
+        <span class="step-label">Verify</span>
+      </div>
+    </div>
+
+    <!-- Flask flash messages (shown at top, above step panels) -->
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% for category, message in messages %}
-    <div class="{{ 'success-msg' if category == 'info' else 'error-msg' }}" style="display:flex;">
+    <div class="{{ 'success-msg' if category == 'info' else 'error-msg' }}" style="margin-top:1rem;">
       <i class="fa-solid {{ 'fa-circle-check' if category == 'info' else 'fa-circle-exclamation' }}"></i>&nbsp;{{ message }}
     </div>
     {% endfor %}
     {% endwith %}
-    <form method="POST" action="/signup">
-      <div class="form-group">
-        <label><i class="fa-solid fa-user"></i> Full Name</label>
-        <input type="text" id="name" name="name" placeholder="Enter your name" autocomplete="name" required minlength="2" maxlength="255">
+
+    <!-- JS validation error banner -->
+    <div id="jsError" class="error-msg" style="display:none;margin-top:1rem;">
+      <i class="fa-solid fa-circle-exclamation"></i>&nbsp;<span id="jsErrorText"></span>
+    </div>
+
+    <!-- ─── STEP 1: Account ─── -->
+    <div class="step-panel active" id="panel1">
+      <div style="margin-top:1.3rem;">
+
+        <div class="feature-strip">
+          <div class="feature-badge"><i class="fa-solid fa-bolt"></i> Free 14-day trial</div>
+          <div class="feature-badge"><i class="fa-solid fa-lock"></i> No credit card</div>
+          <div class="feature-badge"><i class="fa-solid fa-shield-halved"></i> SOC 2 certified</div>
+        </div>
+
+        <div class="section-label">Personal Information</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label><i class="fa-regular fa-user"></i> First Name</label>
+            <input type="text" id="first_name" placeholder="John" autocomplete="given-name">
+          </div>
+          <div class="form-group">
+            <label><i class="fa-regular fa-user"></i> Last Name</label>
+            <input type="text" id="last_name" placeholder="Doe" autocomplete="family-name">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label><i class="fa-regular fa-envelope"></i> Email Address</label>
+          <input type="email" id="emailInput" placeholder="john@company.com" autocomplete="email">
+        </div>
+
+        <div class="form-group">
+          <label><i class="fa-solid fa-building"></i> Organization <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
+          <input type="text" id="organization" placeholder="Acme Security Inc." autocomplete="organization">
+        </div>
+
+        <div class="section-label" style="margin-top:0.4rem;">Security Credentials</div>
+
+        <div class="form-group">
+          <label><i class="fa-solid fa-lock"></i> Password</label>
+          <div class="pass-wrap">
+            <input type="password" id="password" placeholder="Create a strong password (min 8 chars)" autocomplete="new-password" oninput="checkStrength(this.value)">
+            <button type="button" onclick="togglePass('password','eye1')"><i class="fa-regular fa-eye" id="eye1"></i></button>
+          </div>
+          <div class="strength-bar" id="strengthBar">
+            <span></span><span></span><span></span><span></span>
+          </div>
+          <div class="strength-text" id="strengthText" style="color:#94a3b8;">Enter a password</div>
+        </div>
+
+        <div class="form-group">
+          <label><i class="fa-solid fa-lock"></i> Confirm Password</label>
+          <div class="pass-wrap">
+            <input type="password" id="confirmPassword" placeholder="Repeat your password" autocomplete="new-password" oninput="checkMatch()">
+            <button type="button" onclick="togglePass('confirmPassword','eye2')"><i class="fa-regular fa-eye" id="eye2"></i></button>
+          </div>
+          <div class="field-hint" id="matchHint"></div>
+        </div>
+
+        <div class="form-group">
+          <label><i class="fa-solid fa-user-tie"></i> Role</label>
+          <div class="select-wrap">
+            <select id="role">
+              <option value="" disabled selected>Select your role</option>
+              <option value="pentester">Penetration Tester</option>
+              <option value="security_analyst">Security Analyst</option>
+              <option value="devops">DevOps / SRE</option>
+              <option value="developer">Developer</option>
+              <option value="manager">Security Manager</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="terms-check">
+          <input type="checkbox" id="terms">
+          <label for="terms">
+            I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>.
+          </label>
+        </div>
+
+        <button type="button" class="btn-primary" onclick="goToStep2()">
+          <i class="fa-solid fa-arrow-right"></i> Continue to Profile
+        </button>
       </div>
-      <div class="form-group">
-        <label><i class="fa-regular fa-envelope"></i> Email Address</label>
-        <input type="email" id="email" name="email" placeholder="Enter your email" autocomplete="email" required>
-      </div>
-      <div class="form-group">
-        <label><i class="fa-solid fa-lock"></i> Password</label>
-        <div class="pass-wrap">
-          <input type="password" id="password" name="password" placeholder="Create a password (min 8 chars)" autocomplete="new-password" required minlength="8">
-          <button type="button" onclick="togglePass()"><i class="fa-regular fa-eye" id="eyeIcon"></i></button>
+    </div>
+
+    <!-- ─── STEP 2: Profile ─── -->
+    <div class="step-panel" id="panel2">
+      <div style="margin-top:1.3rem;">
+
+        <div class="section-label">Your Profile</div>
+
+        <div class="form-group">
+          <label><i class="fa-solid fa-briefcase"></i> Job Title <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
+          <input type="text" id="job_title" placeholder="e.g. Senior Security Engineer">
+        </div>
+
+        <div class="form-group">
+          <label><i class="fa-solid fa-globe"></i> Country <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
+          <div class="select-wrap">
+            <select id="country">
+              <option value="" selected>Select your country</option>
+              <option value="US">United States</option>
+              <option value="IN">India</option>
+              <option value="GB">United Kingdom</option>
+              <option value="CA">Canada</option>
+              <option value="AU">Australia</option>
+              <option value="DE">Germany</option>
+              <option value="FR">France</option>
+              <option value="SG">Singapore</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label><i class="fa-solid fa-chart-bar"></i> Experience Level</label>
+          <div class="select-wrap">
+            <select id="experience">
+              <option value="" disabled selected>Select experience level</option>
+              <option value="beginner">Beginner (&lt; 1 year)</option>
+              <option value="intermediate">Intermediate (1–3 years)</option>
+              <option value="experienced">Experienced (3–7 years)</option>
+              <option value="expert">Expert (7+ years)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label><i class="fa-solid fa-comment"></i> How did you hear about us? <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
+          <div class="select-wrap">
+            <select id="referral">
+              <option value="" selected>Select an option</option>
+              <option value="search">Search Engine</option>
+              <option value="social">Social Media</option>
+              <option value="colleague">Colleague / Friend</option>
+              <option value="conference">Conference / Event</option>
+              <option value="blog">Blog / Article</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label><i class="fa-solid fa-file-lines"></i> About You <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
+          <textarea id="bio" placeholder="Brief description of your security background..."></textarea>
+        </div>
+
+        <div class="btn-row">
+          <button type="button" class="btn-secondary" onclick="goToStep(1)">
+            <i class="fa-solid fa-arrow-left"></i> Back
+          </button>
+          <button type="button" class="btn-primary" onclick="goToStep3()">
+            Continue <i class="fa-solid fa-arrow-right"></i>
+          </button>
         </div>
       </div>
-      <div class="form-group">
-        <label><i class="fa-solid fa-lock"></i> Confirm Password</label>
-        <div class="pass-wrap">
-          <input type="password" id="confirm_password" name="confirm_password" placeholder="Confirm your password" autocomplete="new-password" required minlength="8">
-          <button type="button" onclick="toggleConfirmPass()"><i class="fa-regular fa-eye" id="eyeIcon2"></i></button>
+    </div>
+
+    <!-- ─── STEP 3: Verify ─── -->
+    <div class="step-panel" id="panel3">
+      <div style="margin-top:1.3rem;">
+
+        <div class="verify-icon">
+          <i class="fa-solid fa-envelope-circle-check"></i>
         </div>
+
+        <div class="verify-info">
+          <h3>Verify Your Email</h3>
+          <p>We've sent a 6-digit verification code to<br>
+            <span class="email-highlight" id="verifyEmailDisplay">your email address</span>
+          </p>
+        </div>
+
+        <div class="otp-timer" id="otpTimerRow">
+          Code expires in <span id="otpTimer">10:00</span>
+        </div>
+
+        <div class="otp-row" id="otpRow">
+          <input type="text" maxlength="1" class="otp-input" id="otp1" inputmode="numeric" pattern="[0-9]">
+          <input type="text" maxlength="1" class="otp-input" id="otp2" inputmode="numeric" pattern="[0-9]">
+          <input type="text" maxlength="1" class="otp-input" id="otp3" inputmode="numeric" pattern="[0-9]">
+          <input type="text" maxlength="1" class="otp-input" id="otp4" inputmode="numeric" pattern="[0-9]">
+          <input type="text" maxlength="1" class="otp-input" id="otp5" inputmode="numeric" pattern="[0-9]">
+          <input type="text" maxlength="1" class="otp-input" id="otp6" inputmode="numeric" pattern="[0-9]">
+        </div>
+
+        <div class="resend-link">
+          Didn't receive it? <button type="button" id="resendBtn" onclick="resendCode()">Resend Code</button>
+        </div>
+
+        <div style="margin-top:1.2rem;">
+          <button type="button" class="btn-primary" onclick="submitForm()" id="verifyBtn">
+            <i class="fa-solid fa-circle-check"></i> Verify &amp; Create Account
+          </button>
+        </div>
+
+        <div style="margin-top:0.7rem;">
+          <button type="button" class="btn-secondary" onclick="goToStep(2)" style="margin-bottom:0;">
+            <i class="fa-solid fa-arrow-left"></i> Back
+          </button>
+        </div>
+
       </div>
-      <button type="submit" class="btn-primary"><i class="fa-solid fa-user-plus"></i> Create Account</button>
+    </div>
+
+    <!--
+      Hidden form — submits to Flask /signup POST.
+      Field names match what app.py expects:
+        name             → first_name + " " + last_name
+        email            → email
+        password         → password
+        confirm_password → confirm_password
+    -->
+    <form method="POST" action="{{ url_for('signup') }}" id="signupForm" style="display:none;">
+      <input type="hidden" id="h_name"             name="name">
+      <input type="hidden" id="h_email"            name="email">
+      <input type="hidden" id="h_password"         name="password">
+      <input type="hidden" id="h_confirm_password" name="confirm_password">
     </form>
-    <div class="signup-note">Already have an account? <a href="{{ url_for('index') }}">Sign in</a></div>
-    <div class="secure-note"><i class="fa-solid fa-lock"></i> Your data is encrypted and secure</div>
+
+    <div class="signin-note" id="signinNote">Already have an account? <a href="{{ url_for('index') }}">Sign in</a></div>
+    <div class="secure-note"><i class="fa-solid fa-lock"></i> Your data is encrypted and protected under AES-256</div>
+
   </div>
 </div>
+
 <script>
-function togglePass() {
-  const p = document.getElementById('password');
-  const i = document.getElementById('eyeIcon');
+/* ── Utilities ─────────────────────────────────── */
+function showError(msg) {
+  const el = document.getElementById('jsError');
+  document.getElementById('jsErrorText').textContent = msg;
+  el.style.display = 'flex';
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function hideError() {
+  document.getElementById('jsError').style.display = 'none';
+}
+
+function togglePass(inputId, iconId) {
+  const p = document.getElementById(inputId);
+  const i = document.getElementById(iconId);
   p.type = p.type === 'password' ? 'text' : 'password';
   i.className = p.type === 'password' ? 'fa-regular fa-eye' : 'fa-regular fa-eye-slash';
 }
-function toggleConfirmPass() {
-  const p = document.getElementById('confirm_password');
-  const i = document.getElementById('eyeIcon2');
-  p.type = p.type === 'password' ? 'text' : 'password';
-  i.className = p.type === 'password' ? 'fa-regular fa-eye' : 'fa-regular fa-eye-slash';
+
+function checkStrength(val) {
+  const bar = document.getElementById('strengthBar');
+  const txt = document.getElementById('strengthText');
+  bar.className = 'strength-bar';
+  if (!val) { txt.textContent = 'Enter a password'; txt.style.color = '#94a3b8'; return; }
+  let score = 0;
+  if (val.length >= 8) score++;
+  if (/[A-Z]/.test(val)) score++;
+  if (/[0-9]/.test(val)) score++;
+  if (/[^A-Za-z0-9]/.test(val)) score++;
+  const levels = ['', 's1', 's2', 's3', 's4'];
+  const labels = ['', 'Weak', 'Fair', 'Good', 'Strong'];
+  const colors = ['', '#ef4444', '#f97316', '#eab308', '#22c55e'];
+  bar.classList.add(levels[score]);
+  txt.textContent = labels[score];
+  txt.style.color = colors[score];
+  checkMatch();
 }
-document.querySelector('form').addEventListener('submit', function(e) {
-  const p = document.getElementById('password');
-  const cp = document.getElementById('confirm_password');
-  if (p.value !== cp.value) {
-    e.preventDefault();
-    alert('Passwords do not match. Please try again.');
-    cp.focus();
+
+function checkMatch() {
+  const p    = document.getElementById('password').value;
+  const c    = document.getElementById('confirmPassword').value;
+  const hint = document.getElementById('matchHint');
+  const ci   = document.getElementById('confirmPassword');
+  if (!c) { hint.innerHTML = ''; ci.className = ''; return; }
+  if (p === c) {
+    hint.innerHTML = '<i class="fa-solid fa-circle-check" style="color:var(--green)"></i> Passwords match';
+    hint.style.color = 'var(--green)';
+    ci.className = 'ok';
+  } else {
+    hint.innerHTML = '<i class="fa-solid fa-circle-xmark" style="color:var(--red)"></i> Passwords do not match';
+    hint.style.color = 'var(--red)';
+    ci.className = 'error';
   }
+}
+
+/* ── Step navigation ───────────────────────────── */
+function goToStep(n) {
+  hideError();
+  [1, 2, 3].forEach(i => {
+    document.getElementById('panel' + i).classList.toggle('active', i === n);
+    const dot   = document.getElementById('stepDot' + i);
+    const dotEl = document.getElementById('dot' + i);
+    dot.classList.remove('active', 'done');
+    if (i < n)  { dot.classList.add('done');   dotEl.innerHTML = '<i class="fa-solid fa-check" style="font-size:0.65rem;"></i>'; }
+    if (i === n) { dot.classList.add('active'); dotEl.textContent = i; }
+    if (i > n)  { dotEl.textContent = i; }
+  });
+}
+
+function goToStep2() {
+  hideError();
+  const first = document.getElementById('first_name').value.trim();
+  const last  = document.getElementById('last_name').value.trim();
+  const email = document.getElementById('emailInput').value.trim();
+  const pass  = document.getElementById('password').value;
+  const conf  = document.getElementById('confirmPassword').value;
+  const role  = document.getElementById('role').value;
+  const terms = document.getElementById('terms').checked;
+
+  if (!first)  return showError('Please enter your first name.');
+  if (!last)   return showError('Please enter your last name.');
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+               return showError('Please enter a valid email address.');
+  if (!pass)   return showError('Please create a password.');
+  if (pass.length < 8) return showError('Password must be at least 8 characters.');
+  if (pass !== conf)   return showError('Passwords do not match.');
+  if (!role)   return showError('Please select your role.');
+  if (!terms)  return showError('You must agree to the Terms of Service and Privacy Policy.');
+
+  goToStep(2);
+}
+
+function goToStep3() {
+  hideError();
+  document.getElementById('verifyEmailDisplay').textContent =
+    document.getElementById('emailInput').value.trim();
+  goToStep(3);
+  startOtpTimer();
+  setTimeout(() => document.getElementById('otp1').focus(), 300);
+}
+
+/* ── OTP inputs ────────────────────────────────── */
+document.querySelectorAll('.otp-input').forEach((input, idx, arr) => {
+  input.addEventListener('input', function () {
+    this.value = this.value.replace(/[^0-9]/g, '');
+    if (this.value && idx < arr.length - 1) arr[idx + 1].focus();
+    this.classList.toggle('filled', !!this.value);
+  });
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Backspace' && !this.value && idx > 0) {
+      arr[idx - 1].focus();
+      arr[idx - 1].value = '';
+      arr[idx - 1].classList.remove('filled');
+    }
+  });
+  input.addEventListener('paste', function (e) {
+    e.preventDefault();
+    const pasted = (e.clipboardData || window.clipboardData).getData('text').replace(/[^0-9]/g, '').slice(0, 6);
+    pasted.split('').forEach((ch, i) => {
+      if (arr[i]) { arr[i].value = ch; arr[i].classList.add('filled'); }
+    });
+    const next = arr[Math.min(pasted.length, arr.length - 1)];
+    if (next) next.focus();
+  });
 });
+
+function getOtpValue() {
+  return ['otp1','otp2','otp3','otp4','otp5','otp6']
+    .map(id => document.getElementById(id).value).join('');
+}
+
+/* ── OTP timer ─────────────────────────────────── */
+let timerInterval = null;
+
+function startOtpTimer(seconds = 600) {
+  clearInterval(timerInterval);
+  let remaining = seconds;
+  updateTimerDisplay(remaining);
+  const resendBtn = document.getElementById('resendBtn');
+  resendBtn.disabled = true;
+  resendBtn.style.opacity = '0.5';
+
+  timerInterval = setInterval(() => {
+    remaining--;
+    updateTimerDisplay(remaining);
+    if (remaining <= 0) {
+      clearInterval(timerInterval);
+      document.getElementById('otpTimer').textContent = 'Expired';
+      resendBtn.disabled = false;
+      resendBtn.style.opacity = '1';
+    }
+  }, 1000);
+}
+
+function updateTimerDisplay(s) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  document.getElementById('otpTimer').textContent =
+    String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+}
+
+function resendCode() {
+  showToast('Verification code resent!');
+  startOtpTimer();
+}
+
+/* ── Form submit → Flask /signup ───────────────── */
+function submitForm() {
+  hideError();
+  const otp = getOtpValue();
+  if (otp.length < 6) return showError('Please enter the complete 6-digit verification code.');
+
+  // Combine first + last name into the single `name` field Flask expects
+  const firstName = document.getElementById('first_name').value.trim();
+  const lastName  = document.getElementById('last_name').value.trim();
+
+  document.getElementById('h_name').value             = (firstName + ' ' + lastName).trim();
+  document.getElementById('h_email').value            = document.getElementById('emailInput').value.trim();
+  document.getElementById('h_password').value         = document.getElementById('password').value;
+  document.getElementById('h_confirm_password').value = document.getElementById('confirmPassword').value;
+
+  const btn = document.getElementById('verifyBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating account...';
+
+  document.getElementById('signupForm').submit();
+}
+
+/* ── Toast ─────────────────────────────────────── */
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:0.6rem 1.2rem;border-radius:8px;font-size:0.85rem;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.2);';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
 </script>
 </body>
 </html>
