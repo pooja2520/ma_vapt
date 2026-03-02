@@ -3,6 +3,8 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/reports.css') }}">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 {% endblock %}
 {% block body %}
 <div id="_main" style="padding-top:56px;margin-left:220px;min-height:100vh;">
@@ -32,13 +34,36 @@
         </h1>
         <p id="rGenerated" style="font-size:.78rem;color:var(--text-muted);margin-top:.25rem;"></p>
       </div>
-      <div style="display:flex;align-items:center;gap:.5rem;">
+      <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
         <!-- Live clock -->
         <span id="liveClock" style="font-size:.72rem;color:var(--text-muted);font-family:'Courier New',monospace;background:var(--blue-light,#eff6ff);padding:.25rem .6rem;border-radius:6px;border:1px solid var(--border);">
           <i class="fa-regular fa-clock"></i> --:--:--
         </span>
-        <a id="dlBtn" href="#" class="btn btn-p"><i class="fa-solid fa-download"></i> Download Report</a>
+        <!-- Live indicator -->
+        <span style="font-size:.72rem;color:#16a34a;display:flex;align-items:center;gap:.3rem;">
+          <span style="width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;animation:rpulse 2s infinite;"></span> Live
+        </span>
+        <!-- PDF Download button -->
+        <button onclick="downloadPDF()" class="btn btn-p" id="pdfBtn">
+          <i class="fa-solid fa-file-pdf"></i> Download PDF
+        </button>
+        <!-- Excel Download button -->
+        <a id="dlBtn" href="#" class="btn btn-o"><i class="fa-solid fa-download"></i> Download Excel</a>
       </div>
+    </div>
+
+    <!-- Resolution Progress Bar -->
+    <div id="resolutionBar" style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:.875rem 1rem;margin-bottom:1rem;display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;">
+        <span style="font-size:.82rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:.4rem;">
+          <i class="fa-solid fa-shield-halved" style="color:var(--blue)"></i> Resolution Progress
+        </span>
+        <span id="resolutionPct" style="font-size:.9rem;font-weight:700;color:#16a34a;"></span>
+      </div>
+      <div style="height:10px;background:var(--border);border-radius:8px;overflow:hidden;">
+        <div id="resolutionFill" style="height:100%;background:linear-gradient(90deg,#2563EB,#22c55e);border-radius:8px;transition:width .6s ease;width:0%;"></div>
+      </div>
+      <div style="display:flex;gap:1rem;margin-top:.6rem;flex-wrap:wrap;" id="resolutionMeta"></div>
     </div>
 
     <!-- Severity summary cards -->
@@ -67,11 +92,37 @@
       </div>
     </div>
 
-    <!-- Findings table -->
+    <!-- Fixed Vulnerabilities Section (live) -->
+    <div class="card" id="fixedSection" style="display:none;">
+      <div class="ch" style="display:flex;justify-content:space-between;align-items:center;">
+        <span><i class="fa-solid fa-circle-check" style="color:#22c55e"></i> Fixed Vulnerabilities</span>
+        <span id="fixedCount" style="font-size:.72rem;color:rgba(255,255,255,.85);font-weight:600;background:rgba(34,197,94,.2);padding:.15rem .5rem;border-radius:5px;"></span>
+      </div>
+      <div class="cb" style="padding:0;overflow-x:auto;">
+        <table class="dt">
+          <thead>
+            <tr>
+              <th>#</th><th>Vulnerability</th><th>Severity</th><th>Path</th><th>Fixed At</th>
+            </tr>
+          </thead>
+          <tbody id="fixedTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- All Findings table -->
     <div class="card">
       <div class="ch" style="display:flex;justify-content:space-between;align-items:center;">
-        <span><i class="fa-solid fa-bug"></i> Findings</span>
-        <span id="findingCount" style="font-size:.72rem;color: #fff;"></span>
+        <span><i class="fa-solid fa-bug"></i> All Findings</span>
+        <div style="display:flex;align-items:center;gap:.625rem;">
+          <!-- Filter tabs -->
+          <div style="display:flex;gap:.25rem;">
+            <button class="filter-tab active" onclick="setFilter('all', this)" data-filter="all">All</button>
+            <button class="filter-tab" onclick="setFilter('vulnerable', this)" data-filter="vulnerable">Vulnerable</button>
+            <button class="filter-tab" onclick="setFilter('fixed', this)" data-filter="fixed">Fixed</button>
+          </div>
+          <span id="findingCount" style="font-size:.72rem;color:#fff;font-weight:600;"></span>
+        </div>
       </div>
       <div class="cb" style="padding:0;overflow-x:auto;">
         <table class="dt">
@@ -94,20 +145,34 @@
 
 <style>
   .sum-grid { display:grid;grid-template-columns:repeat(5,1fr);gap:.75rem;margin-bottom:1rem; }
-  .sum-card { background:#fff;border:1px solid var(--border);border-radius:10px;padding:.875rem;text-align:center; }
+  .sum-card { background:#fff;border:1px solid var(--border);border-radius:10px;padding:.875rem;text-align:center;transition:transform .2s; }
+  .sum-card:hover { transform:translateY(-2px); }
   .sum-card strong { font-size:1.75rem;font-weight:700;display:block; }
   .sum-card small  { font-size:.72rem;color:var(--text-muted); }
+
+  /* Fixed badge on sum-card */
+  .sum-card .fixed-sub { font-size:.65rem;color:#16a34a;font-weight:600;display:block;margin-top:.1rem; }
+
   /* Severity badges */
   .bx  { display:inline-flex;align-items:center;gap:.25rem;padding:.2rem .55rem;border-radius:6px;font-size:.72rem;font-weight:700;border:1.5px solid; }
-  .bc  { background:#fff1f2;color:#be123c;border-color:#fda4af; }   /* Critical — red    */
-  .bh  { background:#fff7ed;color:#c2410c;border-color:#fdba74; }   /* High     — orange */
-  .bm  { background:#fefce8;color:#a16207;border-color:#fde047; }   /* Medium   — amber  */
-  .bl  { background:#f0fdf4;color:#15803d;border-color:#86efac; }   /* Low      — green  */
-  .bi  { background:#eff6ff;color:#1d4ed8;border-color:#93c5fd; }   /* Info     — blue   */
-  .bac { background:#f0fdf4;color:#15803d;border-color:#86efac; }   /* Completed/Secure  */
-  .bop { background:#fff1f2;color:#be123c;border-color:#fda4af; }   /* Vulnerable/Open   */
-  .bf  { background:#f0fdf4;color:#15803d;border-color:#86efac; }   /* Fixed             */
-  .bx-err { background:#fef3c7;color:#92400e;border-color:#fcd34d; } /* Error — amber    */
+  .bc  { background:#fff1f2;color:#be123c;border-color:#fda4af; }
+  .bh  { background:#fff7ed;color:#c2410c;border-color:#fdba74; }
+  .bm  { background:#fefce8;color:#a16207;border-color:#fde047; }
+  .bl  { background:#f0fdf4;color:#15803d;border-color:#86efac; }
+  .bi  { background:#eff6ff;color:#1d4ed8;border-color:#93c5fd; }
+  .bac { background:#f0fdf4;color:#15803d;border-color:#86efac; }
+  .bop { background:#fff1f2;color:#be123c;border-color:#fda4af; }
+  .bf  { background:#f0fdf4;color:#15803d;border-color:#86efac; }
+  .bx-err { background:#fef3c7;color:#92400e;border-color:#fcd34d; }
+
+  /* Filter tabs */
+  .filter-tab { padding:.2rem .6rem;border:1.5px solid var(--border);border-radius:6px;background:#fff;font-size:.72rem;font-weight:600;cursor:pointer;color:var(--text-muted);transition:all .2s; }
+  .filter-tab.active { background:var(--blue);color:#fff;border-color:var(--blue); }
+  .filter-tab:hover:not(.active) { border-color:var(--blue);color:var(--blue); }
+
+  /* Fixed row highlight */
+  tr.row-fixed td { background:#f0fdf4 !important; }
+
   @media(max-width:700px){ .sum-grid{grid-template-columns:repeat(2,1fr);} }
 </style>
 {% endblock %}
@@ -117,6 +182,9 @@ initLayout('/reports');
 
 const reportId = parseInt(window.location.pathname.split('/').pop());
 let chartInstance = null;
+let allVulns = [];
+let currentFilter = 'all';
+let reportData = null;
 
 // Live clock
 function updateClock() {
@@ -143,25 +211,22 @@ function sevClass(sev) {
     if(sev==='high')     return 'bh';
     if(sev==='medium')   return 'bm';
     if(sev==='low')      return 'bl';
-    return 'bi'; // info — blue
+    return 'bi';
 }
 function stClass(st) {
     st = (st||'').toLowerCase();
-    if(st==='fixed'||st==='secure'||st==='complete'||st==='success') return 'bac';
+    if(st==='fixed'||st==='secure'||st==='complete'||st==='success') return 'bf';
     if(st==='vulnerable'||st==='open') return 'bop';
     if(st==='error') return 'bx-err';
     return 'bac';
 }
-
 function sevIcon(sev) {
     sev = (sev||'').toLowerCase();
-    if(sev==='critical'||sev==='high'||sev==='medium') return 'fa-triangle-exclamation';
-    return 'fa-shield-halved'; // low & info
+    return (sev==='critical'||sev==='high'||sev==='medium') ? 'fa-triangle-exclamation' : 'fa-shield-halved';
 }
 
 const SEV_ORDER = {critical:0,high:1,medium:2,low:3,info:4};
 
-// OWASP rough mapping
 function owaspLabel(test) {
     const t = (test||'').toLowerCase();
     if (t.includes('sql') || t.includes('inject') || t.includes('xss') || t.includes('command')) return 'A03:2021';
@@ -172,6 +237,146 @@ function owaspLabel(test) {
     if (t.includes('xxe'))    return 'A05:2021';
     if (t.includes('crypto') || t.includes('tls') || t.includes('ssl')) return 'A02:2021';
     return '—';
+}
+
+function setFilter(filter, btn) {
+    currentFilter = filter;
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    renderFindingsTable();
+}
+
+function renderFindingsTable() {
+    const SKIP = ['dns resolution','ping test','port scan','service detection','vulnerability scan'];
+    let vulns = allVulns.filter(v => !SKIP.includes((v.Test||'').toLowerCase().trim()));
+
+    if (currentFilter === 'vulnerable') {
+        vulns = vulns.filter(v => (v._display_status||v.Status||'').toLowerCase() === 'vulnerable');
+    } else if (currentFilter === 'fixed') {
+        vulns = vulns.filter(v => {
+            const st = (v._display_status||v.Status||'').toLowerCase();
+            return st === 'fixed' || v._fixed;
+        });
+    }
+
+    const sorted = [...vulns].sort((a,b) => {
+        const sa = SEV_ORDER[(a.Severity||'info').toLowerCase()] ?? 4;
+        const sb = SEV_ORDER[(b.Severity||'info').toLowerCase()] ?? 4;
+        return sa - sb;
+    });
+
+    document.getElementById('findingCount').textContent = `${sorted.length} finding${sorted.length!==1?'s':''}`;
+    document.getElementById('findingsTbody').innerHTML = sorted.length
+        ? sorted.map((v, i) => {
+            const sev  = v.Severity || 'Info';
+            const st   = v._display_status || v.Status || 'Unknown';
+            const isFixed = st.toLowerCase() === 'fixed' || v._fixed;
+            const path = (v['Vulnerable Path'] && v['Vulnerable Path']!=='N/A' && v['Vulnerable Path']!=='—')
+                            ? v['Vulnerable Path'] : (v.target_url || '—');
+            const short = path.replace(/https?:\/\//,'');
+            const owasp = owaspLabel(v.Test);
+            return `<tr class="${isFixed ? 'row-fixed' : ''}">
+                <td style="font-size:.72rem;color:var(--text-muted);width:32px">${i+1}</td>
+                <td>
+                    <a href="/vulnerabilities/${v.id}" style="font-weight:600;color:var(--text);text-decoration:none;">
+                        ${v.Test || '—'}
+                        ${isFixed ? '<span style="margin-left:.35rem;font-size:.6rem;background:#dcfce7;color:#16a34a;border:1px solid #86efac;padding:.1rem .3rem;border-radius:4px;font-weight:700;">FIXED</span>' : ''}
+                    </a>
+                    <div style="font-size:.7rem;color:var(--text-muted);margin-top:.1rem;max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                        ${(v.Finding||'').substring(0,80)}${v.Finding&&v.Finding.length>80?'…':''}
+                    </div>
+                </td>
+                <td><span class="bx ${sevClass(sev)}"><i class="fa-solid ${sevIcon(sev)}"></i> ${sev}</span></td>
+                <td style="font-size:.72rem;color:var(--text-muted)">${owasp}</td>
+                <td><span class="bx ${stClass(st)}"><i class="fa-solid ${isFixed?'fa-circle-check':'fa-circle-exclamation'}"></i> ${st}</span></td>
+                <td style="max-width:180px;">
+                    <span title="${path}" style="font-size:.74rem;color:var(--text);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                        ${short}
+                    </span>
+                </td>
+            </tr>`;
+        }).join('')
+        : `<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-muted);">No ${currentFilter !== 'all' ? currentFilter + ' ' : ''}vulnerabilities found.</td></tr>`;
+}
+
+function renderFixedSection(vulns) {
+    const SKIP = ['dns resolution','ping test','port scan','service detection','vulnerability scan'];
+    const fixed = vulns.filter(v => {
+        if (SKIP.includes((v.Test||'').toLowerCase().trim())) return false;
+        const st = (v._display_status||v.Status||'').toLowerCase();
+        return st === 'fixed' || v._fixed;
+    });
+
+    const fixedSection = document.getElementById('fixedSection');
+    const fixedTbody   = document.getElementById('fixedTbody');
+    const fixedCount   = document.getElementById('fixedCount');
+
+    if (fixed.length === 0) {
+        fixedSection.style.display = 'none';
+        return;
+    }
+
+    fixedSection.style.display = 'block';
+    fixedCount.textContent = `${fixed.length} fixed`;
+
+    const sorted = [...fixed].sort((a,b) => {
+        const sa = SEV_ORDER[(a.Severity||'info').toLowerCase()] ?? 4;
+        const sb = SEV_ORDER[(b.Severity||'info').toLowerCase()] ?? 4;
+        return sa - sb;
+    });
+
+    fixedTbody.innerHTML = sorted.map((v, i) => {
+        const sev  = v.Severity || 'Info';
+        const path = (v['Vulnerable Path'] && v['Vulnerable Path']!=='N/A' && v['Vulnerable Path']!=='—')
+                        ? v['Vulnerable Path'] : (v.target_url || '—');
+        const short = path.replace(/https?:\/\//,'').split(',')[0].trim();
+        return `<tr class="row-fixed">
+            <td style="font-size:.72rem;color:var(--text-muted);width:32px">${i+1}</td>
+            <td>
+                <a href="/vulnerabilities/${v.id}" style="font-weight:600;color:var(--text);text-decoration:none;">
+                    ${v.Test || '—'}
+                </a>
+                <div style="font-size:.7rem;color:var(--text-muted);margin-top:.1rem;max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                    ${(v.Finding||'').substring(0,70)}${v.Finding&&v.Finding.length>70?'…':''}
+                </div>
+            </td>
+            <td><span class="bx ${sevClass(sev)}"><i class="fa-solid ${sevIcon(sev)}"></i> ${sev}</span></td>
+            <td style="max-width:160px;font-size:.74rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${path}">${short}</td>
+            <td style="font-size:.72rem;color:var(--text-muted);">${v.scan_date || '—'}</td>
+        </tr>`;
+    }).join('');
+}
+
+function renderResolutionBar(vulns) {
+    const SKIP = ['dns resolution','ping test','port scan','service detection','vulnerability scan'];
+    const actionable = vulns.filter(v => !SKIP.includes((v.Test||'').toLowerCase().trim()));
+    const total   = actionable.length;
+    if (total === 0) { document.getElementById('resolutionBar').style.display = 'none'; return; }
+
+    const fixedArr = actionable.filter(v => {
+        const st = (v._display_status||v.Status||'').toLowerCase();
+        return st === 'fixed' || v._fixed;
+    });
+    const fixed     = fixedArr.length;
+    const vulnCount = actionable.filter(v => (v._display_status||v.Status||'').toLowerCase() === 'vulnerable').length;
+    const pct       = Math.round((fixed / total) * 100);
+
+    document.getElementById('resolutionBar').style.display = 'block';
+    document.getElementById('resolutionPct').textContent   = `${pct}% resolved`;
+    document.getElementById('resolutionFill').style.width  = `${pct}%`;
+    document.getElementById('resolutionMeta').innerHTML = `
+        <span style="font-size:.72rem;color:var(--text-muted);display:flex;align-items:center;gap:.3rem;">
+            <span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block"></span>
+            ${fixed} Fixed
+        </span>
+        <span style="font-size:.72rem;color:var(--text-muted);display:flex;align-items:center;gap:.3rem;">
+            <span style="width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block"></span>
+            ${vulnCount} Vulnerable
+        </span>
+        <span style="font-size:.72rem;color:var(--text-muted);display:flex;align-items:center;gap:.3rem;">
+            <span style="width:8px;height:8px;border-radius:50%;background:#94a3b8;display:inline-block"></span>
+            ${total} Total
+        </span>`;
 }
 
 async function loadReport() {
@@ -186,10 +391,10 @@ async function loadReport() {
         }
 
         const r   = data.report;
+        reportData = r;
         const vc  = r.vuln_counts || {};
-        // Filter out noise-only tests from findings
         const SKIP = ['dns resolution','ping test','port scan','service detection','vulnerability scan'];
-        const vulns = (r.vulnerabilities || []).filter(v => !SKIP.includes((v.Test||'').toLowerCase().trim()));
+        allVulns = (r.vulnerabilities || []).filter(v => !SKIP.includes((v.Test||'').toLowerCase().trim()));
 
         // Show main content
         document.getElementById('loadingState').style.display  = 'none';
@@ -201,24 +406,33 @@ async function loadReport() {
         document.getElementById('rGenerated').textContent =
             `Generated: ${formatDateTime(r.scan_time || r.date)}`;
 
-        // Download button href
+        // Download buttons
         document.getElementById('dlBtn').href = `/download-report/${reportId}`;
 
-        // Summary cards — 5 severities with correct colors
+        // Compute live fixed counts per severity
+        const fixedBySev = {critical:0,high:0,medium:0,low:0,info:0};
+        allVulns.forEach(v => {
+            const st  = (v._display_status||v.Status||'').toLowerCase();
+            const sev = (v.Severity||'info').toLowerCase();
+            if ((st==='fixed'||v._fixed) && sev in fixedBySev) fixedBySev[sev]++;
+        });
+
+        // Summary cards — 5 severities with fixed sub-count
         document.getElementById('sumGrid').innerHTML = [
-            ['Critical', vc.critical||0, '#be123c'],
-            ['High',     vc.high||0,     '#c2410c'],
-            ['Medium',   vc.medium||0,   '#a16207'],
-            ['Low',      vc.low||0,      '#15803d'],
-            ['Info',     vc.info||0,     '#1d4ed8'],
-        ].map(([label, val, col]) =>
+            ['Critical', vc.critical||0, '#be123c', fixedBySev.critical],
+            ['High',     vc.high||0,     '#c2410c', fixedBySev.high],
+            ['Medium',   vc.medium||0,   '#a16207', fixedBySev.medium],
+            ['Low',      vc.low||0,      '#15803d', fixedBySev.low],
+            ['Info',     vc.info||0,     '#1d4ed8', fixedBySev.info],
+        ].map(([label, val, col, fx]) =>
             `<div class="sum-card">
                 <strong style="color:${col}">${val}</strong>
                 <small>${label}</small>
+                ${fx > 0 ? `<span class="fixed-sub">✓ ${fx} fixed</span>` : ''}
             </div>`
         ).join('');
 
-        // Chart — 5 severities: Critical/High/Medium/Low/Info with correct colors
+        // Chart
         const chartData   = [vc.critical||0, vc.high||0, vc.medium||0, vc.low||0, vc.info||0];
         const chartColors = ['#be123c','#c2410c','#a16207','#16a34a','#2563eb'];
         if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
@@ -239,14 +453,16 @@ async function loadReport() {
         }
 
         // Scan info table
-        const targetHost = (r.target_url||'').replace('https://','').replace('http://','');
+        const totalFixed = allVulns.filter(v => (v._display_status||v.Status||'').toLowerCase()==='fixed'||v._fixed).length;
+        const fixedPct   = allVulns.length > 0 ? Math.round((totalFixed / allVulns.length) * 100) : 0;
         document.getElementById('scanInfoTable').innerHTML = [
-            ['Target',     r.target_url || '—'],
-            ['Scan Type',  'Full VAPT'],
-            ['Duration',   r.duration || '—'],
-            ['Total Findings', r.total || 0],
-            ['Status',     `<span class="bx bac"><i class="fa-solid fa-circle-check"></i> ${r.status}</span>`],
-            ['Scan Time',  formatDateTime(r.scan_time || r.date)],
+            ['Target',        r.target_url || '—'],
+            ['Scan Type',     'Full VAPT'],
+            ['Duration',      r.duration || '—'],
+            ['Total Findings',r.total || 0],
+            ['Fixed',         `<span class="bx bf"><i class="fa-solid fa-circle-check"></i> ${totalFixed} (${fixedPct}%)</span>`],
+            ['Status',        `<span class="bx bac"><i class="fa-solid fa-circle-check"></i> ${r.status}</span>`],
+            ['Scan Time',     formatDateTime(r.scan_time || r.date)],
         ].map(([k,v]) =>
             `<tr>
                 <td style="color:var(--text-muted);padding:.3rem 0;width:130px">${k}</td>
@@ -254,43 +470,14 @@ async function loadReport() {
             </tr>`
         ).join('');
 
-        // Findings table — sorted by severity: Critical → High → Medium → Low → Info
-        const sorted = [...vulns].sort((a,b) => {
-            const sa = SEV_ORDER[(a.Severity||'info').toLowerCase()] ?? 4;
-            const sb = SEV_ORDER[(b.Severity||'info').toLowerCase()] ?? 4;
-            return sa - sb;
-        });
+        // Resolution progress bar
+        renderResolutionBar(allVulns);
 
-        document.getElementById('findingCount').textContent = `${vulns.length} finding${vulns.length!==1?'s':''}`;
-        document.getElementById('findingsTbody').innerHTML = sorted.length
-            ? sorted.map((v, i) => {
-                const sev   = v.Severity || 'Info';
-                const st    = v._display_status || v.Status || 'Unknown';
-                const path  = (v['Vulnerable Path'] && v['Vulnerable Path']!=='N/A' && v['Vulnerable Path']!=='—')
-                                ? v['Vulnerable Path'] : (v.target_url || '—');
-                const short = path.replace(/https?:\/\//,'');
-                const owasp = owaspLabel(v.Test);
-                return `<tr>
-                    <td style="font-size:.72rem;color:var(--text-muted);width:32px">${i+1}</td>
-                    <td>
-                        <a href="/vulnerabilities/${v.id}" style="font-weight:600;color:var(--text);text-decoration:none;">
-                            ${v.Test || '—'}
-                        </a>
-                        <div style="font-size:.7rem;color:var(--text-muted);margin-top:.1rem;max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                            ${(v.Finding||'').substring(0,80)}${v.Finding&&v.Finding.length>80?'…':''}
-                        </div>
-                    </td>
-                    <td><span class="bx ${sevClass(sev)}"><i class="fa-solid ${sevIcon(sev)}"></i> ${sev}</span></td>
-                    <td style="font-size:.72rem;color:var(--text-muted)">${owasp}</td>
-                    <td><span class="bx ${stClass(st)}"><i class="fa-solid ${st.toLowerCase()==='vulnerable'?'fa-circle-exclamation':st.toLowerCase()==='fixed'?'fa-circle-check':st.toLowerCase()==='error'?'fa-circle-xmark':'fa-circle-check'}"></i> ${st}</span></td>
-                    <td style="max-width:180px;">
-                        <span title="${path}" style="font-size:.74rem;color:var(--text);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                            ${short}
-                        </span>
-                    </td>
-                </tr>`;
-            }).join('')
-            : `<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-muted);">No vulnerability data available for this report.</td></tr>`;
+        // Fixed vulnerabilities section
+        renderFixedSection(allVulns);
+
+        // Findings table
+        renderFindingsTable();
 
         document.getElementById('lastRefresh').textContent =
             `Last refreshed: ${new Date().toLocaleTimeString()}`;
@@ -300,6 +487,233 @@ async function loadReport() {
         document.getElementById('loadingState').style.display = 'none';
         document.getElementById('errorState').style.display   = 'block';
     }
+}
+
+// ─── PDF Download ──────────────────────────────────────────────────────────
+async function downloadPDF() {
+    const btn = document.getElementById('pdfBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating...';
+
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+        const r   = reportData;
+        const vc  = r ? (r.vuln_counts || {}) : {};
+        const SKIP = ['dns resolution','ping test','port scan','service detection','vulnerability scan'];
+
+        // ── Page 1: Cover ──────────────────────────────────────────────────
+        // Header bar
+        doc.setFillColor(37, 99, 235);
+        doc.rect(0, 0, 210, 28, 'F');
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(18);
+        doc.setFont('helvetica', 'bold');
+        doc.text('VAPT Scanner Pro', 14, 12);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Security Assessment Report', 14, 19);
+        doc.setFontSize(8);
+        doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, 14, 25);
+
+        // Report name
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        const rName = (r ? r.name : 'Security Report') || 'Security Report';
+        doc.text(rName, 14, 42);
+
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 116, 139);
+        const target = (r ? r.target_url : '') || '—';
+        doc.text(`Target: ${target}`, 14, 50);
+        const scanTime = r ? formatDateTime(r.scan_time || r.date) : '—';
+        doc.text(`Scan Time: ${scanTime}`, 14, 56);
+
+        // Divider
+        doc.setDrawColor(226, 232, 240);
+        doc.line(14, 62, 196, 62);
+
+        // Summary boxes
+        const sevItems = [
+            { label: 'Critical', val: vc.critical||0, r:190, g:18, b:60 },
+            { label: 'High',     val: vc.high||0,     r:194, g:65, b:12 },
+            { label: 'Medium',   val: vc.medium||0,   r:161, g:98, b:7  },
+            { label: 'Low',      val: vc.low||0,      r:21,  g:128,b:61 },
+            { label: 'Info',     val: vc.info||0,     r:29,  g:78, b:216 },
+        ];
+
+        let bx = 14;
+        sevItems.forEach(s => {
+            doc.setFillColor(248, 250, 252);
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(bx, 67, 36, 22, 3, 3, 'FD');
+            doc.setTextColor(s.r, s.g, s.b);
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'bold');
+            doc.text(String(s.val), bx + 18, 80, { align: 'center' });
+            doc.setTextColor(100, 116, 139);
+            doc.setFontSize(7.5);
+            doc.setFont('helvetica', 'normal');
+            doc.text(s.label, bx + 18, 86, { align: 'center' });
+            bx += 38;
+        });
+
+        // Resolution progress
+        const totalFixed = allVulns.filter(v => (v._display_status||v.Status||'').toLowerCase()==='fixed'||v._fixed).length;
+        const totalVulns = allVulns.length;
+        const fixedPct   = totalVulns > 0 ? Math.round((totalFixed / totalVulns) * 100) : 0;
+
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Resolution Progress', 14, 103);
+
+        doc.setFillColor(226, 232, 240);
+        doc.roundedRect(14, 107, 182, 5, 2, 2, 'F');
+        if (fixedPct > 0) {
+            doc.setFillColor(34, 197, 94);
+            doc.roundedRect(14, 107, 182 * fixedPct / 100, 5, 2, 2, 'F');
+        }
+        doc.setTextColor(100, 116, 139);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${fixedPct}% resolved — ${totalFixed} fixed out of ${totalVulns} findings`, 14, 118);
+
+        // ── Page 1 continued: Fixed Vulnerabilities ───────────────────────
+        const fixedVulns = allVulns.filter(v => {
+            const st = (v._display_status||v.Status||'').toLowerCase();
+            return st === 'fixed' || v._fixed;
+        });
+
+        if (fixedVulns.length > 0) {
+            doc.setTextColor(30, 41, 59);
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`Fixed Vulnerabilities (${fixedVulns.length})`, 14, 130);
+
+            const fixedRows = fixedVulns.slice(0, 50).map((v, i) => {
+                const path = (v['Vulnerable Path'] && v['Vulnerable Path']!=='N/A') ? v['Vulnerable Path'] : (v.target_url||'—');
+                const shortPath = path.replace(/https?:\/\//,'').substring(0,35);
+                return [
+                    i+1,
+                    (v.Test||'—').substring(0, 40),
+                    v.Severity||'Info',
+                    shortPath,
+                    '✓ Fixed'
+                ];
+            });
+
+            doc.autoTable({
+                startY: 134,
+                head: [['#', 'Vulnerability', 'Severity', 'Path', 'Status']],
+                body: fixedRows,
+                theme: 'grid',
+                styles: { fontSize: 7.5, cellPadding: 2.5 },
+                headStyles: { fillColor: [21, 128, 61], textColor: 255, fontStyle: 'bold' },
+                columnStyles: { 0: { cellWidth: 8 }, 2: { cellWidth: 18 }, 4: { cellWidth: 18 } },
+                alternateRowStyles: { fillColor: [240, 253, 244] },
+                didParseCell: (data) => {
+                    if (data.row.section === 'body' && data.column.index === 4) {
+                        data.cell.styles.textColor = [21, 128, 61];
+                        data.cell.styles.fontStyle = 'bold';
+                    }
+                }
+            });
+        }
+
+        // ── Page 2+: All Findings table ───────────────────────────────────
+        doc.addPage();
+
+        // Page header
+        doc.setFillColor(37, 99, 235);
+        doc.rect(0, 0, 210, 14, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.text('All Findings', 14, 9);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${rName}`, 196, 9, { align: 'right' });
+
+        const allRows = allVulns.filter(v => !SKIP.includes((v.Test||'').toLowerCase().trim()))
+            .sort((a,b) => {
+                const sa = SEV_ORDER[(a.Severity||'info').toLowerCase()] ?? 4;
+                const sb = SEV_ORDER[(b.Severity||'info').toLowerCase()] ?? 4;
+                return sa - sb;
+            })
+            .slice(0, 500)
+            .map((v, i) => {
+                const st   = v._display_status || v.Status || 'Unknown';
+                const path = (v['Vulnerable Path'] && v['Vulnerable Path']!=='N/A') ? v['Vulnerable Path'] : (v.target_url||'—');
+                return [
+                    i+1,
+                    (v.Test||'—').substring(0, 38),
+                    v.Severity||'Info',
+                    owaspLabel(v.Test),
+                    st,
+                    path.replace(/https?:\/\//,'').substring(0,28)
+                ];
+            });
+
+        doc.autoTable({
+            startY: 18,
+            head: [['#', 'Vulnerability', 'Severity', 'OWASP', 'Status', 'Path']],
+            body: allRows,
+            theme: 'striped',
+            styles: { fontSize: 7, cellPadding: 2 },
+            headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
+            columnStyles: {
+                0: { cellWidth: 7 },
+                2: { cellWidth: 17 },
+                3: { cellWidth: 18 },
+                4: { cellWidth: 20 },
+            },
+            didParseCell: (data) => {
+                if (data.row.section === 'body') {
+                    const st = (data.row.raw[4]||'').toLowerCase();
+                    if (st === 'fixed') {
+                        data.cell.styles.textColor = data.column.index === 4 ? [21, 128, 61] : [30, 41, 59];
+                        if (data.column.index === 4) data.cell.styles.fontStyle = 'bold';
+                    }
+                    const sev = (data.row.raw[2]||'').toLowerCase();
+                    if (data.column.index === 2) {
+                        if (sev === 'critical') data.cell.styles.textColor = [190, 18, 60];
+                        else if (sev === 'high') data.cell.styles.textColor = [194, 65, 12];
+                        else if (sev === 'medium') data.cell.styles.textColor = [161, 98, 7];
+                        else if (sev === 'low') data.cell.styles.textColor = [21, 128, 61];
+                        data.cell.styles.fontStyle = 'bold';
+                    }
+                }
+            }
+        });
+
+        // Footer on each page
+        const pageCount = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            doc.setFillColor(248, 250, 252);
+            doc.rect(0, 287, 210, 10, 'F');
+            doc.setTextColor(148, 163, 184);
+            doc.setFontSize(7);
+            doc.setFont('helvetica', 'normal');
+            doc.text('VAPT Scanner Pro — Confidential Security Report', 14, 293);
+            doc.text(`Page ${i} of ${pageCount}`, 196, 293, { align: 'right' });
+        }
+
+        // Save
+        const fileName = `VAPT_Report_${reportId}_${new Date().toISOString().slice(0,10)}.pdf`;
+        doc.save(fileName);
+
+    } catch(err) {
+        console.error('PDF generation error:', err);
+        alert('PDF generation failed. Please try again.');
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Download PDF';
 }
 
 loadReport();
