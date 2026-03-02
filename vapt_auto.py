@@ -2380,7 +2380,7 @@ def test_path_owasp_complete(base_url, paths, auth_credentials=None):
     return all_results
 # ==================== MAIN SCAN FUNCTION ====================
 
-def perform_vapt_scan(target, auth_credentials=None, owasp_enabled=True, progress_callback=None, previously_fixed_vulns=None):
+def perform_vapt_scan(target, auth_credentials=None, owasp_enabled=True, progress_callback=None):
     """Main VAPT scan function with real-time progress updates"""
     try:
         print(f"\n{'='*70}")
@@ -2439,7 +2439,7 @@ def perform_vapt_scan(target, auth_credentials=None, owasp_enabled=True, progres
         if progress_callback:
             progress_callback({'type': 'phase', 'phase': 4, 'name': 'Generating Report'})
         
-        filename = generate_excel_report(target, all_results, discovered_paths, previously_fixed_vulns=previously_fixed_vulns or [])
+        filename = generate_excel_report(target, all_results, discovered_paths)
         
         print(f"\n{'='*70}")
         print(f"SCAN COMPLETE!")
@@ -2461,127 +2461,44 @@ def perform_vapt_scan(target, auth_credentials=None, owasp_enabled=True, progres
             'message': str(e)
         }
 
-def generate_excel_report(target, results, discovered_paths, previously_fixed_vulns=None):
-    """Generate Excel report with fixed status tracking, previously-fixed sheet, and remaining-vuln solutions."""
+def generate_excel_report(target, results, discovered_paths, live_fixed_statuses=None):
+    """Generate Excel report with live fixed/vulnerable status.
+
+    Parameters
+    ----------
+    target : str
+        The target URL that was scanned.
+    results : list[dict]
+        Raw scan result rows — each dict has keys Test, Severity, Status,
+        Finding, Vulnerable Path, Remediation, Resolution Steps.
+    discovered_paths : list[str]
+        URLs/paths discovered during crawling.
+    live_fixed_statuses : dict, optional
+        Mapping of  (test_name_lower, path_lower) → 'Fixed' | 'Vulnerable'
+        fetched live from the DB at download time.  When provided the Status
+        column is overridden with the live value so fixes are always reflected.
+    """
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     clean_target = target.replace('/', '_').replace(':', '_').replace('?', '_')
     filename = f"VAPT_Report_{clean_target}_{timestamp}.xlsx"
 
-    previously_fixed_vulns = previously_fixed_vulns or []
+    live_fixed_statuses = live_fixed_statuses or {}
 
-    # ── Build a lookup of previously fixed vulnerabilities by (test_name, path) ──
-    fixed_lookup = {}
-    for fv in previously_fixed_vulns:
-        test_name = (fv.get('Test') or '').strip().lower()
-        path      = (fv.get('Vulnerable Path') or fv.get('target_url') or '').strip().lower()
-        key = (test_name, path)
-        fixed_lookup[key] = fv
-
-    # ── Annotate current results with "Fixed in Previous Scan" status ──
-    for r in results:
-        test_name = (r.get('Test') or '').strip().lower()
-        path      = (r.get('Vulnerable Path') or r.get('target_url') or '').strip().lower()
-        key = (test_name, path)
-        if key in fixed_lookup:
-            r['_was_previously_fixed'] = True
-            r['Fixed Status'] = 'Previously Fixed ✓'
-        else:
-            r['_was_previously_fixed'] = False
-            r['Fixed Status'] = 'Vulnerable'
-
-    # ── Main scan results DataFrame ──
-    df = pd.DataFrame(results)
-    column_order = ['Test', 'Severity', 'Status', 'Fixed Status', 'Finding', 'Vulnerable Path', 'Remediation', 'Resolution Steps']
-    available_cols = [c for c in column_order if c in df.columns]
-    df = df[available_cols]
-
-    # ── Still-vulnerable items (not fixed in any previous scan) ──
-    still_vuln = [r for r in results
-                  if not r.get('_was_previously_fixed', False)
-                  and (r.get('Status') or '').lower() not in ('info', 'secure', 'complete', 'success')]
-    df_remaining = pd.DataFrame(still_vuln)
-    if not df_remaining.empty:
-        rem_cols = [c for c in ['Test', 'Severity', 'Vulnerable Path', 'Finding', 'Remediation', 'Resolution Steps'] if c in df_remaining.columns]
-        df_remaining = df_remaining[rem_cols]
-
-    # ── Previously fixed sheet ──
-    prev_fixed_rows = []
-    for fv in previously_fixed_vulns:
-        prev_fixed_rows.append({
-            'Vulnerability': fv.get('Test', '—'),
-            'Severity':      fv.get('Severity', '—'),
-            'Vulnerable Path': fv.get('Vulnerable Path') or fv.get('target_url', '—'),
-            'Finding':       fv.get('Finding', '—'),
-            'Remediation Applied': fv.get('Remediation', '—'),
-            'Resolution Steps Used': fv.get('Resolution Steps', '—'),
-            'Fixed Status':  '✓ Confirmed Fixed',
-        })
-    df_prev_fixed = pd.DataFrame(prev_fixed_rows) if prev_fixed_rows else pd.DataFrame()
-
-    # ── Summary stats ──
-    total         = len(results)
-    prev_fixed_ct = sum(1 for r in results if r.get('_was_previously_fixed'))
-    still_vuln_ct = len(still_vuln)
-    fix_pct       = round((prev_fixed_ct / total * 100), 1) if total > 0 else 0.0
-
-    # ── Write all sheets ──
-    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
-        # Sheet 1 – All scan results (with Fixed Status column)
-        df.to_excel(writer, sheet_name='Scan Results', index=False)
-
-        # Sheet 2 – Remaining Vulnerabilities (still need fixing)
-        if not df_remaining.empty:
-            df_remaining.to_excel(writer, sheet_name='Remaining Vulnerabilities', index=False)
-
-        # Sheet 3 – Previously Fixed (confirmation + solutions used)
-        if not df_prev_fixed.empty:
-            df_prev_fixed.to_excel(writer, sheet_name='Previously Fixed', index=False)
-
-        # Sheet 4 – Summary
-        summary_data = {
-            'Metric': [
-                'Target URL',
-                'Scan Date',
-                'Total Findings',
-                'Previously Fixed (Confirmed)',
-                'Still Vulnerable',
-                'Resolution Rate (%)',
-            ],
-            'Value': [
-                target,
-                timestamp,
-                total,
-                prev_fixed_ct,
-                still_vuln_ct,
-                f"{fix_pct}%",
-            ]
-        }
-        pd.DataFrame(summary_data).to_excel(writer, sheet_name='Summary', index=False)
-
-        # Sheet 5 – Discovered Paths
-        if discovered_paths:
-            paths_df = pd.DataFrame({
-                'Discovered Paths': discovered_paths,
-                'Total Paths': [len(discovered_paths)] * len(discovered_paths)
-            })
-            paths_df.to_excel(writer, sheet_name='Discovered Paths', index=False)
-
-    # ── Formatting ──────────────────────────────────────────────────────────────
-    wb = load_workbook(filename)
-
-    # Colour definitions
-    header_fill         = PatternFill(start_color="1F4788", end_color="1F4788", fill_type="solid")
-    green_header_fill   = PatternFill(start_color="166534", end_color="166534", fill_type="solid")
-    orange_header_fill  = PatternFill(start_color="92400E", end_color="92400E", fill_type="solid")
-    summary_header_fill = PatternFill(start_color="374151", end_color="374151", fill_type="solid")
-    critical_fill       = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
-    high_fill           = PatternFill(start_color="FFA500", end_color="FFA500", fill_type="solid")
-    medium_fill         = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
-    low_fill            = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
-    info_fill           = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")
-    fixed_row_fill      = PatternFill(start_color="DCFCE7", end_color="DCFCE7", fill_type="solid")  # pale green
-    vuln_row_fill       = PatternFill(start_color="FFF1F2", end_color="FFF1F2", fill_type="solid")   # pale red
-    fixed_cell_fill     = PatternFill(start_color="BBF7D0", end_color="BBF7D0", fill_type="solid")
+    # ── Colours ──────────────────────────────────────────────────────────────
+    header_fill       = PatternFill(start_color="1F4788", end_color="1F4788", fill_type="solid")
+    green_hdr_fill    = PatternFill(start_color="166534", end_color="166534", fill_type="solid")
+    red_hdr_fill      = PatternFill(start_color="7F1D1D", end_color="7F1D1D", fill_type="solid")
+    grey_hdr_fill     = PatternFill(start_color="374151", end_color="374151", fill_type="solid")
+    critical_fill     = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+    high_fill         = PatternFill(start_color="FFA500", end_color="FFA500", fill_type="solid")
+    medium_fill       = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+    low_fill          = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+    info_fill         = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")
+    fixed_row_fill    = PatternFill(start_color="DCFCE7", end_color="DCFCE7", fill_type="solid")   # pale green
+    vuln_row_fill     = PatternFill(start_color="FFF1F2", end_color="FFF1F2", fill_type="solid")   # pale red
+    fixed_cell_fill   = PatternFill(start_color="BBF7D0", end_color="BBF7D0", fill_type="solid")   # bright green
+    vuln_cell_fill    = PatternFill(start_color="FECACA", end_color="FECACA", fill_type="solid")   # bright red
+    info_row_fill     = PatternFill(start_color="F0F9FF", end_color="F0F9FF", fill_type="solid")   # pale blue
 
     header_font = Font(bold=True, color="FFFFFF", size=12)
     thin_border = Border(
@@ -2589,160 +2506,256 @@ def generate_excel_report(target, results, discovered_paths, previously_fixed_vu
         top=Side(style='thin'),  bottom=Side(style='thin')
     )
 
-    def _apply_header(ws, hdr_fill=None, ncols=None):
-        fill = hdr_fill or header_fill
+    def _sev_fill_font(severity):
+        m = {
+            'Critical': (critical_fill, Font(bold=True, color="FFFFFF")),
+            'High':     (high_fill,     Font(bold=True)),
+            'Medium':   (medium_fill,   Font(bold=True)),
+            'Low':      (low_fill,       Font(bold=True)),
+        }
+        return m.get(severity, (info_fill, Font(bold=True)))
+
+    def _apply_header(ws, fill=None):
         for cell in ws[1]:
-            cell.fill      = fill
+            cell.fill      = fill or header_fill
             cell.font      = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
             cell.border    = thin_border
 
-    def _apply_borders(ws, start_col=1, end_col=None):
-        ec = end_col or ws.max_column
+    def _border_align(ws):
         for row_idx in range(2, ws.max_row + 1):
-            for col in range(start_col, ec + 1):
+            for col in range(1, ws.max_column + 1):
                 cell = ws.cell(row=row_idx, column=col)
                 cell.border    = thin_border
                 cell.alignment = Alignment(vertical="top", wrap_text=True)
 
-    # ── Sheet 1: Scan Results ───────────────────────────────────────────────────
-    ws = wb['Scan Results']
-    _apply_header(ws)
+    # ── Determine live status for every result row ────────────────────────────
+    # Info-severity rows are NEVER shown as Vulnerable — they are informational
+    INFO_STATUSES = {'complete', 'success', 'secure', 'error', 'failed'}
 
-    # Find column indices
-    col_map = {ws.cell(1, c).value: c for c in range(1, ws.max_column + 1)}
-    sev_col        = col_map.get('Severity',     2)
-    fixed_stat_col = col_map.get('Fixed Status', 4)
+    enriched = []
+    for r in results:
+        row      = dict(r)
+        sev      = (row.get('Severity') or 'Info').strip()
+        orig_st  = (row.get('Status') or '').strip()
+
+        # Build lookup key for live override
+        test_key = (row.get('Test') or '').strip().lower()
+        path_key = (row.get('Vulnerable Path') or row.get('target_url') or '').strip().lower()
+        lk       = (test_key, path_key)
+
+        if sev == 'Info' or orig_st.lower() in INFO_STATUSES:
+            # Info rows keep their original status (Complete / Secure / etc.) — never show as Vulnerable
+            live_st = orig_st
+        elif lk in live_fixed_statuses:
+            # Override with live DB status
+            live_st = live_fixed_statuses[lk]
+        else:
+            live_st = orig_st
+
+        row['Status']    = live_st
+        row['_is_fixed'] = live_st.lower() == 'fixed'
+        row['_is_info']  = sev == 'Info' or orig_st.lower() in INFO_STATUSES
+        enriched.append(row)
+
+    # ── Split into groups ─────────────────────────────────────────────────────
+    fixed_rows  = [r for r in enriched if r['_is_fixed']]
+    info_rows   = [r for r in enriched if r['_is_info'] and not r['_is_fixed']]
+    vuln_rows   = [r for r in enriched if not r['_is_fixed'] and not r['_is_info']]
+
+    total_actionable = len(fixed_rows) + len(vuln_rows)
+    fix_pct = round(len(fixed_rows) / total_actionable * 100, 1) if total_actionable else 0.0
+
+    COLS = ['Test', 'Severity', 'Status', 'Finding', 'Vulnerable Path', 'Remediation', 'Resolution Steps']
+
+    def _to_df(rows):
+        if not rows:
+            return pd.DataFrame(columns=COLS)
+        df = pd.DataFrame(rows)
+        avail = [c for c in COLS if c in df.columns]
+        return df[avail]
+
+    df_all    = _to_df(enriched)
+    df_fixed  = _to_df(fixed_rows)
+    df_vuln   = _to_df(vuln_rows)
+
+    # ── Summary data ─────────────────────────────────────────────────────────
+    summary_rows = [
+        ('Target URL',               target),
+        ('Report Generated',         timestamp),
+        ('Total Findings',           len(enriched)),
+        ('Fixed',                    len(fixed_rows)),
+        ('Still Vulnerable',         len(vuln_rows)),
+        ('Info / Informational',     len(info_rows)),
+        ('Resolution Rate',          f"{fix_pct}%"),
+    ]
+    df_summary = pd.DataFrame(summary_rows, columns=['Metric', 'Value'])
+
+    # ── Write all sheets ──────────────────────────────────────────────────────
+    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+        df_all.to_excel(writer,     sheet_name='Scan Results',           index=False)
+        df_fixed.to_excel(writer,   sheet_name='Fixed Vulnerabilities',  index=False)
+        df_vuln.to_excel(writer,    sheet_name='Still Vulnerable',       index=False)
+        df_summary.to_excel(writer, sheet_name='Summary',                index=False)
+        if discovered_paths:
+            pd.DataFrame({
+                'Discovered Paths': discovered_paths,
+                'Total Paths': [len(discovered_paths)] * len(discovered_paths)
+            }).to_excel(writer, sheet_name='Discovered Paths', index=False)
+
+    # ── Open & format ─────────────────────────────────────────────────────────
+    wb = load_workbook(filename)
+
+    # ── Sheet 1: Scan Results (all rows, colour-coded by live status) ─────────
+    ws = wb['Scan Results']
+    _apply_header(ws, header_fill)
+
+    # Build col index map from header row
+    col_idx = {ws.cell(1, c).value: c for c in range(1, ws.max_column + 1)}
+    sev_col = col_idx.get('Severity', 2)
+    st_col  = col_idx.get('Status',   3)
 
     for row_idx in range(2, ws.max_row + 1):
-        severity    = ws.cell(row_idx, sev_col).value
-        fixed_stat  = ws.cell(row_idx, fixed_stat_col).value if fixed_stat_col else ''
-        is_prev_fix = str(fixed_stat or '').startswith('Previously Fixed')
+        sev    = ws.cell(row_idx, sev_col).value or ''
+        status = (ws.cell(row_idx, st_col).value or '').lower()
+        is_fixed = status == 'fixed'
+        is_info  = sev == 'Info' or status in INFO_STATUSES
 
         # Row background
-        row_bg = fixed_row_fill if is_prev_fix else None
+        if is_fixed:
+            row_bg = fixed_row_fill
+        elif is_info:
+            row_bg = info_row_fill
+        else:
+            row_bg = vuln_row_fill
 
-        # Severity cell colour
-        sev_fills = {'Critical': (critical_fill, Font(bold=True, color="FFFFFF")),
-                     'High':     (high_fill,     Font(bold=True)),
-                     'Medium':   (medium_fill,   Font(bold=True)),
-                     'Low':      (low_fill,       Font(bold=True))}
-        sf, sfont = sev_fills.get(severity, (info_fill, Font(bold=True)))
+        sf, sfont = _sev_fill_font(sev)
+
+        for col in range(1, ws.max_column + 1):
+            cell           = ws.cell(row_idx, col)
+            cell.border    = thin_border
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+            cell.fill      = row_bg
+
+        # Severity cell keeps its colour on top of row bg
         ws.cell(row_idx, sev_col).fill = sf
         ws.cell(row_idx, sev_col).font = sfont
 
-        # Fixed Status cell colour
-        if fixed_stat_col:
-            if is_prev_fix:
-                ws.cell(row_idx, fixed_stat_col).fill = fixed_cell_fill
-                ws.cell(row_idx, fixed_stat_col).font = Font(bold=True, color="166534")
-            else:
-                ws.cell(row_idx, fixed_stat_col).fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
-                ws.cell(row_idx, fixed_stat_col).font = Font(bold=True, color="BE123C")
-
-        for col in range(1, ws.max_column + 1):
-            cell        = ws.cell(row_idx, col)
-            cell.border = thin_border
-            cell.alignment = Alignment(vertical="top", wrap_text=True)
-            if row_bg and col not in (sev_col, fixed_stat_col):
-                cell.fill = row_bg
+        # Status cell — green for Fixed, red for Vulnerable, blue for Info
+        sc = ws.cell(row_idx, st_col)
+        if is_fixed:
+            sc.fill = fixed_cell_fill
+            sc.font = Font(bold=True, color="166534")
+        elif is_info:
+            sc.fill = info_fill
+            sc.font = Font(bold=True, color="1E3A5F")
+        else:
+            sc.fill = vuln_cell_fill
+            sc.font = Font(bold=True, color="7F1D1D")
 
     ws.column_dimensions['A'].width = 40
     ws.column_dimensions['B'].width = 12
-    ws.column_dimensions['C'].width = 12
-    ws.column_dimensions['D'].width = 18  # Fixed Status
-    ws.column_dimensions['E'].width = 55
-    ws.column_dimensions['F'].width = 50
-    ws.column_dimensions['G'].width = 70
-    ws.column_dimensions['H'].width = 80
+    ws.column_dimensions['C'].width = 14
+    ws.column_dimensions['D'].width = 60
+    ws.column_dimensions['E'].width = 50
+    ws.column_dimensions['F'].width = 70
+    ws.column_dimensions['G'].width = 80
     for row in range(2, ws.max_row + 1):
         ws.row_dimensions[row].height = 100
     ws.freeze_panes = 'A2'
     ws.auto_filter.ref = ws.dimensions
 
-    # ── Sheet 2: Remaining Vulnerabilities ─────────────────────────────────────
-    if 'Remaining Vulnerabilities' in wb.sheetnames:
-        ws_rem = wb['Remaining Vulnerabilities']
-        _apply_header(ws_rem, orange_header_fill)
-        col_map_rem = {ws_rem.cell(1, c).value: c for c in range(1, ws_rem.max_column + 1)}
-        sev_col_rem = col_map_rem.get('Severity', 2)
-        for row_idx in range(2, ws_rem.max_row + 1):
-            severity = ws_rem.cell(row_idx, sev_col_rem).value
-            sf, sfont = {'Critical': (critical_fill, Font(bold=True, color="FFFFFF")),
-                         'High':     (high_fill,     Font(bold=True)),
-                         'Medium':   (medium_fill,   Font(bold=True)),
-                         'Low':      (low_fill,       Font(bold=True))}.get(severity, (info_fill, Font(bold=True)))
-            ws_rem.cell(row_idx, sev_col_rem).fill = sf
-            ws_rem.cell(row_idx, sev_col_rem).font = sfont
-            for col in range(1, ws_rem.max_column + 1):
-                cell = ws_rem.cell(row_idx, col)
-                cell.fill      = vuln_row_fill
-                cell.border    = thin_border
-                cell.alignment = Alignment(vertical="top", wrap_text=True)
-            ws_rem.cell(row_idx, sev_col_rem).fill = sf  # re-apply severity over row fill
+    # ── Sheet 2: Fixed Vulnerabilities (all green) ────────────────────────────
+    ws_fix = wb['Fixed Vulnerabilities']
+    _apply_header(ws_fix, green_hdr_fill)
+    col_idx_f = {ws_fix.cell(1, c).value: c for c in range(1, ws_fix.max_column + 1)}
+    sev_col_f = col_idx_f.get('Severity', 2)
+    st_col_f  = col_idx_f.get('Status', 3)
+    for row_idx in range(2, ws_fix.max_row + 1):
+        sev = ws_fix.cell(row_idx, sev_col_f).value or ''
+        sf, sfont = _sev_fill_font(sev)
+        for col in range(1, ws_fix.max_column + 1):
+            cell = ws_fix.cell(row_idx, col)
+            cell.border    = thin_border
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+            cell.fill      = fixed_row_fill
+        ws_fix.cell(row_idx, sev_col_f).fill = sf
+        ws_fix.cell(row_idx, sev_col_f).font = sfont
+        sc = ws_fix.cell(row_idx, st_col_f)
+        sc.fill = fixed_cell_fill
+        sc.font = Font(bold=True, color="166534")
+    ws_fix.column_dimensions['A'].width = 40
+    ws_fix.column_dimensions['B'].width = 12
+    ws_fix.column_dimensions['C'].width = 14
+    ws_fix.column_dimensions['D'].width = 60
+    ws_fix.column_dimensions['E'].width = 50
+    ws_fix.column_dimensions['F'].width = 70
+    ws_fix.column_dimensions['G'].width = 80
+    for row in range(2, ws_fix.max_row + 1):
+        ws_fix.row_dimensions[row].height = 100
+    ws_fix.freeze_panes = 'A2'
+    ws_fix.auto_filter.ref = ws_fix.dimensions
 
-        ws_rem.column_dimensions['A'].width = 42
-        ws_rem.column_dimensions['B'].width = 12
-        ws_rem.column_dimensions['C'].width = 50
-        ws_rem.column_dimensions['D'].width = 55
-        ws_rem.column_dimensions['E'].width = 70
-        ws_rem.column_dimensions['F'].width = 80
-        for row in range(2, ws_rem.max_row + 1):
-            ws_rem.row_dimensions[row].height = 100
-        ws_rem.freeze_panes = 'A2'
-        ws_rem.auto_filter.ref = ws_rem.dimensions
+    # ── Sheet 3: Still Vulnerable (all red, with remediation) ────────────────
+    ws_vuln = wb['Still Vulnerable']
+    _apply_header(ws_vuln, red_hdr_fill)
+    col_idx_v = {ws_vuln.cell(1, c).value: c for c in range(1, ws_vuln.max_column + 1)}
+    sev_col_v = col_idx_v.get('Severity', 2)
+    st_col_v  = col_idx_v.get('Status', 3)
+    for row_idx in range(2, ws_vuln.max_row + 1):
+        sev = ws_vuln.cell(row_idx, sev_col_v).value or ''
+        sf, sfont = _sev_fill_font(sev)
+        for col in range(1, ws_vuln.max_column + 1):
+            cell = ws_vuln.cell(row_idx, col)
+            cell.border    = thin_border
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+            cell.fill      = vuln_row_fill
+        ws_vuln.cell(row_idx, sev_col_v).fill = sf
+        ws_vuln.cell(row_idx, sev_col_v).font = sfont
+        sc = ws_vuln.cell(row_idx, st_col_v)
+        sc.fill = vuln_cell_fill
+        sc.font = Font(bold=True, color="7F1D1D")
+    ws_vuln.column_dimensions['A'].width = 40
+    ws_vuln.column_dimensions['B'].width = 12
+    ws_vuln.column_dimensions['C'].width = 14
+    ws_vuln.column_dimensions['D'].width = 60
+    ws_vuln.column_dimensions['E'].width = 50
+    ws_vuln.column_dimensions['F'].width = 70
+    ws_vuln.column_dimensions['G'].width = 80
+    for row in range(2, ws_vuln.max_row + 1):
+        ws_vuln.row_dimensions[row].height = 100
+    ws_vuln.freeze_panes = 'A2'
+    ws_vuln.auto_filter.ref = ws_vuln.dimensions
 
-    # ── Sheet 3: Previously Fixed ───────────────────────────────────────────────
-    if 'Previously Fixed' in wb.sheetnames:
-        ws_fix = wb['Previously Fixed']
-        _apply_header(ws_fix, green_header_fill)
-        for row_idx in range(2, ws_fix.max_row + 1):
-            for col in range(1, ws_fix.max_column + 1):
-                cell = ws_fix.cell(row_idx, col)
-                cell.fill      = fixed_row_fill
-                cell.border    = thin_border
-                cell.alignment = Alignment(vertical="top", wrap_text=True)
-        ws_fix.column_dimensions['A'].width = 42
-        ws_fix.column_dimensions['B'].width = 12
-        ws_fix.column_dimensions['C'].width = 50
-        ws_fix.column_dimensions['D'].width = 55
-        ws_fix.column_dimensions['E'].width = 70
-        ws_fix.column_dimensions['F'].width = 80
-        ws_fix.column_dimensions['G'].width = 18
-        for row in range(2, ws_fix.max_row + 1):
-            ws_fix.row_dimensions[row].height = 100
-        ws_fix.freeze_panes = 'A2'
+    # ── Sheet 4: Summary ──────────────────────────────────────────────────────
+    ws_sum = wb['Summary']
+    _apply_header(ws_sum, grey_hdr_fill)
+    _border_align(ws_sum)
+    ws_sum.column_dimensions['A'].width = 28
+    ws_sum.column_dimensions['B'].width = 40
+    for row_idx in range(2, ws_sum.max_row + 1):
+        metric = str(ws_sum.cell(row_idx, 1).value or '')
+        val_cell = ws_sum.cell(row_idx, 2)
+        if 'Fixed' in metric and 'Still' not in metric:
+            val_cell.font = Font(bold=True, color="166534")
+        elif 'Still Vulnerable' in metric:
+            val_cell.font = Font(bold=True, color="7F1D1D")
+        elif 'Resolution' in metric:
+            val_cell.fill = fixed_cell_fill
+            val_cell.font = Font(bold=True, color="166534")
 
-    # ── Sheet 4: Summary ────────────────────────────────────────────────────────
-    if 'Summary' in wb.sheetnames:
-        ws_sum = wb['Summary']
-        _apply_header(ws_sum, summary_header_fill)
-        _apply_borders(ws_sum)
-        ws_sum.column_dimensions['A'].width = 35
-        ws_sum.column_dimensions['B'].width = 40
-        # Highlight resolution rate row
-        for row_idx in range(2, ws_sum.max_row + 1):
-            metric = ws_sum.cell(row_idx, 1).value or ''
-            if 'Resolution Rate' in str(metric):
-                ws_sum.cell(row_idx, 2).font = Font(bold=True, color="166534")
-                ws_sum.cell(row_idx, 2).fill = fixed_cell_fill
-            if 'Previously Fixed' in str(metric):
-                ws_sum.cell(row_idx, 2).font = Font(bold=True, color="166534")
-            if 'Still Vulnerable' in str(metric):
-                ws_sum.cell(row_idx, 2).font = Font(bold=True, color="BE123C")
-
-    # ── Sheet 5: Discovered Paths ───────────────────────────────────────────────
+    # ── Sheet 5: Discovered Paths ─────────────────────────────────────────────
     if 'Discovered Paths' in wb.sheetnames:
         paths_ws = wb['Discovered Paths']
-        _apply_header(paths_ws)
-        _apply_borders(paths_ws)
+        _apply_header(paths_ws, header_fill)
+        _border_align(paths_ws)
         paths_ws.column_dimensions['A'].width = 80
         paths_ws.column_dimensions['B'].width = 15
         paths_ws.freeze_panes = 'A2'
 
     wb.save(filename)
     print(f"[+] Report saved: {filename}")
-    print(f"[+] Previously fixed: {prev_fixed_ct} / {total} ({fix_pct}%)")
+    print(f"[+] Fixed: {len(fixed_rows)}  Vulnerable: {len(vuln_rows)}  Info: {len(info_rows)}  ({fix_pct}% resolved)")
     return filename
 
 # ==================== ENTRY POINT ====================
