@@ -568,6 +568,61 @@ def api_vulnerabilities():
     return jsonify({'vulnerabilities': result, 'total': len(result)})
 
 
+@app.route('/api/pre-scan-summary')
+@login_required
+def api_pre_scan_summary():
+    """Return pre-scan summary for a target URL — shows previously fixed vulns and their solutions."""
+    import db
+    target_url = request.args.get('target_url', '').strip()
+    if not target_url:
+        return jsonify({'status': 'error', 'message': 'target_url is required'}), 400
+
+    all_vulns = db.get_vulnerabilities(_uid(), target_url=target_url)
+    if not all_vulns:
+        return jsonify({'status': 'success', 'is_rescan': False, 'target_url': target_url,
+                        'total': 0, 'fixed': [], 'vulnerable': [], 'fixed_count': 0, 'vuln_count': 0})
+
+    SKIP = {'dns resolution', 'ping test', 'port scan', 'service detection', 'vulnerability scan'}
+    actionable = [v for v in all_vulns if (v.get('Test') or '').lower().strip() not in SKIP]
+
+    fixed_vulns = []
+    vuln_vulns  = []
+    for v in actionable:
+        st = (v.get('_display_status') or v.get('Status') or '').lower()
+        if st == 'fixed' or v.get('_fixed'):
+            fixed_vulns.append({
+                'id':          v.get('id'),
+                'test':        v.get('Test', '—'),
+                'severity':    v.get('Severity', '—'),
+                'path':        v.get('Vulnerable Path') or v.get('target_url', '—'),
+                'finding':     v.get('Finding', ''),
+                'remediation': v.get('Remediation', ''),
+                'steps':       v.get('Resolution Steps', ''),
+            })
+        else:
+            vuln_vulns.append({
+                'id':          v.get('id'),
+                'test':        v.get('Test', '—'),
+                'severity':    v.get('Severity', '—'),
+                'path':        v.get('Vulnerable Path') or v.get('target_url', '—'),
+                'finding':     v.get('Finding', ''),
+                'remediation': v.get('Remediation', ''),
+                'steps':       v.get('Resolution Steps', ''),
+            })
+
+    return jsonify({
+        'status':       'success',
+        'is_rescan':    True,
+        'target_url':   target_url,
+        'total':        len(actionable),
+        'fixed_count':  len(fixed_vulns),
+        'vuln_count':   len(vuln_vulns),
+        'fix_pct':      round(len(fixed_vulns) / len(actionable) * 100, 1) if actionable else 0,
+        'fixed':        fixed_vulns,
+        'vulnerable':   vuln_vulns,
+    })
+
+
 @app.route('/api/reports')
 @login_required
 def api_reports():
@@ -1105,11 +1160,25 @@ def scan():
                         elif mtype == 'crawl_start':
                             log(f"🕷️ Starting crawler (max {msg.get('max_pages')} pages)...", user_id)
 
-                result = perform_vapt_scan(
+                # Fetch previously fixed vulnerabilities for this target (for Excel report)
+                    import db as _db
+                    prev_fixed = []
+                    try:
+                        all_prev = _db.get_vulnerabilities(user_id, target_url=target)
+                        prev_fixed = [v for v in all_prev
+                                      if (v.get('_display_status') or v.get('Status') or '').lower() == 'fixed'
+                                      or v.get('_fixed')]
+                        if prev_fixed:
+                            log(f"📋 Found {len(prev_fixed)} previously fixed vulnerabilities for {target}", user_id)
+                    except Exception as _e:
+                        log(f"⚠️ Could not fetch previous fix data: {_e}", user_id)
+
+                    result = perform_vapt_scan(
                     target,
                     auth_credentials=auth_credentials,
                     owasp_enabled=owasp_enabled,
-                    progress_callback=progress_cb
+                    progress_callback=progress_cb,
+                    previously_fixed_vulns=prev_fixed
                 )
 
                 if result['status'] == 'success':
