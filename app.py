@@ -564,63 +564,59 @@ def api_vulnerabilities():
     status_filter   = request.args.get('status', '').lower() or None
     search          = request.args.get('q', '').lower() or None
     target_url      = request.args.get('target_url', '') or None
-    result = db.get_vulnerabilities(_uid(), severity_filter=severity_filter, status_filter=status_filter, search=search, target_url=target_url)
+    result = db.get_vulnerabilities(_uid(), severity_filter=severity_filter,
+                                    status_filter=status_filter, search=search,
+                                    target_url=target_url)
     return jsonify({'vulnerabilities': result, 'total': len(result)})
 
 
-@app.route('/api/pre-scan-summary')
-@login_required
-def api_pre_scan_summary():
-    """Return pre-scan summary for a target URL — shows previously fixed vulns and their solutions."""
-    import db
-    target_url = request.args.get('target_url', '').strip()
-    if not target_url:
-        return jsonify({'status': 'error', 'message': 'target_url is required'}), 400
+def _build_excel_inputs(live_vulns):
+    """Convert live DB vulnerability rows into the three inputs generate_excel_report expects.
 
-    all_vulns = db.get_vulnerabilities(_uid(), target_url=target_url)
-    if not all_vulns:
-        return jsonify({'status': 'success', 'is_rescan': False, 'target_url': target_url,
-                        'total': 0, 'fixed': [], 'vulnerable': [], 'fixed_count': 0, 'vuln_count': 0})
+    Returns
+    -------
+    results : list[dict]
+        Rows with the standard column keys (Test, Severity, Status, Finding,
+        Vulnerable Path, Remediation, Resolution Steps).
+    live_fixed_statuses : dict
+        Mapping (test_name_lower, path_lower) → 'Fixed' | original_status
+        so generate_excel_report can colour rows correctly.
+    discovered_paths : list[str]
+        Unique Vulnerable Path values for the Discovered Paths sheet.
+    """
+    results             = []
+    live_fixed_statuses = {}
+    path_set            = set()
 
-    SKIP = {'dns resolution', 'ping test', 'port scan', 'service detection', 'vulnerability scan'}
-    actionable = [v for v in all_vulns if (v.get('Test') or '').lower().strip() not in SKIP]
+    for v in live_vulns:
+        st       = (v.get('_display_status') or v.get('Status') or '').strip()
+        is_fixed = st.lower() == 'fixed' or bool(v.get('_fixed'))
+        live_st  = 'Fixed' if is_fixed else st
 
-    fixed_vulns = []
-    vuln_vulns  = []
-    for v in actionable:
-        st = (v.get('_display_status') or v.get('Status') or '').lower()
-        if st == 'fixed' or v.get('_fixed'):
-            fixed_vulns.append({
-                'id':          v.get('id'),
-                'test':        v.get('Test', '—'),
-                'severity':    v.get('Severity', '—'),
-                'path':        v.get('Vulnerable Path') or v.get('target_url', '—'),
-                'finding':     v.get('Finding', ''),
-                'remediation': v.get('Remediation', ''),
-                'steps':       v.get('Resolution Steps', ''),
-            })
-        else:
-            vuln_vulns.append({
-                'id':          v.get('id'),
-                'test':        v.get('Test', '—'),
-                'severity':    v.get('Severity', '—'),
-                'path':        v.get('Vulnerable Path') or v.get('target_url', '—'),
-                'finding':     v.get('Finding', ''),
-                'remediation': v.get('Remediation', ''),
-                'steps':       v.get('Resolution Steps', ''),
-            })
+        row = {
+            'Test':             v.get('Test', ''),
+            'Severity':         v.get('Severity', ''),
+            'Status':           live_st,
+            'Finding':          v.get('Finding', ''),
+            'Vulnerable Path':  v.get('Vulnerable Path') or v.get('target_url', ''),
+            'Remediation':      v.get('Remediation', ''),
+            'Resolution Steps': v.get('Resolution Steps', ''),
+            'target_url':       v.get('target_url', ''),
+            'scan_date':        v.get('scan_date', ''),
+        }
+        results.append(row)
 
-    return jsonify({
-        'status':       'success',
-        'is_rescan':    True,
-        'target_url':   target_url,
-        'total':        len(actionable),
-        'fixed_count':  len(fixed_vulns),
-        'vuln_count':   len(vuln_vulns),
-        'fix_pct':      round(len(fixed_vulns) / len(actionable) * 100, 1) if actionable else 0,
-        'fixed':        fixed_vulns,
-        'vulnerable':   vuln_vulns,
-    })
+        # Build live_fixed_statuses lookup
+        test_key = (v.get('Test') or '').strip().lower()
+        path_key = (v.get('Vulnerable Path') or v.get('target_url') or '').strip().lower()
+        live_fixed_statuses[(test_key, path_key)] = live_st
+
+        # Collect discovered paths
+        vp = v.get('Vulnerable Path') or ''
+        if vp and vp not in ('N/A', '—', ''):
+            path_set.add(vp)
+
+    return results, live_fixed_statuses, list(path_set)
 
 
 @app.route('/api/reports')
@@ -1160,25 +1156,11 @@ def scan():
                         elif mtype == 'crawl_start':
                             log(f"🕷️ Starting crawler (max {msg.get('max_pages')} pages)...", user_id)
 
-                # Fetch previously fixed vulnerabilities for this target (for Excel report)
-                    import db as _db
-                    prev_fixed = []
-                    try:
-                        all_prev = _db.get_vulnerabilities(user_id, target_url=target)
-                        prev_fixed = [v for v in all_prev
-                                      if (v.get('_display_status') or v.get('Status') or '').lower() == 'fixed'
-                                      or v.get('_fixed')]
-                        if prev_fixed:
-                            log(f"📋 Found {len(prev_fixed)} previously fixed vulnerabilities for {target}", user_id)
-                    except Exception as _e:
-                        log(f"⚠️ Could not fetch previous fix data: {_e}", user_id)
-
-                    result = perform_vapt_scan(
+                result = perform_vapt_scan(
                     target,
                     auth_credentials=auth_credentials,
                     owasp_enabled=owasp_enabled,
-                    progress_callback=progress_cb,
-                    previously_fixed_vulns=prev_fixed
+                    progress_callback=progress_cb
                 )
 
                 if result['status'] == 'success':
@@ -1264,14 +1246,31 @@ def scan_status():
 @app.route('/download')
 @login_required
 def download():
+    """Regenerate and download the latest report with live fixed status from DB."""
+    import db
+    from vapt_auto import generate_excel_report
     try:
-        res = _get_scan_results(_uid()) if _uid() else {}
-        filename = res.get('last_file')
-        if not filename:
-            return jsonify({'status': 'error', 'message': 'No report available for download'})
-        if not os.path.exists(filename):
-            return jsonify({'status': 'error', 'message': 'Report file not found'})
-        return send_file(filename, as_attachment=True, download_name=filename)
+        # Get the most recent report to know the target URL
+        reports = db.get_reports(_uid())
+        if not reports:
+            return jsonify({'status': 'error', 'message': 'No reports found'})
+
+        latest  = reports[0]
+        target_url = latest.get('target_url', '')
+
+        live_vulns = db.get_vulnerabilities(_uid(), target_url=target_url)
+        if not live_vulns:
+            # Fall back to the stored file
+            res = _get_scan_results(_uid()) if _uid() else {}
+            fname = res.get('last_file')
+            if fname and os.path.exists(fname):
+                return send_file(fname, as_attachment=True, download_name=os.path.basename(fname))
+            return jsonify({'status': 'error', 'message': 'No data available'})
+
+        results, live_fixed_statuses, discovered_paths = _build_excel_inputs(live_vulns)
+        new_file = generate_excel_report(target_url, results, discovered_paths,
+                                         live_fixed_statuses=live_fixed_statuses)
+        return send_file(new_file, as_attachment=True, download_name=os.path.basename(new_file))
     except Exception as e:
         return jsonify({'status': 'error', 'message': f'Download failed: {str(e)}'})
 
@@ -1302,15 +1301,34 @@ def api_vulnerability_fix(vuln_id):
 @app.route('/download-report/<int:report_id>')
 @login_required
 def download_report(report_id):
-    """Download a specific historical report by ID."""
+    """Regenerate Excel with live fixed/vulnerable status from DB, then download."""
     import db
+    from vapt_auto import generate_excel_report
+
     report = db.get_report_by_id(report_id, _uid())
     if not report:
-        return jsonify({'status': 'error', 'message': 'Report not found'})
-    filename = report['filename']
-    if not os.path.exists(filename):
-        return jsonify({'status': 'error', 'message': 'Report file no longer available on disk'}), 404
-    return send_file(filename, as_attachment=True, download_name=os.path.basename(filename))
+        return jsonify({'status': 'error', 'message': 'Report not found'}), 404
+
+    target_url = report.get('target_url', '')
+    live_vulns = db.get_vulnerabilities(_uid(), target_url=target_url)
+
+    if not live_vulns:
+        # Fall back to the original stored file
+        orig = report.get('filename', '')
+        if orig and os.path.exists(orig):
+            return send_file(orig, as_attachment=True, download_name=os.path.basename(orig))
+        return jsonify({'status': 'error', 'message': 'No vulnerability data available'}), 404
+
+    try:
+        results, live_fixed_statuses, discovered_paths = _build_excel_inputs(live_vulns)
+        new_file = generate_excel_report(target_url, results, discovered_paths,
+                                         live_fixed_statuses=live_fixed_statuses)
+        return send_file(new_file, as_attachment=True, download_name=os.path.basename(new_file))
+    except Exception as e:
+        orig = report.get('filename', '')
+        if orig and os.path.exists(orig):
+            return send_file(orig, as_attachment=True, download_name=os.path.basename(orig))
+        return jsonify({'status': 'error', 'message': f'Report generation failed: {str(e)}'}), 500
 
 
 # ─────────────────────────────────────────────
