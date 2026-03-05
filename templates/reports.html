@@ -79,31 +79,102 @@ function formatDateTime(dateStr) {
     });
 }
 
-let reportMeta = {};
+let reportMeta  = {};
+let renderedIds = new Set(); // track which report rows are already in the DOM
+let fixedCache  = {};        // cache fixed counts so we don't re-fetch on every poll
 
 // Fetch fixed count scoped to this specific report (not all scans of that URL)
-async function fetchFixedCount(reportId, scanDate) {
+async function fetchFixedCount(reportId) {
+    if (fixedCache[reportId]) return fixedCache[reportId];
     try {
         const res  = await fetch(`/api/reports/${reportId}`);
         const data = await res.json();
         if (data.status !== 'success') return { fixed: 0, total: 0, pct: 0 };
-
         const report = data.report;
-        // Use pre-computed values from backend (scoped to this scan's date)
+        let result;
         if (typeof report.fixed_count !== 'undefined') {
-            return {
+            result = {
                 fixed: report.fixed_count,
                 total: (report.vuln_counts ? Object.values(report.vuln_counts).reduce((a,b)=>a+b,0) : report.total) || 0,
                 pct:   report.fix_pct || 0
             };
+        } else {
+            const vulns = report.vulnerabilities || [];
+            const fixed = vulns.filter(v => (v._display_status || v.Status || '').toLowerCase() === 'fixed').length;
+            const total = vulns.length;
+            result = { fixed, total, pct: total ? Math.round(fixed / total * 100) : 0 };
         }
-        // Fallback: compute from vulnerabilities array (already date-scoped by backend)
-        const vulns = data.report.vulnerabilities || [];
-        const fixed = vulns.filter(v => (v._display_status || v.Status || '').toLowerCase() === 'fixed').length;
-        const total = vulns.length;
-        return { fixed, total, pct: total ? Math.round(fixed / total * 100) : 0 };
+        if (result.fixed > 0) fixedCache[reportId] = result; // only cache if meaningful
+        return result;
     } catch (e) {
         return { fixed: 0, total: 0, pct: 0 };
+    }
+}
+
+function buildReportRow(r, isLatest) {
+    const vc  = r.vuln_counts || {};
+    const badgesHtml = [
+        vc.critical ? `<span class="bx bc">${vc.critical} C</span>` : '',
+        vc.high     ? `<span class="bx bh">${vc.high} H</span>`     : '',
+        vc.medium   ? `<span class="bx bm">${vc.medium} M</span>`   : '',
+        vc.low      ? `<span class="bx bl">${vc.low} L</span>`      : '',
+        vc.info     ? `<span class="bx bi">${vc.info} I</span>`     : '',
+    ].filter(Boolean).join('');
+
+    const statusCls  = r.status === 'Completed' ? 'bac' : 'bpg';
+    const statusIcon = r.status === 'Completed' ? 'fa-circle-check' : 'fa-clock';
+    const scanTimeStr = r.scan_time || r.date || '';
+    const formattedDT = formatDateTime(scanTimeStr);
+    const ago         = timeAgo(scanTimeStr);
+    const runtime = r.runtime_seconds
+        ? `<span style="font-size:.68rem;color:var(--text-muted);display:inline-flex;align-items:center;gap:.25rem;"><i class="fa-regular fa-clock"></i> ${Math.floor(r.runtime_seconds/60)}m ${r.runtime_seconds%60}s</span>`
+        : '';
+
+    return `<div class="report-item" id="ritem-${r.id}">
+        <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.2rem;">
+                <strong style="font-size:.9rem;">${r.name}</strong>
+                ${isLatest ? '<span class="badge-latest"><i class="fa-solid fa-bolt"></i> Latest</span>' : ''}
+            </div>
+            <div class="report-meta">
+                <span style="font-size:.72rem;color:var(--text-muted);" title="${formattedDT}">
+                    <i class="fa-regular fa-calendar"></i> ${formattedDT}
+                </span>
+                <span class="time-ago" id="ago-${r.id}">(${ago})</span>
+                <span class="bx ${statusCls}"><i class="fa-solid ${statusIcon}"></i> ${r.status}</span>
+                <span style="font-size:.72rem;color:var(--text-muted)">${r.total} findings</span>
+                ${runtime}
+                <span id="fixed-badge-${r.id}" style="display:none;" class="bx bf">
+                    <i class="fa-solid fa-circle-check"></i> <span id="fixed-cnt-${r.id}">0</span> fixed
+                </span>
+            </div>
+        </div>
+        <div class="report-right">
+            <div class="vuln-counts">${badgesHtml || '<span style="font-size:.72rem;color:var(--text-muted)">No vulns</span>'}</div>
+            <div id="res-bar-${r.id}" style="width:90px;display:none;">
+                <div style="height:5px;background:var(--border);border-radius:4px;overflow:hidden;">
+                    <div id="res-fill-${r.id}" style="height:100%;background:linear-gradient(90deg,#2563EB,#22c55e);border-radius:4px;width:0%;transition:width .5s;"></div>
+                </div>
+                <div style="font-size:.62rem;color:var(--text-muted);text-align:center;margin-top:.1rem;" id="res-pct-${r.id}"></div>
+            </div>
+            <a href="/reports/${r.id}" class="btn btn-o btn-s"><i class="fa-regular fa-eye"></i> View</a>
+            <a href="/download-report/${r.id}" class="btn btn-p btn-s"><i class="fa-solid fa-download"></i> Download</a>
+        </div>
+    </div>`;
+}
+
+function applyFixedBadge(reportId, fixed, total, fixPct) {
+    if (fixed <= 0) return;
+    const badge = document.getElementById(`fixed-badge-${reportId}`);
+    const cnt   = document.getElementById(`fixed-cnt-${reportId}`);
+    const bar   = document.getElementById(`res-bar-${reportId}`);
+    const fill  = document.getElementById(`res-fill-${reportId}`);
+    const pctEl = document.getElementById(`res-pct-${reportId}`);
+    if (badge && cnt) { cnt.textContent = fixed; badge.style.display = 'inline-flex'; }
+    if (bar && fill && pctEl && total > 0) {
+        bar.style.display = 'block';
+        fill.style.width  = `${fixPct}%`;
+        pctEl.textContent = `${fixPct}% fixed`;
     }
 }
 
@@ -120,90 +191,83 @@ async function loadReports() {
         lastUpd.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
 
         if (list.length === 0) {
-            container.innerHTML = `<div style="text-align:center;padding:2.5rem;color:var(--text-muted);">
-                <i class="fa-regular fa-file-lines" style="font-size:2rem;margin-bottom:.5rem;display:block;color:var(--border)"></i>
-                No reports yet. <a href="/scanning" style="color:var(--blue)">Run a scan</a> to generate your first report.</div>`;
+            if (!renderedIds.size) {
+                container.innerHTML = `<div style="text-align:center;padding:2.5rem;color:var(--text-muted);">
+                    <i class="fa-regular fa-file-lines" style="font-size:2rem;margin-bottom:.5rem;display:block;color:var(--border)"></i>
+                    No reports yet. <a href="/scanning" style="color:var(--blue)">Run a scan</a> to generate your first report.</div>`;
+            }
             return;
         }
+
+        // Remove empty-state placeholder if it exists
+        const emptyEl = container.querySelector('[data-empty]');
+        if (emptyEl) emptyEl.remove();
 
         reportMeta = {};
         list.forEach(r => { reportMeta[r.id] = r.scan_time || r.date || ''; });
 
-        // Render initial HTML without fixed counts (fast), then fetch live fixed counts async
-        container.innerHTML = list.map((r, idx) => {
-            const vc  = r.vuln_counts || {};
-            const badgesHtml = [
-                vc.critical ? `<span class="bx bc">${vc.critical} C</span>` : '',
-                vc.high     ? `<span class="bx bh">${vc.high} H</span>`     : '',
-                vc.medium   ? `<span class="bx bm">${vc.medium} M</span>`   : '',
-                vc.low      ? `<span class="bx bl">${vc.low} L</span>`      : '',
-                vc.info     ? `<span class="bx bi">${vc.info} I</span>`     : '',
-            ].filter(Boolean).join('');
+        const incomingIds = new Set(list.map(r => r.id));
 
-            const statusCls  = r.status === 'Completed' ? 'bac' : 'bpg';
-            const statusIcon = r.status === 'Completed' ? 'fa-circle-check' : 'fa-clock';
+        // ── 1. Remove rows that no longer exist ──────────────────────────
+        renderedIds.forEach(id => {
+            if (!incomingIds.has(id)) {
+                const el = document.getElementById(`ritem-${id}`);
+                if (el) el.remove();
+                renderedIds.delete(id);
+                delete fixedCache[id];
+            }
+        });
 
-            const scanTimeStr = r.scan_time || r.date || '';
-            const formattedDT = formatDateTime(scanTimeStr);
-            const ago         = timeAgo(scanTimeStr);
-            const isLatest    = idx === 0;
+        // ── 2. Add new rows / reorder without touching existing ones ─────
+        list.forEach((r, idx) => {
+            const isLatest  = idx === 0;
+            const existsEl  = document.getElementById(`ritem-${r.id}`);
 
-            const runtime = r.runtime_seconds
-                ? `<span style="font-size:.68rem;color:var(--text-muted);display:inline-flex;align-items:center;gap:.25rem;"><i class="fa-regular fa-clock"></i> ${Math.floor(r.runtime_seconds/60)}m ${r.runtime_seconds%60}s</span>`
-                : '';
+            if (!existsEl) {
+                // Brand-new report — insert at correct position
+                const html    = buildReportRow(r, isLatest);
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = html;
+                const newEl   = wrapper.firstElementChild;
 
-            return `<div class="report-item" id="ritem-${r.id}">
-                <div style="flex:1;min-width:0;">
-                    <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.2rem;">
-                        <strong style="font-size:.9rem;">${r.name}</strong>
-                        ${isLatest ? '<span class="badge-latest"><i class="fa-solid fa-bolt"></i> Latest</span>' : ''}
-                    </div>
-                    <div class="report-meta">
-                        <span style="font-size:.72rem;color:var(--text-muted);" title="${formattedDT}">
-                            <i class="fa-regular fa-calendar"></i> ${formattedDT}
-                        </span>
-                        <span class="time-ago" id="ago-${r.id}">(${ago})</span>
-                        <span class="bx ${statusCls}"><i class="fa-solid ${statusIcon}"></i> ${r.status}</span>
-                        <span style="font-size:.72rem;color:var(--text-muted)">${r.total} findings</span>
-                        ${runtime}
-                        <!-- Live fixed count badge (populated async) -->
-                        <span id="fixed-badge-${r.id}" style="display:none;" class="bx bf">
-                            <i class="fa-solid fa-circle-check"></i> <span id="fixed-cnt-${r.id}">0</span> fixed
-                        </span>
-                    </div>
-                </div>
-                <div class="report-right">
-                    <div class="vuln-counts">${badgesHtml || '<span style="font-size:.72rem;color:var(--text-muted)">No vulns</span>'}</div>
-                    <!-- Inline resolution bar -->
-                    <div id="res-bar-${r.id}" style="width:90px;display:none;">
-                        <div style="height:5px;background:var(--border);border-radius:4px;overflow:hidden;">
-                            <div id="res-fill-${r.id}" style="height:100%;background:linear-gradient(90deg,#2563EB,#22c55e);border-radius:4px;width:0%;transition:width .5s;"></div>
-                        </div>
-                        <div style="font-size:.62rem;color:var(--text-muted);text-align:center;margin-top:.1rem;" id="res-pct-${r.id}"></div>
-                    </div>
-                    <a href="/reports/${r.id}" class="btn btn-o btn-s"><i class="fa-regular fa-eye"></i> View</a>
-                    <a href="/download-report/${r.id}" class="btn btn-p btn-s"><i class="fa-solid fa-download"></i> Download</a>
-                </div>
-            </div>`;
-        }).join('');
-
-        // Async: fetch live fixed counts per report (scoped to each report's scan date)
-        list.forEach(r => {
-            fetchFixedCount(r.id, r.scan_time || r.date || '').then(({ fixed, total, pct: fixPct }) => {
-                if (fixed > 0) {
-                    const badge   = document.getElementById(`fixed-badge-${r.id}`);
-                    const cnt     = document.getElementById(`fixed-cnt-${r.id}`);
-                    const bar     = document.getElementById(`res-bar-${r.id}`);
-                    const fill    = document.getElementById(`res-fill-${r.id}`);
-                    const pctEl   = document.getElementById(`res-pct-${r.id}`);
-                    if (badge && cnt) { cnt.textContent = fixed; badge.style.display = 'inline-flex'; }
-                    if (bar && fill && pctEl && total > 0) {
-                        bar.style.display   = 'block';
-                        fill.style.width    = `${fixPct}%`;
-                        pctEl.textContent   = `${fixPct}% fixed`;
+                if (idx === 0) {
+                    container.prepend(newEl);
+                } else {
+                    const prevEl = document.getElementById(`ritem-${list[idx-1].id}`);
+                    if (prevEl && prevEl.nextSibling) {
+                        container.insertBefore(newEl, prevEl.nextSibling);
+                    } else {
+                        container.appendChild(newEl);
                     }
                 }
-            });
+                renderedIds.add(r.id);
+
+                // Fetch fixed count only for new rows
+                fetchFixedCount(r.id).then(({ fixed, total, pct }) => {
+                    applyFixedBadge(r.id, fixed, total, pct);
+                });
+
+            } else {
+                // ── 3. Row exists — only patch fields that may have changed ──
+                // Update "Latest" badge: first item gets it, others lose it
+                const nameDiv = existsEl.querySelector('div[style*="align-items:center"]');
+                const latestBadge = existsEl.querySelector('.badge-latest');
+                if (isLatest && !latestBadge && nameDiv) {
+                    const badge = document.createElement('span');
+                    badge.className   = 'badge-latest';
+                    badge.innerHTML   = '<i class="fa-solid fa-bolt"></i> Latest';
+                    nameDiv.appendChild(badge);
+                } else if (!isLatest && latestBadge) {
+                    latestBadge.remove();
+                }
+
+                // Refresh fixed badge if cache was invalidated (e.g. fix toggled)
+                if (!fixedCache[r.id]) {
+                    fetchFixedCount(r.id).then(({ fixed, total, pct }) => {
+                        applyFixedBadge(r.id, fixed, total, pct);
+                    });
+                }
+            }
         });
 
     } catch (e) {
@@ -211,12 +275,17 @@ async function loadReports() {
     }
 }
 
-// Refresh time-ago labels
+// Refresh time-ago labels in-place — no DOM rebuilding
 function refreshTimeAgo() {
     Object.entries(reportMeta).forEach(([id, scanTimeStr]) => {
         const el = document.getElementById(`ago-${id}`);
         if (el && scanTimeStr) el.textContent = `(${timeAgo(scanTimeStr)})`;
     });
+}
+
+// Invalidate fixed cache for a report when a vuln is toggled (called from report-view page)
+function invalidateFixedCache(reportId) {
+    delete fixedCache[reportId];
 }
 
 loadReports();
