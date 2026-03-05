@@ -7,86 +7,42 @@
 <div id="_main" style="padding-top:56px;min-height:100vh;">
 <div class="content">
 
-  <!-- Header -->
+  <!-- Page Header -->
   <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.625rem;">
     <div>
       <h1 style="font-family:'Space Grotesk',sans-serif;font-size:1.375rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:.4rem;">
         <i class="fa-solid fa-calendar-check" style="color:var(--blue)"></i> Scheduled Scans
       </h1>
-      <p style="font-size:.78rem;color:var(--text-muted);">Automate security scans — night, day, afternoon &amp; custom schedules</p>
+      <p style="font-size:.78rem;color:var(--text-muted);">Automate security scans &mdash; night, day, afternoon &amp; custom schedules</p>
     </div>
-    <button class="btn btn-p" onclick="openModal()">
-      <i class="fa-solid fa-plus"></i> New Schedule
-    </button>
-  </div>
-
-  <!-- Summary Stats -->
-  <div class="sched-stats" id="schedStats">
-    <div class="ss-card">
-      <div class="ss-icon" style="background:#eff6ff;color:#2563eb;"><i class="fa-solid fa-calendar-check"></i></div>
-      <div><strong id="statActive">0</strong><small>Active Schedules</small></div>
-    </div>
-    <div class="ss-card">
-      <div class="ss-icon" style="background:#f0fdf4;color:#16a34a;"><i class="fa-solid fa-circle-check"></i></div>
-      <div><strong id="statCompleted">0</strong><small>Runs Completed</small></div>
-    </div>
-    <div class="ss-card">
-      <div class="ss-icon" style="background:#fff7ed;color:#c2410c;"><i class="fa-solid fa-triangle-exclamation"></i></div>
-      <div><strong id="statFixed">0</strong><small>Vulns Fixed</small></div>
-    </div>
-    <div class="ss-card">
-      <div class="ss-icon" style="background:#fef2f2;color:#b91c1c;"><i class="fa-solid fa-bug"></i></div>
-      <div><strong id="statPriority">0</strong><small>Priority Vulns</small></div>
-    </div>
-    <div class="ss-card">
-      <div class="ss-icon" style="background:#faf5ff;color:#7c3aed;"><i class="fa-solid fa-clock-rotate-left"></i></div>
-      <div><strong id="statNextRun">—</strong><small>Next Run</small></div>
+    <div style="display:flex;gap:.5rem;align-items:center;">
+      <div id="liveScanBadge" style="display:none;align-items:center;gap:.5rem;background:linear-gradient(90deg,#1d4ed8,#2563EB);color:#fff;padding:.4rem .875rem;border-radius:9px;font-size:.78rem;font-weight:600;cursor:pointer;" onclick="openLivePopup()">
+        <span class="live-dot"></span> Scan Running <span style="font-size:.68rem;opacity:.8;">&mdash; click to view</span>
+      </div>
+      <button class="btn btn-p" onclick="openModal()"><i class="fa-solid fa-plus"></i> New Schedule</button>
     </div>
   </div>
 
-  <!-- Time-of-day Quick Presets -->
+  <!-- Stats -->
+  <div class="sched-stats">
+    <div class="ss-card"><div class="ss-icon" style="background:#eff6ff;color:#2563eb;"><i class="fa-solid fa-calendar-check"></i></div><div><strong id="statActive">0</strong><small>Active Schedules</small></div></div>
+    <div class="ss-card"><div class="ss-icon" style="background:#f0fdf4;color:#16a34a;"><i class="fa-solid fa-circle-check"></i></div><div><strong id="statCompleted">0</strong><small>Runs Completed</small></div></div>
+    <div class="ss-card"><div class="ss-icon" style="background:#fff7ed;color:#c2410c;"><i class="fa-solid fa-triangle-exclamation"></i></div><div><strong id="statFixed">0</strong><small>Vulns Fixed</small></div></div>
+    <div class="ss-card"><div class="ss-icon" style="background:#fef2f2;color:#b91c1c;"><i class="fa-solid fa-bug"></i></div><div><strong id="statPriority">0</strong><small>Priority Vulns</small></div></div>
+    <div class="ss-card"><div class="ss-icon" style="background:#faf5ff;color:#7c3aed;"><i class="fa-solid fa-clock-rotate-left"></i></div><div><strong id="statNextRun">&#8212;</strong><small>Next Run</small></div></div>
+  </div>
+
+  <!-- Presets -->
   <div class="card" style="margin-bottom:1rem;">
     <div class="ch"><i class="fa-solid fa-sun"></i> Quick Schedule Presets</div>
-    <div class="cb">
-      <div class="preset-grid">
-        <button class="preset-btn" onclick="applyPreset('night')">
-          <span class="preset-icon">🌙</span>
-          <strong>Night Scan</strong>
-          <small>02:00 AM daily</small>
-          <span class="preset-tag">Low traffic</span>
-        </button>
-        <button class="preset-btn" onclick="applyPreset('morning')">
-          <span class="preset-icon">🌅</span>
-          <strong>Morning Scan</strong>
-          <small>06:00 AM daily</small>
-          <span class="preset-tag">Pre-business</span>
-        </button>
-        <button class="preset-btn" onclick="applyPreset('afternoon')">
-          <span class="preset-icon">☀️</span>
-          <strong>Afternoon Scan</strong>
-          <small>02:00 PM daily</small>
-          <span class="preset-tag">Mid-day check</span>
-        </button>
-        <button class="preset-btn" onclick="applyPreset('continuous')">
-          <span class="preset-icon">🔄</span>
-          <strong>Continuous</strong>
-          <small>Every 6 hours</small>
-          <span class="preset-tag">24/7 watch</span>
-        </button>
-        <button class="preset-btn" onclick="applyPreset('weekly')">
-          <span class="preset-icon">📅</span>
-          <strong>Weekly</strong>
-          <small>Sunday 01:00 AM</small>
-          <span class="preset-tag">Weekly report</span>
-        </button>
-        <button class="preset-btn" onclick="applyPreset('monthly')">
-          <span class="preset-icon">📆</span>
-          <strong>Monthly</strong>
-          <small>1st of month</small>
-          <span class="preset-tag">Compliance</span>
-        </button>
-      </div>
-    </div>
+    <div class="cb"><div class="preset-grid">
+      <button class="preset-btn" onclick="applyPreset('night')"><span class="preset-icon">&#127769;</span><strong>Night Scan</strong><small>02:00 AM daily</small><span class="preset-tag">Low traffic</span></button>
+      <button class="preset-btn" onclick="applyPreset('morning')"><span class="preset-icon">&#127749;</span><strong>Morning Scan</strong><small>06:00 AM daily</small><span class="preset-tag">Pre-business</span></button>
+      <button class="preset-btn" onclick="applyPreset('afternoon')"><span class="preset-icon">&#9728;</span><strong>Afternoon Scan</strong><small>02:00 PM daily</small><span class="preset-tag">Mid-day check</span></button>
+      <button class="preset-btn" onclick="applyPreset('continuous')"><span class="preset-icon">&#128260;</span><strong>Continuous</strong><small>Every 6 hours</small><span class="preset-tag">24/7 watch</span></button>
+      <button class="preset-btn" onclick="applyPreset('weekly')"><span class="preset-icon">&#128197;</span><strong>Weekly</strong><small>Sunday 01:00 AM</small><span class="preset-tag">Weekly report</span></button>
+      <button class="preset-btn" onclick="applyPreset('monthly')"><span class="preset-icon">&#128198;</span><strong>Monthly</strong><small>1st of month</small><span class="preset-tag">Compliance</span></button>
+    </div></div>
   </div>
 
   <!-- Tabs -->
@@ -94,153 +50,126 @@
     <button class="tab-btn active" onclick="switchTab('schedules',this)"><i class="fa-solid fa-calendar-check"></i> Schedules <span class="tab-count" id="tcSchedules">0</span></button>
     <button class="tab-btn" onclick="switchTab('history',this)"><i class="fa-solid fa-clock-rotate-left"></i> Run History <span class="tab-count" id="tcHistory">0</span></button>
     <button class="tab-btn" onclick="switchTab('vulns',this)"><i class="fa-solid fa-bug"></i> Vulnerability Tracker <span class="tab-count" id="tcVulns">0</span></button>
-    <button class="tab-btn" onclick="switchTab('priority',this)"><i class="fa-solid fa-fire"></i> Priority & Fixes</button>
+    <button class="tab-btn" onclick="switchTab('priority',this)"><i class="fa-solid fa-fire"></i> Priority &amp; Fixes</button>
   </div>
 
-  <!-- TAB: Schedules -->
   <div id="tab-schedules" class="tab-content active">
     <div class="card">
       <div class="ch" style="display:flex;justify-content:space-between;align-items:center;">
         <span><i class="fa-solid fa-list"></i> All Schedules</span>
-        <div style="display:flex;gap:.5rem;align-items:center;">
-          <select id="filterStatus" onchange="renderSchedules()" style="padding:.3rem .6rem;border:1.5px solid var(--border);border-radius:7px;font-size:.75rem;font-family:'DM Sans',sans-serif;outline:none;color:var(--text);">
-            <option value="">All Status</option>
-            <option value="active">Active</option>
-            <option value="paused">Paused</option>
-          </select>
-        </div>
+        <select id="filterStatus" onchange="renderSchedules()" style="padding:.3rem .6rem;border:1.5px solid var(--border);border-radius:7px;font-size:.75rem;font-family:'DM Sans',sans-serif;outline:none;color:var(--text);">
+          <option value="">All Status</option><option value="active">Active</option><option value="paused">Paused</option>
+        </select>
       </div>
       <div class="cb" style="padding:0;" id="scheduleList">
-        <div class="empty-state" id="schedEmptyState">
-          <i class="fa-solid fa-calendar-xmark"></i>
-          <p>No schedules yet.</p>
-          <small>Create a schedule to automate your security scans.</small>
-          <button class="btn btn-p" onclick="openModal()" style="margin-top:.75rem;">
-            <i class="fa-solid fa-plus"></i> Create First Schedule
-          </button>
-        </div>
+        <div class="empty-state"><i class="fa-solid fa-calendar-xmark"></i><p>No schedules yet.</p><small>Create a schedule to automate your security scans.</small><button class="btn btn-p" onclick="openModal()" style="margin-top:.75rem;"><i class="fa-solid fa-plus"></i> Create First Schedule</button></div>
       </div>
     </div>
   </div>
 
-  <!-- TAB: History -->
   <div id="tab-history" class="tab-content">
-    <div class="card">
-      <div class="ch"><i class="fa-solid fa-clock-rotate-left"></i> Run History</div>
+    <div class="card"><div class="ch"><i class="fa-solid fa-clock-rotate-left"></i> Run History</div>
       <div class="cb" style="padding:0;overflow-x:auto;">
-        <table class="dt" id="historyTable">
-          <thead>
-            <tr>
-              <th>#</th><th>Schedule</th><th>Target</th><th>Started</th><th>Duration</th>
-              <th>Findings</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Result</th><th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="historyBody">
-            <tr><td colspan="12" class="empty-td"><i class="fa-solid fa-clock-rotate-left"></i> No run history yet.</td></tr>
-          </tbody>
-        </table>
+        <table class="dt"><thead><tr><th>#</th><th>Schedule</th><th>Target</th><th>Started</th><th>Duration</th><th>Findings</th><th>Crit</th><th>High</th><th>Med</th><th>Low</th><th>Result</th></tr></thead>
+        <tbody id="historyBody"><tr><td colspan="11" class="empty-td"><i class="fa-solid fa-clock-rotate-left"></i> No run history yet.</td></tr></tbody></table>
       </div>
     </div>
   </div>
 
-  <!-- TAB: Vulnerability Tracker -->
   <div id="tab-vulns" class="tab-content">
     <div style="display:flex;gap:.75rem;margin-bottom:1rem;flex-wrap:wrap;">
-      <div class="vuln-stat-card" style="border-left:4px solid #ef4444;">
-        <strong id="vsTotal">0</strong><small>Total Found</small>
-      </div>
-      <div class="vuln-stat-card" style="border-left:4px solid #22c55e;">
-        <strong id="vsFixed" style="color:#22c55e;">0</strong><small>Fixed</small>
-      </div>
-      <div class="vuln-stat-card" style="border-left:4px solid #f97316;">
-        <strong id="vsOpen" style="color:#f97316;">0</strong><small>Still Open</small>
-      </div>
-      <div class="vuln-stat-card" style="border-left:4px solid #b91c1c;">
-        <strong id="vsCritOpen" style="color:#b91c1c;">0</strong><small>Critical Open</small>
-      </div>
+      <div class="vuln-stat-card" style="border-left:4px solid #ef4444;"><strong id="vsTotal">0</strong><small>Total Found</small></div>
+      <div class="vuln-stat-card" style="border-left:4px solid #22c55e;"><strong id="vsFixed" style="color:#22c55e;">0</strong><small>Fixed</small></div>
+      <div class="vuln-stat-card" style="border-left:4px solid #f97316;"><strong id="vsOpen" style="color:#f97316;">0</strong><small>Open</small></div>
+      <div class="vuln-stat-card" style="border-left:4px solid #b91c1c;"><strong id="vsCritOpen" style="color:#b91c1c;">0</strong><small>Critical Open</small></div>
     </div>
-
-    <!-- Fix rate bar -->
-    <div class="card" style="margin-bottom:1rem;">
-      <div class="cb" style="padding:.875rem;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;">
-          <span style="font-size:.825rem;font-weight:600;color:var(--text);">Fix Rate Progress</span>
-          <span id="fixRatePct" style="font-size:1.1rem;font-weight:700;color:#22c55e;">0%</span>
-        </div>
-        <div style="height:10px;background:var(--border);border-radius:8px;overflow:hidden;">
-          <div id="fixRateBar" style="height:100%;background:linear-gradient(90deg,#22c55e,#16a34a);border-radius:8px;width:0%;transition:width 1s ease;"></div>
-        </div>
-        <p style="font-size:.7rem;color:var(--text-muted);margin-top:.4rem;">Percentage of discovered vulnerabilities marked as fixed</p>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="ch"><i class="fa-solid fa-bug"></i> Vulnerability Tracker</div>
+    <div class="card" style="margin-bottom:1rem;"><div class="cb" style="padding:.875rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;"><span style="font-size:.825rem;font-weight:600;">Fix Rate</span><span id="fixRatePct" style="font-size:1.1rem;font-weight:700;color:#22c55e;">0%</span></div>
+      <div style="height:10px;background:var(--border);border-radius:8px;overflow:hidden;"><div id="fixRateBar" style="height:100%;background:linear-gradient(90deg,#22c55e,#16a34a);border-radius:8px;width:0%;transition:width 1s;"></div></div>
+    </div></div>
+    <div class="card"><div class="ch"><i class="fa-solid fa-bug"></i> Vulnerability Tracker</div>
       <div class="cb" style="padding:0;overflow-x:auto;">
-        <table class="dt" id="vulnTrackTable">
-          <thead>
-            <tr>
-              <th>Vulnerability</th><th>Severity</th><th>Target</th><th>Discovered</th><th>Schedule</th><th>Status</th><th>Time Open</th><th>Fix</th>
-            </tr>
-          </thead>
-          <tbody id="vulnTrackBody">
-            <tr><td colspan="8" class="empty-td"><i class="fa-solid fa-shield-halved"></i> No vulnerabilities tracked yet.</td></tr>
-          </tbody>
-        </table>
+        <table class="dt"><thead><tr><th>Vulnerability</th><th>Severity</th><th>Target</th><th>Discovered</th><th>Schedule</th><th>Status</th><th>Open</th><th>Action</th></tr></thead>
+        <tbody id="vulnTrackBody"><tr><td colspan="8" class="empty-td"><i class="fa-solid fa-shield-halved"></i> No vulnerabilities tracked yet.</td></tr></tbody></table>
       </div>
     </div>
   </div>
 
-  <!-- TAB: Priority & Fixes -->
   <div id="tab-priority" class="tab-content">
     <div class="g2" style="margin-bottom:1rem;">
-
-      <!-- Priority Queue -->
-      <div class="card">
-        <div class="ch" style="background:linear-gradient(90deg,#7f1d1d,#991b1b);">
-          <i class="fa-solid fa-fire"></i> Priority Fix Queue
-        </div>
-        <div class="cb" style="padding:0;" id="priorityList">
-          <div class="empty-state">
-            <i class="fa-solid fa-fire-flame-curved" style="color:#ef4444;"></i>
-            <p>No priority items.</p>
-            <small>Critical &amp; High severity vulnerabilities will appear here.</small>
-          </div>
-        </div>
-      </div>
-
-      <!-- Fix Solutions -->
-      <div class="card">
-        <div class="ch" style="background:linear-gradient(90deg,#14532d,#15803d);">
-          <i class="fa-solid fa-screwdriver-wrench"></i> Remediation Solutions
-        </div>
-        <div class="cb" style="padding:0;" id="solutionList">
-          <div class="empty-state">
-            <i class="fa-solid fa-screwdriver-wrench" style="color:#22c55e;"></i>
-            <p>No solutions yet.</p>
-            <small>Fix solutions for detected vulnerabilities appear here.</small>
-          </div>
-        </div>
-      </div>
+      <div class="card"><div class="ch" style="background:linear-gradient(90deg,#7f1d1d,#991b1b);"><i class="fa-solid fa-fire"></i> Priority Fix Queue</div><div class="cb" style="padding:0;" id="priorityList"><div class="empty-state"><i class="fa-solid fa-fire-flame-curved" style="color:#ef4444;"></i><p>No priority items.</p></div></div></div>
+      <div class="card"><div class="ch" style="background:linear-gradient(90deg,#14532d,#15803d);"><i class="fa-solid fa-screwdriver-wrench"></i> Remediation Solutions</div><div class="cb" style="padding:0;" id="solutionList"><div class="empty-state"><i class="fa-solid fa-screwdriver-wrench" style="color:#22c55e;"></i><p>No solutions yet.</p></div></div></div>
     </div>
-
-    <!-- Schedule-based fix timeline -->
-    <div class="card">
-      <div class="ch"><i class="fa-solid fa-timeline"></i> Scheduled Fix Timeline</div>
-      <div class="cb" id="fixTimeline">
-        <div class="empty-state">
-          <i class="fa-solid fa-timeline" style="color:var(--border);"></i>
-          <p>No fix timeline data.</p>
-          <small>Timeline will show scheduled fixes based on scan frequency.</small>
-        </div>
-      </div>
-    </div>
+    <div class="card"><div class="ch"><i class="fa-solid fa-timeline"></i> Scheduled Fix Timeline</div><div class="cb" id="fixTimeline"><div class="empty-state"><i class="fa-solid fa-timeline" style="color:var(--border);"></i><p>No data yet.</p></div></div></div>
   </div>
 
 </div>
 </div>
 
-<!-- ─────────────────── CREATE/EDIT SCHEDULE MODAL ─────────────────── -->
+<!-- ══════════════════════════════════════════
+     LIVE SCAN POPUP
+════════════════════════════════════════════ -->
+<div id="liveScanPopup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9000;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
+  <div style="background:var(--card);border-radius:16px;width:min(700px,96vw);max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.5);animation:popupIn .25s ease-out;">
+
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#0f2444,#1e40af);padding:1rem 1.25rem;display:flex;align-items:center;gap:.75rem;flex-shrink:0;">
+      <span class="live-dot" style="width:12px;height:12px;"></span>
+      <div style="flex:1;min-width:0;">
+        <strong style="color:#fff;font-size:1rem;display:block;" id="popupSchedName">Scan Running</strong>
+        <span style="color:rgba(255,255,255,.7);font-size:.73rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;" id="popupTarget"></span>
+      </div>
+      <a href="/scanning" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:7px;color:#fff;padding:.35rem .75rem;text-decoration:none;font-size:.75rem;white-space:nowrap;">
+        <i class="fa-solid fa-arrow-up-right-from-square"></i> Full View
+      </a>
+      <button onclick="closeLivePopup()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:7px;color:#fff;padding:.35rem .6rem;cursor:pointer;font-size:.78rem;">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <!-- Progress section -->
+    <div style="padding:.875rem 1.25rem 0;background:#0f172a;flex-shrink:0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;">
+        <span id="popupPhase" style="font-size:.82rem;color:#94a3b8;font-weight:600;">Initializing&hellip;</span>
+        <span id="popupPct" style="font-size:.95rem;color:#60a5fa;font-weight:700;">0%</span>
+      </div>
+      <div style="height:9px;background:#1e293b;border-radius:9px;overflow:hidden;margin-bottom:.75rem;">
+        <div id="popupBar" style="height:100%;background:linear-gradient(90deg,#3b82f6,#22c55e);border-radius:9px;width:0%;transition:width .6s ease;"></div>
+      </div>
+      <div style="display:flex;gap:.4rem;padding-bottom:.875rem;overflow-x:auto;">
+        <div class="popup-phase" id="ppPh1"><i class="fa-solid fa-network-wired"></i> Recon</div>
+        <div class="popup-phase" id="ppPh2"><i class="fa-solid fa-shield-halved"></i> Headers</div>
+        <div class="popup-phase" id="ppPh3"><i class="fa-solid fa-magnifying-glass"></i> Crawl</div>
+        <div class="popup-phase" id="ppPh4"><i class="fa-solid fa-bug"></i> Vuln Test</div>
+      </div>
+    </div>
+
+    <!-- Live log terminal -->
+    <div id="popupLog" style="flex:1;overflow-y:auto;background:#0f172a;padding:.875rem 1.25rem;font-family:'Courier New',monospace;font-size:.71rem;line-height:1.75;min-height:180px;max-height:300px;border-top:1px solid #1e293b;">
+      <span style="color:#475569;">Waiting for scan to start&hellip;</span>
+    </div>
+
+    <!-- Result panel (shown after scan completes) -->
+    <div id="popupResult" style="display:none;padding:1rem 1.25rem;border-top:1px solid var(--border);background:var(--card);flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:.875rem;flex-wrap:wrap;">
+        <i class="fa-solid fa-circle-check" style="color:#22c55e;font-size:1.6rem;flex-shrink:0;"></i>
+        <div style="flex:1;min-width:0;">
+          <strong id="popupResultTitle" style="font-size:.9rem;display:block;">Scan Complete</strong>
+          <div id="popupResultCounts" style="font-size:.78rem;color:var(--text-muted);margin-top:.25rem;"></div>
+        </div>
+        <a href="/reports" style="padding:.45rem 1rem;background:#2563EB;color:#fff;border-radius:8px;text-decoration:none;font-size:.8rem;font-weight:600;white-space:nowrap;">
+          <i class="fa-regular fa-file-lines"></i> View Report
+        </a>
+        <button onclick="closeLivePopup()" class="btn btn-o btn-s">Dismiss</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     CREATE / EDIT SCHEDULE MODAL
+════════════════════════════════════════════ -->
 <div id="schedModal" class="modal-overlay" onclick="closeModalOutside(event)">
   <div class="modal-box">
     <div class="modal-header">
@@ -249,48 +178,74 @@
     </div>
     <div class="modal-body">
 
-      <!-- Schedule Name & Target -->
       <div class="fg"><label>Schedule Name <span style="color:var(--red)">*</span></label>
         <input type="text" id="mName" placeholder="e.g. Nightly Production Scan">
       </div>
+
       <div class="fg"><label>Target URL <span style="color:var(--red)">*</span></label>
-        <input type="text" id="mTarget" placeholder="https://app.example.com">
+        <div style="display:flex;gap:.5rem;">
+          <input type="text" id="mTarget" placeholder="https://app.example.com" style="flex:1;" oninput="updatePreview()">
+          <select id="mTargetSelect" onchange="loadModalTarget()" style="padding:.45rem .6rem;border:1.5px solid var(--border);border-radius:8px;font-size:.78rem;font-family:'DM Sans',sans-serif;outline:none;color:var(--text);min-width:120px;">
+            <option value="">Load saved&hellip;</option>
+          </select>
+        </div>
       </div>
 
-      <!-- Time Preset -->
-      <div class="fg">
-        <label>Time of Day</label>
+      <div class="fg"><label>Authentication Method</label>
+        <select id="mAuth" onchange="showModalAuth();updatePreview();" style="padding:.475rem .75rem;border:1.5px solid var(--border);border-radius:8px;font-size:.825rem;font-family:'DM Sans',sans-serif;outline:none;width:100%;">
+          <option value="none">No Authentication</option>
+          <option value="basic">HTTP Basic Auth</option>
+          <option value="form">Form-Based Login</option>
+        </select>
+      </div>
+
+      <!-- Basic Auth -->
+      <div id="mBasicFields" class="auth-fields" style="display:none;">
+        <div class="auth-section-header"><span class="auth-icon">&#128272;</span><h3>HTTP Basic Authentication</h3></div>
+        <div class="fg"><label>Username</label><input type="text" id="mBasicUser" placeholder="Enter username" class="input-field"></div>
+        <div class="fg"><label>Password</label><input type="password" id="mBasicPass" placeholder="Enter password" class="input-field"></div>
+      </div>
+
+      <!-- Form Auth -->
+      <div id="mFormFields" class="auth-fields" style="display:none;">
+        <div class="auth-section-header"><span class="auth-icon">&#128203;</span><h3>Form-Based Authentication</h3></div>
+        <div class="fg"><label>Login Page URL</label>
+          <div style="display:flex;gap:.5rem;">
+            <input type="url" id="mFormLoginUrl" placeholder="https://example.com/login" class="input-field" style="flex:1;">
+            <button type="button" class="btn btn-o" onclick="detectModalFields()" id="mDetectBtn" style="white-space:nowrap;flex-shrink:0;">
+              <i class="fa-solid fa-wand-magic-sparkles" id="mDetectIcon"></i> <span id="mDetectText">Detect</span>
+            </button>
+          </div>
+        </div>
+        <div class="fg"><label>Username</label><input type="text" id="mFormUser" placeholder="Enter username" class="input-field"></div>
+        <div class="fg"><label>Password</label><input type="password" id="mFormPass" placeholder="Enter password" class="input-field"></div>
+        <div class="fg"><label>Username Field Name <span style="color:var(--text-muted);font-weight:400;font-size:.72rem;">(HTML name attr)</span></label><input type="text" id="mFormUserField" placeholder="username" class="input-field"></div>
+        <div class="fg"><label>Password Field Name <span style="color:var(--text-muted);font-weight:400;font-size:.72rem;">(HTML name attr)</span></label><input type="text" id="mFormPassField" placeholder="password" class="input-field"></div>
+        <div class="fg"><label>Success Indicator <span style="color:var(--text-muted);font-weight:400;font-size:.72rem;">(text visible after login)</span></label><input type="text" id="mFormSuccess" placeholder="e.g. Dashboard, Welcome, Logout" class="input-field"></div>
+      </div>
+
+      <div class="fg"><label>Time of Day</label>
         <div class="time-presets">
-          <button type="button" class="tp-btn" onclick="selTimePreset(this,'02:00')">🌙 Night<br><small>02:00</small></button>
-          <button type="button" class="tp-btn" onclick="selTimePreset(this,'06:00')">🌅 Morning<br><small>06:00</small></button>
-          <button type="button" class="tp-btn" onclick="selTimePreset(this,'14:00')">☀️ Afternoon<br><small>14:00</small></button>
-          <button type="button" class="tp-btn" onclick="selTimePreset(this,'22:00')">🌃 Evening<br><small>22:00</small></button>
+          <button type="button" class="tp-btn" onclick="selTimePreset(this,'02:00')">&#127769; Night<br><small>02:00</small></button>
+          <button type="button" class="tp-btn" onclick="selTimePreset(this,'06:00')">&#127749; Morning<br><small>06:00</small></button>
+          <button type="button" class="tp-btn" onclick="selTimePreset(this,'14:00')">&#9728; Afternoon<br><small>14:00</small></button>
+          <button type="button" class="tp-btn" onclick="selTimePreset(this,'22:00')">&#127747; Evening<br><small>22:00</small></button>
         </div>
       </div>
+      <div class="fg"><label>Custom Time</label><input type="time" id="mTime" value="02:00"></div>
 
-      <!-- Custom Time -->
-      <div class="fg">
-        <label>Custom Time</label>
-        <input type="time" id="mTime" value="02:00">
-      </div>
-
-      <!-- Frequency -->
-      <div class="fg">
-        <label>Frequency <span style="color:var(--red)">*</span></label>
-        <div class="freq-btns" id="freqBtns">
-          <button type="button" class="freq-btn active" data-freq="once" onclick="selFreq(this)">One-time</button>
-          <button type="button" class="freq-btn" data-freq="6h" onclick="selFreq(this)">Every 6h</button>
-          <button type="button" class="freq-btn" data-freq="12h" onclick="selFreq(this)">Every 12h</button>
-          <button type="button" class="freq-btn" data-freq="daily" onclick="selFreq(this)">Daily</button>
-          <button type="button" class="freq-btn" data-freq="weekly" onclick="selFreq(this)">Weekly</button>
-          <button type="button" class="freq-btn" data-freq="monthly" onclick="selFreq(this)">Monthly</button>
-          <button type="button" class="freq-btn" data-freq="247" onclick="selFreq(this)">24/7</button>
+      <div class="fg"><label>Frequency <span style="color:var(--red)">*</span></label>
+        <div class="freq-btns">
+          <button type="button" class="freq-btn active" data-freq="once"    onclick="selFreq(this)">One-time</button>
+          <button type="button" class="freq-btn"        data-freq="6h"      onclick="selFreq(this)">Every 6h</button>
+          <button type="button" class="freq-btn"        data-freq="12h"     onclick="selFreq(this)">Every 12h</button>
+          <button type="button" class="freq-btn"        data-freq="daily"   onclick="selFreq(this)">Daily</button>
+          <button type="button" class="freq-btn"        data-freq="weekly"  onclick="selFreq(this)">Weekly</button>
+          <button type="button" class="freq-btn"        data-freq="monthly" onclick="selFreq(this)">Monthly</button>
+          <button type="button" class="freq-btn"        data-freq="247"     onclick="selFreq(this)">24/7</button>
         </div>
       </div>
-
-      <!-- Weekly day picker -->
-      <div id="weekdayPicker" class="fg" style="display:none;">
-        <label>Day of Week</label>
+      <div id="weekdayPicker" class="fg" style="display:none;"><label>Day of Week</label>
         <div class="day-btns">
           <button type="button" class="day-btn active" data-day="0">Sun</button>
           <button type="button" class="day-btn" data-day="1">Mon</button>
@@ -301,35 +256,22 @@
           <button type="button" class="day-btn" data-day="6">Sat</button>
         </div>
       </div>
-
-      <!-- Monthly day picker -->
-      <div id="monthdayPicker" class="fg" style="display:none;">
-        <label>Day of Month</label>
+      <div id="monthdayPicker" class="fg" style="display:none;"><label>Day of Month</label>
         <input type="number" id="mMonthDay" min="1" max="28" value="1" style="width:100px;">
       </div>
 
-      <!-- Duration / timeout -->
-      <div class="fg">
-        <label>Scan Timeout (minutes)</label>
+      <div class="fg"><label>Scan Timeout (minutes)</label>
         <select id="mTimeout" style="padding:.475rem .75rem;border:1.5px solid var(--border);border-radius:8px;font-size:.825rem;font-family:'DM Sans',sans-serif;outline:none;width:100%;">
-          <option value="15">15 minutes</option>
-          <option value="30" selected>30 minutes</option>
-          <option value="60">1 hour</option>
-          <option value="120">2 hours</option>
-          <option value="240">4 hours</option>
+          <option value="15">15 minutes</option><option value="30" selected>30 minutes</option>
+          <option value="60">1 hour</option><option value="120">2 hours</option><option value="240">4 hours</option>
         </select>
       </div>
 
-      <!-- Notifications -->
-      <div class="fg">
-        <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;">
-          <input type="checkbox" id="mNotify" checked style="width:14px;height:14px;"> 
-          Notify on completion / critical findings
-        </label>
-      </div>
+      <div class="fg"><label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;">
+        <input type="checkbox" id="mNotify" checked style="width:14px;height:14px;"> Notify on completion / critical findings
+      </label></div>
 
-      <!-- Preview -->
-      <div class="schedule-preview" id="schedPreview">
+      <div class="schedule-preview">
         <i class="fa-solid fa-calendar-check" style="color:var(--blue)"></i>
         <span id="previewText">This scan will run once at 02:00 AM</span>
       </div>
@@ -337,7 +279,7 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-o" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-p" onclick="saveSchedule()" id="saveBtn"><i class="fa-solid fa-floppy-disk"></i> Save Schedule</button>
+      <button class="btn btn-p" onclick="saveSchedule()"><i class="fa-solid fa-floppy-disk"></i> Save Schedule</button>
     </div>
   </div>
 </div>
@@ -348,558 +290,340 @@
 {% raw %}
 initLayout('/scheduled');
 
-// ── State ──────────────────────────────────────────────────────────
-let schedules = JSON.parse(localStorage.getItem('vapt_schedules') || '[]');
-let runHistory = JSON.parse(localStorage.getItem('vapt_run_history') || '[]');
-let trackedVulns = JSON.parse(localStorage.getItem('vapt_tracked_vulns') || '[]');
-let editingId = null;
+var schedules    = JSON.parse(localStorage.getItem('vapt_schedules')     || '[]');
+var runHistory   = JSON.parse(localStorage.getItem('vapt_run_history')   || '[]');
+var trackedVulns = JSON.parse(localStorage.getItem('vapt_tracked_vulns') || '[]');
+var editingId = null, livePoller = null, wasRunning = false, popupOpen = false, popupLogLen = 0;
 
-// ── Tab switching ──────────────────────────────────────────────────
+function saveState() {
+    localStorage.setItem('vapt_schedules',     JSON.stringify(schedules));
+    localStorage.setItem('vapt_run_history',   JSON.stringify(runHistory));
+    localStorage.setItem('vapt_tracked_vulns', JSON.stringify(trackedVulns));
+}
+
 function switchTab(name, btn) {
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('tab-' + name).classList.add('active');
-    btn.classList.add('active');
-    if (name === 'vulns') renderVulnTracker();
-    if (name === 'priority') renderPriority();
-    if (name === 'history') renderHistory();
+    document.querySelectorAll('.tab-content').forEach(function(t){ t.classList.remove('active'); });
+    document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active'); });
+    document.getElementById('tab-'+name).classList.add('active'); btn.classList.add('active');
+    if (name==='vulns')    renderVulnTracker();
+    if (name==='priority') renderPriority();
+    if (name==='history')  renderHistory();
 }
 
-// ── Preset applyPreset ─────────────────────────────────────────────
+// ── Live Scan Popup ──────────────────────────────────────────────────
+function openLivePopup() {
+    popupOpen = true;
+    document.getElementById('liveScanPopup').style.display = 'flex';
+    document.getElementById('popupResult').style.display   = 'none';
+}
+function closeLivePopup() {
+    popupOpen = false;
+    document.getElementById('liveScanPopup').style.display = 'none';
+}
+
+function appendPopupLog(line) {
+    var log = document.getElementById('popupLog');
+    if (log.children.length === 1 && log.children[0].style.color === 'rgb(71, 85, 105)') log.innerHTML = '';
+    var span = document.createElement('span');
+    span.style.display = 'block';
+    if      (line.indexOf('\u274c')  !== -1 || line.indexOf('Error')  !== -1) span.style.color = '#f87171';
+    else if (line.indexOf('\u2705')  !== -1 || line.indexOf('done')   !== -1) span.style.color = '#34d399';
+    else if (line.indexOf('\ud83d\ude80') !== -1 || line.indexOf('Phase') !== -1) span.style.color = '#60a5fa';
+    else if (line.indexOf('\ud83d\udd77') !== -1 || line.indexOf('Crawl') !== -1) span.style.color = '#fbbf24';
+    else if (line.indexOf('\ud83d\udccb') !== -1) span.style.color = '#a78bfa';
+    else span.style.color = '#94a3b8';
+    span.textContent = line;
+    log.appendChild(span);
+    log.scrollTop = log.scrollHeight;
+}
+
+function updatePopupPhases(phase) {
+    for (var i=1; i<=4; i++) {
+        var el = document.getElementById('ppPh'+i);
+        if (!el) continue;
+        el.classList.remove('active','done');
+        if (i < phase)  el.classList.add('done');
+        if (i === phase) el.classList.add('active');
+    }
+}
+
+// ── Poll every 2.5s ──────────────────────────────────────────────────
+async function pollLiveScan() {
+    try {
+        var res  = await fetch('/api/scan-logs');
+        var data = await res.json();
+        var badge = document.getElementById('liveScanBadge');
+
+        if (data.running) {
+            wasRunning = true;
+            badge.style.display = 'flex';
+            if (popupOpen) {
+                var pct = data.progress || 0;
+                document.getElementById('popupBar').style.width   = pct + '%';
+                document.getElementById('popupPct').textContent    = pct + '%';
+                document.getElementById('popupTarget').textContent = data.target || '';
+                document.getElementById('popupPhase').textContent  = data.phase_name || 'Scanning\u2026';
+                updatePopupPhases(data.phase || 1);
+                var logs = data.logs || [];
+                while (popupLogLen < logs.length) { appendPopupLog(logs[popupLogLen]); popupLogLen++; }
+            }
+        } else {
+            badge.style.display = 'none';
+            if (wasRunning) {
+                wasRunning = false; popupLogLen = 0;
+                var rs = schedules.find(function(s){ return s.status==='running'; });
+                var scanResults = null;
+                try { var sr=await fetch('/scan-status'); var sd=await sr.json(); if(sd.status==='success'&&sd.results) scanResults=sd.results; } catch(e){}
+                if (rs) {
+                    rs.status='active'; rs.lastRun=new Date().toISOString();
+                    rs.runCount=(rs.runCount||0)+1; rs.nextRun=calcNextRun(rs.time,rs.freq);
+                    var vc={critical:0,high:0,medium:0,low:0};
+                    if (scanResults) {
+                        scanResults.forEach(function(f){ var sv=(f.Severity||'').toLowerCase(); if(vc[sv]!==undefined) vc[sv]++; });
+                        runHistory.unshift({ id:Date.now(),scheduleId:rs.id,scheduleName:rs.name,target:rs.target,started:new Date(Date.now()-180000).toISOString(),duration:rnd(90,900),findings:scanResults.length,critical:vc.critical,high:vc.high,medium:vc.medium,low:vc.low,result:vc.critical>0?'critical':vc.high>1?'warning':'clean' });
+                        scanResults.filter(function(f){return ['critical','high'].indexOf((f.Severity||'').toLowerCase())!==-1;}).slice(0,8).forEach(function(f){ trackedVulns.unshift({id:Date.now()+Math.random(),name:f.Test||'Unknown',severity:(f.Severity||'info').toLowerCase(),target:rs.target,discovered:new Date().toISOString(),scheduleName:rs.name,status:'open',remediation:f.Remediation||'',steps:f['Resolution Steps']?f['Resolution Steps'].split('\n').filter(Boolean):[]});});
+                    }
+                    saveState(); renderAll();
+                }
+                if (popupOpen) {
+                    document.getElementById('popupBar').style.width='100%'; document.getElementById('popupPct').textContent='100%';
+                    document.getElementById('popupPhase').textContent='\u2705 Scan Complete'; updatePopupPhases(4);
+                    document.getElementById('popupResult').style.display='block';
+                    var vc2={critical:0,high:0,medium:0,low:0};
+                    if (scanResults) { scanResults.forEach(function(f){ var sv=(f.Severity||'').toLowerCase(); if(vc2[sv]!==undefined) vc2[sv]++; }); document.getElementById('popupResultCounts').innerHTML='<span style="color:#ef4444;">\u25cf '+vc2.critical+' Critical</span> &nbsp;<span style="color:#f97316;">\u25cf '+vc2.high+' High</span> &nbsp;<span style="color:#eab308;">\u25cf '+vc2.medium+' Medium</span> &nbsp;<span style="color:#22c55e;">\u25cf '+vc2.low+' Low</span>'; }
+                    else { document.getElementById('popupResultCounts').textContent='Scan finished. Check Reports for details.'; }
+                    document.getElementById('popupResultTitle').textContent=(rs?rs.name+' \u2014 ':'')+'Complete';
+                }
+            }
+        }
+    } catch(e) {}
+}
+
+function startLivePolling() {
+    if (livePoller) return;
+    pollLiveScan();
+    livePoller = setInterval(pollLiveScan, 2500);
+}
+
+// ── Run Now — uses correct /scan endpoint ────────────────────────────
+async function runNow(id) {
+    var s = schedules.find(function(x){ return x.id===id; });
+    if (!s) return;
+    try {
+        var chk=await fetch('/api/scan-logs'); var cd=await chk.json();
+        if (cd.running) { if(confirm('A scan is already running. View it?')) openLivePopup(); return; }
+    } catch(e) {}
+
+    var authType = s.authType || 'none';
+    var authData = s.authData || {};
+    var adPayload = {};
+    if (authType==='basic') { adPayload={username:authData.basicUsername||'',password:authData.basicPassword||''}; }
+    else if (authType==='form') { adPayload={login_url:authData.formLoginUrl||'',username:authData.formUsername||'',password:authData.formPassword||'',username_field:authData.formUsernameField||'username',password_field:authData.formPasswordField||'password',success_indicator:authData.formSuccessIndicator||''}; }
+
+    try {
+        var res  = await fetch('/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({target:s.target,auth_type:authType,auth_data:adPayload,owasp_enabled:true}) });
+        var data = await res.json();
+        if (data.status==='started') {
+            s.status='running'; saveState(); renderSchedules(); updateStats();
+            wasRunning=true; popupLogLen=0;
+            document.getElementById('popupSchedName').textContent = s.name+' \u2014 Running';
+            document.getElementById('popupTarget').textContent    = s.target;
+            document.getElementById('popupBar').style.width       = '0%';
+            document.getElementById('popupPct').textContent       = '0%';
+            document.getElementById('popupPhase').textContent     = 'Initializing\u2026';
+            document.getElementById('popupLog').innerHTML         = '<span style="color:#475569;">Waiting for scan to start\u2026</span>';
+            document.getElementById('popupResult').style.display  = 'none';
+            updatePopupPhases(0);
+            openLivePopup();
+        } else { alert('Could not start scan: '+(data.message||'Unknown error')); }
+    } catch(e) { alert('Network error: '+e.message); }
+}
+
+// ── Presets ──────────────────────────────────────────────────────────
 function applyPreset(type) {
-    const presets = {
-        night: { time: '02:00', freq: 'daily', name: 'Nightly Security Scan' },
-        morning: { time: '06:00', freq: 'daily', name: 'Morning Security Scan' },
-        afternoon: { time: '14:00', freq: 'daily', name: 'Afternoon Security Scan' },
-        continuous: { time: '00:00', freq: '6h', name: '24/7 Continuous Scan' },
-        weekly: { time: '01:00', freq: 'weekly', name: 'Weekly Full Scan' },
-        monthly: { time: '02:00', freq: 'monthly', name: 'Monthly Compliance Scan' },
-    };
-    const p = presets[type];
-    if (!p) return;
+    var map={night:{time:'02:00',freq:'daily',name:'Nightly Security Scan'},morning:{time:'06:00',freq:'daily',name:'Morning Security Scan'},afternoon:{time:'14:00',freq:'daily',name:'Afternoon Security Scan'},continuous:{time:'00:00',freq:'6h',name:'24/7 Continuous Scan'},weekly:{time:'01:00',freq:'weekly',name:'Weekly Full Scan'},monthly:{time:'02:00',freq:'monthly',name:'Monthly Compliance Scan'}};
+    var p=map[type]; if(!p) return;
     openModal();
-    document.getElementById('mName').value = p.name;
-    document.getElementById('mTime').value = p.time;
-    document.querySelectorAll('.freq-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.freq === p.freq);
-    });
-    updateWeekMonthPicker(p.freq);
-    updatePreview();
+    document.getElementById('mName').value=p.name; document.getElementById('mTime').value=p.time;
+    document.querySelectorAll('.freq-btn').forEach(function(b){ b.classList.toggle('active',b.dataset.freq===p.freq); });
+    updateWeekMonthPicker(p.freq); updatePreview();
 }
 
-// ── Modal open/close ───────────────────────────────────────────────
-function openModal(id = null) {
-    editingId = id;
+// ── Modal ────────────────────────────────────────────────────────────
+function openModal(id) {
+    id=id||null; editingId=id; loadTargetsIntoModalSelect();
     document.getElementById('schedModal').classList.add('open');
-    document.getElementById('modalTitle').innerHTML = id
-        ? '<i class="fa-solid fa-pen-to-square"></i> Edit Schedule'
-        : '<i class="fa-solid fa-calendar-plus"></i> Create Schedule';
-
+    document.getElementById('modalTitle').innerHTML=id?'<i class="fa-solid fa-pen-to-square"></i> Edit Schedule':'<i class="fa-solid fa-calendar-plus"></i> Create Schedule';
     if (id) {
-        const s = schedules.find(x => x.id === id);
+        var s=schedules.find(function(x){return x.id===id;});
         if (s) {
-            document.getElementById('mName').value = s.name;
-            document.getElementById('mTarget').value = s.target;
-            document.getElementById('mTime').value = s.time;
-            document.getElementById('mTimeout').value = s.timeout || 30;
-            document.getElementById('mNotify').checked = s.notify !== false;
-            document.querySelectorAll('.freq-btn').forEach(b => b.classList.toggle('active', b.dataset.freq === s.freq));
+            document.getElementById('mName').value=s.name; document.getElementById('mTarget').value=s.target;
+            document.getElementById('mTime').value=s.time; document.getElementById('mTimeout').value=s.timeout||30;
+            document.getElementById('mNotify').checked=s.notify!==false; document.getElementById('mAuth').value=s.authType||'none';
+            showModalAuth();
+            var a=s.authData||{};
+            if (s.authType==='basic') { document.getElementById('mBasicUser').value=a.basicUsername||''; document.getElementById('mBasicPass').value=a.basicPassword||''; }
+            else if (s.authType==='form') { document.getElementById('mFormLoginUrl').value=a.formLoginUrl||''; document.getElementById('mFormUser').value=a.formUsername||''; document.getElementById('mFormPass').value=a.formPassword||''; document.getElementById('mFormUserField').value=a.formUsernameField||'username'; document.getElementById('mFormPassField').value=a.formPasswordField||'password'; document.getElementById('mFormSuccess').value=a.formSuccessIndicator||''; }
+            document.querySelectorAll('.freq-btn').forEach(function(b){ b.classList.toggle('active',b.dataset.freq===s.freq); });
             updateWeekMonthPicker(s.freq);
         }
     } else {
-        document.getElementById('mName').value = '';
-        document.getElementById('mTarget').value = '';
-        document.getElementById('mTime').value = '02:00';
-        document.getElementById('mTimeout').value = '30';
-        document.getElementById('mNotify').checked = true;
-        document.querySelectorAll('.freq-btn').forEach(b => b.classList.toggle('active', b.dataset.freq === 'once'));
+        document.getElementById('mName').value=''; document.getElementById('mTarget').value='';
+        document.getElementById('mTime').value='02:00'; document.getElementById('mTimeout').value='30';
+        document.getElementById('mNotify').checked=true; document.getElementById('mAuth').value='none';
+        showModalAuth();
+        document.querySelectorAll('.freq-btn').forEach(function(b){ b.classList.toggle('active',b.dataset.freq==='once'); });
         updateWeekMonthPicker('once');
     }
     updatePreview();
 }
-function closeModal() { document.getElementById('schedModal').classList.remove('open'); }
-function closeModalOutside(e) { if (e.target.id === 'schedModal') closeModal(); }
+function closeModal()         { document.getElementById('schedModal').classList.remove('open'); }
+function closeModalOutside(e) { if(e.target.id==='schedModal') closeModal(); }
 
-// ── Time preset select ─────────────────────────────────────────────
-function selTimePreset(btn, time) {
-    document.querySelectorAll('.tp-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('mTime').value = time;
-    updatePreview();
+function showModalAuth() {
+    var v=document.getElementById('mAuth').value;
+    document.getElementById('mBasicFields').style.display=v==='basic'?'block':'none';
+    document.getElementById('mFormFields').style.display=v==='form'?'block':'none';
 }
 
-// ── Frequency select ───────────────────────────────────────────────
-function selFreq(btn) {
-    document.querySelectorAll('.freq-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    updateWeekMonthPicker(btn.dataset.freq);
-    updatePreview();
-}
-function updateWeekMonthPicker(freq) {
-    document.getElementById('weekdayPicker').style.display = freq === 'weekly' ? 'block' : 'none';
-    document.getElementById('monthdayPicker').style.display = freq === 'monthly' ? 'block' : 'none';
+async function loadTargetsIntoModalSelect() {
+    try {
+        var res=await fetch('/api/targets'); var data=await res.json();
+        var sel=document.getElementById('mTargetSelect'), tgts=data.targets||[];
+        sel.innerHTML='<option value="">Load saved\u2026</option>'+tgts.map(function(t){return '<option value="'+t.id+'">'+t.name+'</option>';}).join('');
+    } catch(e) {}
 }
 
-// ── Day btn toggle ─────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('.day-btn').forEach(b => {
-        b.addEventListener('click', () => {
-            b.classList.toggle('active');
-            updatePreview();
-        });
-    });
+async function loadModalTarget() {
+    var id=document.getElementById('mTargetSelect').value; if(!id) return;
+    try {
+        var res=await fetch('/api/targets/'+id); var data=await res.json();
+        if(data.status!=='ok') return;
+        var t=data.target, a=t.auth_config||{type:'none'};
+        document.getElementById('mTarget').value=t.url; document.getElementById('mAuth').value=a.type||'none';
+        showModalAuth();
+        if(a.type==='basic') { document.getElementById('mBasicUser').value=a.basicUsername||a.username||''; document.getElementById('mBasicPass').value=a.basicPassword||a.password||''; }
+        else if(a.type==='form') { document.getElementById('mFormLoginUrl').value=a.formLoginUrl||a.login_url||''; document.getElementById('mFormUser').value=a.formUsername||a.username||''; document.getElementById('mFormPass').value=a.formPassword||a.password||''; document.getElementById('mFormUserField').value=a.formUsernameField||a.username_field||'username'; document.getElementById('mFormPassField').value=a.formPasswordField||a.password_field||'password'; document.getElementById('mFormSuccess').value=a.formSuccessIndicator||a.success_indicator||''; }
+        updatePreview();
+    } catch(e) {}
+}
+
+async function detectModalFields() {
+    var url=document.getElementById('mFormLoginUrl').value.trim(); if(!url){alert('Enter Login Page URL first.');return;}
+    var btn=document.getElementById('mDetectBtn'),icon=document.getElementById('mDetectIcon'),text=document.getElementById('mDetectText');
+    btn.disabled=true; icon.className='fa-solid fa-spinner fa-spin'; text.textContent='Detecting\u2026';
+    try {
+        var res=await fetch('/api/detect-login-fields',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login_url:url})});
+        var data=await res.json();
+        if(data.status==='ok'){document.getElementById('mFormUserField').value=data.username_field||'username';document.getElementById('mFormPassField').value=data.password_field||'password';if(data.api_login_url)document.getElementById('mFormLoginUrl').value=data.api_login_url;icon.className='fa-solid fa-circle-check';text.textContent='Done!';setTimeout(function(){icon.className='fa-solid fa-wand-magic-sparkles';text.textContent='Detect';btn.disabled=false;},1800);return;}
+        else{alert(data.message||'Could not detect fields');}
+    }catch(e){alert('Detection failed: '+e.message);}
+    icon.className='fa-solid fa-wand-magic-sparkles'; text.textContent='Detect'; btn.disabled=false;
+}
+
+function selTimePreset(btn,time){document.querySelectorAll('.tp-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');document.getElementById('mTime').value=time;updatePreview();}
+function selFreq(btn){document.querySelectorAll('.freq-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');updateWeekMonthPicker(btn.dataset.freq);updatePreview();}
+function updateWeekMonthPicker(freq){document.getElementById('weekdayPicker').style.display=freq==='weekly'?'block':'none';document.getElementById('monthdayPicker').style.display=freq==='monthly'?'block':'none';}
+function getSelectedDays(){return Array.from(document.querySelectorAll('.day-btn.active')).map(function(b){return['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][parseInt(b.dataset.day)];});}
+
+function updatePreview() {
+    var time=document.getElementById('mTime').value||'02:00', fBtn=document.querySelector('.freq-btn.active'), freq=fBtn?fBtn.dataset.freq:'once';
+    var pp=time.split(':'),hr=parseInt(pp[0]),mn=pp[1],ts=(hr%12||12)+':'+mn+' '+(hr>=12?'PM':'AM');
+    var at=document.getElementById('mAuth').value, an=at!=='none'?' (with '+(at==='basic'?'Basic Auth':'Form Login')+')':'';
+    var md=document.getElementById('mMonthDay')?document.getElementById('mMonthDay').value:'1';
+    var msgs={once:'This scan will run one-time at '+ts+an,'6h':'This scan will run every 6 hours starting at '+ts+an,'12h':'Every 12 hours starting at '+ts+an,daily:'Every day at '+ts+an,weekly:'Every '+(getSelectedDays().join(', ')||'Sunday')+' at '+ts+an,monthly:'Day '+md+' of each month at '+ts+an,'247':'Continuously 24/7'+an};
+    document.getElementById('previewText').textContent=msgs[freq]||msgs.once;
+}
+
+function readModalAuth(){var t=document.getElementById('mAuth').value,a={type:t};if(t==='basic'){a.basicUsername=document.getElementById('mBasicUser').value.trim();a.basicPassword=document.getElementById('mBasicPass').value;}else if(t==='form'){a.formLoginUrl=document.getElementById('mFormLoginUrl').value.trim();a.formUsername=document.getElementById('mFormUser').value.trim();a.formPassword=document.getElementById('mFormPass').value;a.formUsernameField=document.getElementById('mFormUserField').value.trim()||'username';a.formPasswordField=document.getElementById('mFormPassField').value.trim()||'password';a.formSuccessIndicator=document.getElementById('mFormSuccess').value.trim();}return a;}
+
+function saveSchedule(){
+    var name=document.getElementById('mName').value.trim(),target=document.getElementById('mTarget').value.trim();
+    if(!name||!target){alert('Please fill in Schedule Name and Target URL.');return;}
+    var time=document.getElementById('mTime').value,fBtn=document.querySelector('.freq-btn.active'),freq=fBtn?fBtn.dataset.freq:'once';
+    var timeout=parseInt(document.getElementById('mTimeout').value),notify=document.getElementById('mNotify').checked,authData=readModalAuth(),nextRun=calcNextRun(time,freq);
+    if(editingId){var idx=schedules.findIndex(function(s){return s.id===editingId;});if(idx!==-1)schedules[idx]=Object.assign({},schedules[idx],{name,target,time,freq,timeout,notify,nextRun,authType:authData.type,authData});}
+    else{schedules.push({id:Date.now(),name,target,time,freq,timeout,notify,nextRun,authType:authData.type,authData,status:'active',created:new Date().toISOString(),runCount:0,lastRun:null});}
+    saveState();closeModal();renderAll();
+}
+
+function calcNextRun(time,freq){var now=new Date(),p=(time||'02:00').split(':').map(Number),next=new Date(now);next.setHours(p[0],p[1],0,0);if(next<=now){if(freq==='6h')next.setHours(next.getHours()+6);else if(freq==='12h')next.setHours(next.getHours()+12);else if(freq==='247')next.setMinutes(next.getMinutes()+5);else next.setDate(next.getDate()+1);}return next.toISOString();}
+function fmtNextRun(iso){if(!iso)return'\u2014';var d=new Date(iso),diff=d-Date.now();if(isNaN(d)||diff<0)return'Overdue';var hrs=Math.floor(diff/3600000),mins=Math.floor((diff%3600000)/60000);if(hrs===0)return'in '+mins+'m';if(hrs<24)return'in '+hrs+'h '+mins+'m';return'in '+Math.floor(hrs/24)+'d '+(hrs%24)+'h';}
+function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
+function toggleSched(id){var s=schedules.find(function(x){return x.id===id;});if(s&&s.status!=='running'){s.status=s.status==='active'?'paused':'active';saveState();renderAll();}}
+function deleteSched(id){if(!confirm('Delete this schedule?'))return;schedules=schedules.filter(function(s){return s.id!==id;});saveState();renderAll();}
+
+function renderSchedules(){
+    var filter=document.getElementById('filterStatus')?document.getElementById('filterStatus').value:'',list=filter?schedules.filter(function(s){return s.status===filter;}):schedules,con=document.getElementById('scheduleList');
+    document.getElementById('tcSchedules').textContent=schedules.length;
+    if(!list.length){con.innerHTML='<div class="empty-state"><i class="fa-solid fa-calendar-xmark"></i><p>No schedules found.</p><button class="btn btn-p" onclick="openModal()" style="margin-top:.75rem;"><i class="fa-solid fa-plus"></i> Create Schedule</button></div>';return;}
+    var fl={once:'One-time','6h':'Every 6h','12h':'Every 12h',daily:'Daily',weekly:'Weekly',monthly:'Monthly','247':'24/7'},fi={once:'fa-circle-dot','6h':'fa-rotate','12h':'fa-rotate',daily:'fa-sun',weekly:'fa-calendar-week',monthly:'fa-calendar','247':'fa-infinity'};
+    con.innerHTML=list.map(function(s){
+        var isR=s.status==='running',isA=s.status==='active',pp=(s.time||'02:00').split(':'),hr=parseInt(pp[0]),ts=(hr%12||12)+':'+pp[1]+' '+(hr>=12?'PM':'AM');
+        var authBadge='';if(s.authType&&s.authType!=='none')authBadge='<span style="font-size:.8rem;margin-left:.2rem;" title="'+(s.authType==='basic'?'Basic Auth':'Form Login')+'"> '+(s.authType==='basic'?'&#128272;':'&#128203;')+'</span>';
+        var sc=isR?'bsc':isA?'bac':'bpd',si=isR?'fa-spinner fa-spin':isA?'fa-circle-check':'fa-pause',sl=isR?'Running':isA?'Active':'Paused',dis=isR?'disabled':'';
+        return '<div class="sched-item'+(isA||isR?'':' paused')+'">'+
+          '<div class="sched-left"><div class="sched-icon '+(isR?'running':isA?'active':'paused')+'"><i class="fa-solid '+(isR?'fa-spinner fa-spin':fi[s.freq]||'fa-clock')+'"></i></div>'+
+          '<div><div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;"><strong style="font-size:.9rem;">'+s.name+'</strong><span class="bx '+sc+'" style="font-size:.65rem;"><i class="fa-solid '+si+'"></i> '+sl+'</span>'+authBadge+'</div>'+
+          '<div class="sched-meta"><span><i class="fa-solid fa-crosshairs"></i> '+s.target+'</span><span><i class="fa-solid fa-clock"></i> '+ts+'</span><span><i class="fa-solid '+(fi[s.freq]||'fa-clock')+'"></i> '+(fl[s.freq]||s.freq)+'</span><span><i class="fa-solid fa-hourglass-half"></i> '+(s.timeout||30)+'min</span>'+(s.runCount?'<span><i class="fa-solid fa-rotate"></i> '+s.runCount+' runs</span>':'')+'</div></div></div>'+
+          '<div class="sched-right"><div class="next-run-badge"><small>'+(isR?'Status':'Next run')+'</small><strong style="'+(isR?'color:var(--blue);':'')+'">'+(isR?'Scanning\u2026':fmtNextRun(s.nextRun))+'</strong></div>'+
+          '<div style="display:flex;gap:.35rem;">'+(isR?'<button class="btn btn-p btn-s" onclick="openLivePopup()" style="font-size:.7rem;"><i class="fa-solid fa-chart-line"></i> Live</button>':'<button class="btn btn-p btn-s" onclick="runNow('+s.id+')" title="Run Now"><i class="fa-solid fa-play"></i></button>')+
+          '<button class="btn '+(isA?'btn-o':'btn-p')+' btn-s" onclick="toggleSched('+s.id+')" '+dis+'><i class="fa-solid '+(isA?'fa-pause':'fa-play')+'"></i></button>'+
+          '<button class="btn btn-o btn-s" onclick="openModal('+s.id+')" '+dis+'><i class="fa-regular fa-pen-to-square"></i></button>'+
+          '<button class="btn btn-d btn-s" onclick="deleteSched('+s.id+')" '+dis+'><i class="fa-regular fa-trash-can"></i></button></div></div></div>';
+    }).join('');
+}
+
+function renderHistory(){
+    var tbody=document.getElementById('historyBody'); document.getElementById('tcHistory').textContent=runHistory.length;
+    if(!runHistory.length){tbody.innerHTML='<tr><td colspan="11" class="empty-td"><i class="fa-solid fa-clock-rotate-left"></i> No run history yet.</td></tr>';return;}
+    tbody.innerHTML=runHistory.map(function(r,i){var d=new Date(r.started),ds=isNaN(d)?'\u2014':d.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}),dur=r.duration?Math.floor(r.duration/60)+'m '+(r.duration%60)+'s':'\u2014',rc=r.result==='critical'?'bc':r.result==='warning'?'bh':'bac',rl=r.result==='critical'?'Critical Found':r.result==='warning'?'Issues Found':'Clean';return'<tr><td style="font-size:.72rem;color:var(--text-muted);">'+(runHistory.length-i)+'</td><td><strong style="font-size:.8rem;">'+r.scheduleName+'</strong></td><td style="font-size:.78rem;color:var(--blue);">'+(r.target||'').replace('https://','').replace('http://','')+'</td><td style="font-size:.72rem;">'+ds+'</td><td style="font-size:.78rem;">'+dur+'</td><td style="font-weight:700;">'+r.findings+'</td><td style="color:#ef4444;font-weight:700;">'+r.critical+'</td><td style="color:#f97316;font-weight:700;">'+r.high+'</td><td style="color:#eab308;font-weight:700;">'+r.medium+'</td><td style="color:#22c55e;font-weight:700;">'+r.low+'</td><td><span class="bx '+rc+'" style="font-size:.65rem;">'+rl+'</span></td></tr>';}).join('');
+}
+
+function renderVulnTracker(){
+    var tbody=document.getElementById('vulnTrackBody'); document.getElementById('tcVulns').textContent=trackedVulns.length;
+    var total=trackedVulns.length,fixed=trackedVulns.filter(function(v){return v.status==='fixed';}).length,open=trackedVulns.filter(function(v){return v.status==='open';}).length,critOpen=trackedVulns.filter(function(v){return v.severity==='critical'&&v.status==='open';}).length,fr=total>0?Math.round(fixed/total*100):0;
+    document.getElementById('vsTotal').textContent=total;document.getElementById('vsFixed').textContent=fixed;document.getElementById('vsOpen').textContent=open;document.getElementById('vsCritOpen').textContent=critOpen;document.getElementById('fixRatePct').textContent=fr+'%';document.getElementById('fixRateBar').style.width=fr+'%';
+    if(!trackedVulns.length){tbody.innerHTML='<tr><td colspan="8" class="empty-td"><i class="fa-solid fa-shield-halved"></i> No vulnerabilities tracked yet.</td></tr>';return;}
+    var so={critical:0,high:1,medium:2,low:3,info:4},sorted=[].concat(trackedVulns).sort(function(a,b){return(so[a.severity]||4)-(so[b.severity]||4);});
+    tbody.innerHTML=sorted.map(function(v){var sev=v.severity||'info',sc={critical:'bc',high:'bh',medium:'bm',low:'bl',info:'bi'}[sev]||'bi',fix=v.status==='fixed',d=new Date(v.discovered),ds=isNaN(d)?'\u2014':d.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true}),od=Math.floor((Date.now()-new Date(v.discovered).getTime())/86400000),os=od===0?'Today':od===1?'1 day':od+' days',ug=!fix&&sev==='critical'&&od>0?'urgent-row':'';return'<tr class="'+ug+'"><td><strong style="font-size:.825rem;">'+v.name+'</strong></td><td><span class="bx '+sc+'">'+sev.charAt(0).toUpperCase()+sev.slice(1)+'</span></td><td style="font-size:.75rem;color:var(--blue);">'+(v.target||'').replace('https://','').replace('http://','')+'</td><td style="font-size:.72rem;">'+ds+'</td><td style="font-size:.72rem;color:var(--text-muted);">'+(v.scheduleName||'\u2014')+'</td><td><span class="bx '+(fix?'bac':sc)+'" style="font-size:.65rem;"><i class="fa-solid '+(fix?'fa-circle-check':'fa-circle-exclamation')+'"></i> '+(fix?'Fixed':'Open')+'</span></td><td style="font-size:.72rem;'+(!fix&&sev==='critical'?'color:#ef4444;font-weight:700;':'color:var(--text-muted);')+'">'+(fix?'\u2014':os)+'</td><td><button class="btn btn-s '+(fix?'btn-o':'btn-p')+'" onclick="toggleVulnFix(\''+v.id+'\')" style="font-size:.65rem;padding:.2rem .5rem;"><i class="fa-solid '+(fix?'fa-rotate-left':'fa-circle-check')+'"></i> '+(fix?'Reopen':'Fix')+'</button></td></tr>';}).join('');
+}
+function toggleVulnFix(id){var v=trackedVulns.find(function(x){return String(x.id)===String(id);});if(v){v.status=v.status==='fixed'?'open':'fixed';saveState();renderVulnTracker();updateStats();renderPriority();}}
+
+function renderPriority(){
+    var ov=trackedVulns.filter(function(v){return v.status==='open';}),so={critical:0,high:1,medium:2,low:3,info:4},sorted=[].concat(ov).sort(function(a,b){return(so[a.severity]||4)-(so[b.severity]||4);});
+    var pl=document.getElementById('priorityList');
+    if(!sorted.length){pl.innerHTML='<div class="empty-state"><i class="fa-solid fa-shield-check" style="color:#22c55e;font-size:2rem;"></i><p style="color:#22c55e;font-weight:600;">All clear!</p></div>';}
+    else pl.innerHTML=sorted.map(function(v,i){var sev=v.severity||'info',sc={critical:'bc',high:'bh',medium:'bm',low:'bl'}[sev]||'bi';return'<div class="priority-item"><div class="priority-num '+sev+'">'+(i+1)+'</div><div style="flex:1;min-width:0;"><div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;"><strong style="font-size:.825rem;">'+v.name+'</strong><span class="bx '+sc+'" style="font-size:.62rem;">'+sev.charAt(0).toUpperCase()+sev.slice(1)+'</span></div><small style="color:var(--text-muted);font-size:.72rem;">'+(v.target||'').replace('https://','').replace('http://','')+'</small></div><button class="btn btn-p btn-s" onclick="toggleVulnFix(\''+v.id+'\')" style="font-size:.65rem;"><i class="fa-solid fa-circle-check"></i> Fix</button></div>';}).join('');
+    var sl=document.getElementById('solutionList'),wr=sorted.filter(function(v){return v.remediation;});
+    if(!wr.length){sl.innerHTML='<div class="empty-state"><i class="fa-solid fa-screwdriver-wrench" style="color:var(--border);"></i><p>No solutions yet.</p></div>';}
+    else sl.innerHTML=wr.map(function(v){var sev=v.severity||'info',sc={critical:'bc',high:'bh',medium:'bm',low:'bl'}[sev]||'bi',steps=v.steps&&v.steps.length?'<div class="solution-steps">'+v.steps.map(function(st,si){return'<div class="sol-step"><div class="sol-num">'+(si+1)+'</div><small>'+st+'</small></div>';}).join('')+'</div>':'';return'<div class="solution-item"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem;flex-wrap:wrap;gap:.3rem;"><strong style="font-size:.8rem;">'+v.name+'</strong><span class="bx '+sc+'" style="font-size:.62rem;">'+sev.charAt(0).toUpperCase()+sev.slice(1)+'</span></div><p style="font-size:.78rem;line-height:1.6;margin-bottom:.5rem;">'+v.remediation+'</p>'+steps+'</div>';}).join('');
+    var tl=document.getElementById('fixTimeline'),as=schedules.filter(function(s){return s.status==='active'||s.status==='running';}),fl={once:'One-time','6h':'Every 6h','12h':'Every 12h',daily:'Daily',weekly:'Weekly',monthly:'Monthly','247':'24/7'};
+    if(!as.length||!ov.length){tl.innerHTML='<div class="empty-state"><i class="fa-solid fa-timeline" style="color:var(--border);"></i><p>No active schedules with open vulnerabilities.</p></div>';}
+    else tl.innerHTML=as.map(function(s){var sv=trackedVulns.filter(function(v){return v.scheduleName===s.name&&v.status==='open';}),bh=sv.slice(0,3).map(function(v){var sc2={critical:'bc',high:'bh',medium:'bm',low:'bl'}[v.severity]||'bi';return'<span class="bx '+sc2+'" style="font-size:.62rem;">'+v.name+'</span>';}).join('')+(sv.length>3?'<span style="font-size:.72rem;color:var(--text-muted);">+'+(sv.length-3)+' more</span>':'');return'<div class="timeline-item"><div class="tl-dot"></div><div class="tl-content"><div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.25rem;"><strong style="font-size:.825rem;">'+s.name+'</strong><span class="bx bac" style="font-size:.62rem;">'+(fl[s.freq]||s.freq)+'</span><span style="font-size:.72rem;color:var(--text-muted);">Next: '+fmtNextRun(s.nextRun)+'</span></div><p style="font-size:.75rem;color:var(--text-muted);">'+sv.length+' open vuln'+(sv.length!==1?'s':'')+' will be re-checked</p>'+(sv.length?'<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.3rem;">'+bh+'</div>':'')+'</div></div>';}).join('');
+}
+
+function updateStats(){
+    var active=schedules.filter(function(s){return s.status==='active'||s.status==='running';}).length,fixed=trackedVulns.filter(function(v){return v.status==='fixed';}).length,priority=trackedVulns.filter(function(v){return v.severity==='critical'&&v.status==='open';}).length,nxt=schedules.filter(function(s){return s.status==='active'&&s.nextRun;}).sort(function(a,b){return new Date(a.nextRun)-new Date(b.nextRun);})[0];
+    document.getElementById('statActive').textContent=active; document.getElementById('statCompleted').textContent=runHistory.length;
+    document.getElementById('statFixed').textContent=fixed; document.getElementById('statPriority').textContent=priority;
+    document.getElementById('statNextRun').textContent=nxt?fmtNextRun(nxt.nextRun):'\u2014';
+    document.getElementById('tcSchedules').textContent=schedules.length; document.getElementById('tcHistory').textContent=runHistory.length; document.getElementById('tcVulns').textContent=trackedVulns.length;
+}
+
+function renderAll(){renderSchedules();renderHistory();updateStats();if(document.getElementById('tab-vulns').classList.contains('active'))renderVulnTracker();if(document.getElementById('tab-priority').classList.contains('active'))renderPriority();}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.day-btn').forEach(function(b){ b.addEventListener('click',function(){ b.classList.toggle('active'); updatePreview(); }); });
     document.getElementById('mTime').addEventListener('change', updatePreview);
     renderAll();
+    startLivePolling();
+    setInterval(updateStats, 30000);
+    // Check if scan was running on page load
+    fetch('/api/scan-logs').then(function(r){return r.json();}).then(function(d){
+        if(d.running){wasRunning=true;document.getElementById('liveScanBadge').style.display='flex';document.getElementById('popupTarget').textContent=d.target||'';}
+    }).catch(function(){});
 });
-
-function getSelectedDays() {
-    return [...document.querySelectorAll('.day-btn.active')].map(b =>
-        ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][parseInt(b.dataset.day)]
-    );
-}
-
-// ── Preview text ───────────────────────────────────────────────────
-function updatePreview() {
-    const time = document.getElementById('mTime').value || '02:00';
-    const freq = document.querySelector('.freq-btn.active')?.dataset.freq || 'once';
-    const [h, m] = time.split(':');
-    const hour = parseInt(h);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const h12 = hour % 12 || 12;
-    const timeStr = `${h12}:${m} ${ampm}`;
-
-    const msgs = {
-        once: `This scan will run one-time at ${timeStr}`,
-        '6h': `This scan will run every 6 hours starting at ${timeStr}`,
-        '12h': `This scan will run every 12 hours starting at ${timeStr}`,
-        daily: `This scan will run every day at ${timeStr}`,
-        weekly: `This scan will run every ${getSelectedDays().join(', ') || 'Sunday'} at ${timeStr}`,
-        monthly: `This scan will run on day ${document.getElementById('mMonthDay')?.value || 1} of each month at ${timeStr}`,
-        '247': `This scan will run continuously, 24 hours a day, 7 days a week`,
-    };
-    document.getElementById('previewText').textContent = msgs[freq] || msgs.once;
-}
-
-// ── Save schedule ──────────────────────────────────────────────────
-function saveSchedule() {
-    const name   = document.getElementById('mName').value.trim();
-    const target = document.getElementById('mTarget').value.trim();
-    const time   = document.getElementById('mTime').value;
-    const freq   = document.querySelector('.freq-btn.active')?.dataset.freq || 'once';
-    const timeout = parseInt(document.getElementById('mTimeout').value);
-    const notify = document.getElementById('mNotify').checked;
-
-    if (!name || !target) { alert('Please fill in Schedule Name and Target URL.'); return; }
-
-    const now = new Date();
-    const nextRun = calcNextRun(time, freq);
-
-    if (editingId) {
-        const idx = schedules.findIndex(s => s.id === editingId);
-        if (idx !== -1) {
-            schedules[idx] = { ...schedules[idx], name, target, time, freq, timeout, notify, nextRun };
-        }
-    } else {
-        schedules.push({
-            id: Date.now(),
-            name, target, time, freq, timeout, notify, nextRun,
-            status: 'active',
-            created: now.toISOString(),
-            runCount: 0,
-            lastRun: null,
-        });
-    }
-
-    saveState();
-    closeModal();
-    renderAll();
-    addSimulatedHistory(schedules[schedules.length - 1]);
-}
-
-function calcNextRun(time, freq) {
-    const now = new Date();
-    const [h, m] = (time || '02:00').split(':').map(Number);
-    const next = new Date(now);
-    next.setHours(h, m, 0, 0);
-    if (next <= now) {
-        if (freq === '6h')  next.setHours(next.getHours() + 6);
-        else if (freq === '12h') next.setHours(next.getHours() + 12);
-        else next.setDate(next.getDate() + 1);
-    }
-    return next.toISOString();
-}
-
-function fmtNextRun(isoStr) {
-    if (!isoStr) return '—';
-    const d = new Date(isoStr);
-    if (isNaN(d)) return '—';
-    const diff = d - Date.now();
-    if (diff < 0) return 'Overdue';
-    const hrs = Math.floor(diff / 3600000);
-    const mins = Math.floor((diff % 3600000) / 60000);
-    if (hrs === 0) return `in ${mins}m`;
-    if (hrs < 24) return `in ${hrs}h ${mins}m`;
-    return `in ${Math.floor(hrs/24)}d ${hrs%24}h`;
-}
-
-// ── Simulated history on create ────────────────────────────────────
-function addSimulatedHistory(sched) {
-    if (!sched) return;
-    const findings = { critical: rnd(0,3), high: rnd(1,5), medium: rnd(2,8), low: rnd(0,6) };
-    const total = findings.critical + findings.high + findings.medium + findings.low;
-    const result = findings.critical > 0 ? 'critical' : findings.high > 1 ? 'warning' : 'clean';
-
-    runHistory.unshift({
-        id: Date.now(),
-        scheduleId: sched.id,
-        scheduleName: sched.name,
-        target: sched.target,
-        started: new Date(Date.now() - rnd(3600000, 86400000)).toISOString(),
-        duration: rnd(90, 1200),
-        findings: total,
-        critical: findings.critical,
-        high: findings.high,
-        medium: findings.medium,
-        low: findings.low,
-        result,
-        reportId: null,
-    });
-
-    // Add some tracked vulns
-    const vulnTypes = [
-        { name: 'SQL Injection', sev: 'critical', rem: 'Use parameterized queries and prepared statements. Never concatenate user input directly into SQL queries.' },
-        { name: 'XSS (Cross-Site Scripting)', sev: 'high', rem: 'Sanitize and encode all user input. Use Content Security Policy headers.' },
-        { name: 'CSRF Vulnerability', sev: 'medium', rem: 'Implement CSRF tokens on all state-changing requests.' },
-        { name: 'Open Redirect', sev: 'medium', rem: 'Validate and whitelist redirect URLs. Avoid user-controlled redirects.' },
-        { name: 'Missing Security Headers', sev: 'low', rem: 'Add X-Frame-Options, X-Content-Type-Options, and HSTS headers.' },
-        { name: 'Directory Listing', sev: 'low', rem: 'Disable directory listing in web server configuration.' },
-        { name: 'Outdated Dependencies', sev: 'high', rem: 'Update all dependencies to latest patched versions. Use Dependabot.' },
-        { name: 'Insecure Cookie Flags', sev: 'medium', rem: 'Set Secure and HttpOnly flags on all cookies.' },
-    ];
-
-    for (let i = 0; i < Math.min(findings.critical + findings.high + 1, 4); i++) {
-        const vt = vulnTypes[rnd(0, vulnTypes.length - 1)];
-        trackedVulns.unshift({
-            id: Date.now() + i,
-            name: vt.name,
-            severity: vt.sev,
-            target: sched.target,
-            discovered: new Date().toISOString(),
-            scheduleName: sched.name,
-            status: 'open',
-            remediation: vt.rem,
-            steps: [
-                'Identify all affected code locations',
-                vt.rem,
-                'Test the fix in a staging environment',
-                'Deploy fix to production',
-                'Re-run scan to verify resolution',
-            ],
-        });
-    }
-
-    saveState();
-    updateStats();
-    renderHistory();
-    document.getElementById('tcHistory').textContent = runHistory.length;
-}
-
-function rnd(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
-
-// ── Save state ─────────────────────────────────────────────────────
-function saveState() {
-    localStorage.setItem('vapt_schedules', JSON.stringify(schedules));
-    localStorage.setItem('vapt_run_history', JSON.stringify(runHistory));
-    localStorage.setItem('vapt_tracked_vulns', JSON.stringify(trackedVulns));
-}
-
-// ── Render all ─────────────────────────────────────────────────────
-function renderAll() {
-    renderSchedules();
-    renderHistory();
-    renderVulnTracker();
-    renderPriority();
-    updateStats();
-}
-
-function updateStats() {
-    const active = schedules.filter(s => s.status === 'active').length;
-    const fixed = trackedVulns.filter(v => v.status === 'fixed').length;
-    const priority = trackedVulns.filter(v => v.severity === 'critical' && v.status === 'open').length;
-    const next = schedules.filter(s => s.status === 'active' && s.nextRun).sort((a,b) => new Date(a.nextRun) - new Date(b.nextRun))[0];
-
-    document.getElementById('statActive').textContent = active;
-    document.getElementById('statCompleted').textContent = runHistory.length;
-    document.getElementById('statFixed').textContent = fixed;
-    document.getElementById('statPriority').textContent = priority;
-    document.getElementById('statNextRun').textContent = next ? fmtNextRun(next.nextRun) : '—';
-    document.getElementById('tcSchedules').textContent = schedules.length;
-    document.getElementById('tcHistory').textContent = runHistory.length;
-    document.getElementById('tcVulns').textContent = trackedVulns.length;
-
-    // vuln tracker stats
-    const total = trackedVulns.length;
-    const fixedN = trackedVulns.filter(v => v.status === 'fixed').length;
-    const open = trackedVulns.filter(v => v.status === 'open').length;
-    const critOpen = trackedVulns.filter(v => v.severity === 'critical' && v.status === 'open').length;
-    const fixRate = total > 0 ? Math.round(fixedN / total * 100) : 0;
-
-    document.getElementById('vsTotal').textContent = total;
-    document.getElementById('vsFixed').textContent = fixedN;
-    document.getElementById('vsOpen').textContent = open;
-    document.getElementById('vsCritOpen').textContent = critOpen;
-    document.getElementById('fixRatePct').textContent = fixRate + '%';
-    document.getElementById('fixRateBar').style.width = fixRate + '%';
-}
-
-// ── Render Schedules ───────────────────────────────────────────────
-function renderSchedules() {
-    const filter = document.getElementById('filterStatus').value;
-    const list = filter ? schedules.filter(s => s.status === filter) : schedules;
-    const container = document.getElementById('scheduleList');
-
-    if (!list.length) {
-        container.innerHTML = `<div class="empty-state" id="schedEmptyState">
-            <i class="fa-solid fa-calendar-xmark"></i><p>No schedules found.</p>
-            <button class="btn btn-p" onclick="openModal()" style="margin-top:.75rem;"><i class="fa-solid fa-plus"></i> Create Schedule</button>
-        </div>`;
-        return;
-    }
-
-    const freqLabels = { once:'One-time', '6h':'Every 6h', '12h':'Every 12h', daily:'Daily', weekly:'Weekly', monthly:'Monthly', '247':'24/7' };
-    const freqIcons  = { once:'fa-circle-dot', '6h':'fa-rotate', '12h':'fa-rotate', daily:'fa-sun', weekly:'fa-calendar-week', monthly:'fa-calendar', '247':'fa-infinity' };
-
-    container.innerHTML = list.map(s => {
-        const isActive = s.status === 'active';
-        const freq = freqLabels[s.freq] || s.freq;
-        const fIcon = freqIcons[s.freq] || 'fa-clock';
-        const [h,m] = (s.time||'02:00').split(':');
-        const hr = parseInt(h); const ampm = hr>=12?'PM':'AM'; const h12 = hr%12||12;
-        const timeStr = `${h12}:${m} ${ampm}`;
-
-        return `<div class="sched-item ${isActive ? '' : 'paused'}">
-            <div class="sched-left">
-                <div class="sched-icon ${isActive ? 'active' : 'paused'}">
-                    <i class="fa-solid ${fIcon}"></i>
-                </div>
-                <div>
-                    <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
-                        <strong style="font-size:.9rem;">${s.name}</strong>
-                        <span class="bx ${isActive ? 'bac' : 'bpd'}" style="font-size:.65rem;">
-                            <i class="fa-solid ${isActive ? 'fa-circle-check' : 'fa-pause'}"></i>
-                            ${isActive ? 'Active' : 'Paused'}
-                        </span>
-                    </div>
-                    <div class="sched-meta">
-                        <span><i class="fa-solid fa-crosshairs"></i> ${s.target}</span>
-                        <span><i class="fa-solid fa-clock"></i> ${timeStr}</span>
-                        <span><i class="fa-solid ${fIcon}"></i> ${freq}</span>
-                        <span><i class="fa-solid fa-hourglass-half"></i> ${s.timeout||30}min timeout</span>
-                    </div>
-                </div>
-            </div>
-            <div class="sched-right">
-                <div class="next-run-badge">
-                    <small>Next run</small>
-                    <strong>${fmtNextRun(s.nextRun)}</strong>
-                </div>
-                <div style="display:flex;gap:.35rem;">
-                    <button class="btn btn-s ${isActive ? 'btn-o' : 'btn-p'}" onclick="toggleSched(${s.id})" title="${isActive ? 'Pause' : 'Resume'}">
-                        <i class="fa-solid ${isActive ? 'fa-pause' : 'fa-play'}"></i>
-                    </button>
-                    <button class="btn btn-o btn-s" onclick="runNow(${s.id})" title="Run Now"><i class="fa-solid fa-forward"></i></button>
-                    <button class="btn btn-o btn-s" onclick="openModal(${s.id})" title="Edit"><i class="fa-regular fa-pen-to-square"></i></button>
-                    <button class="btn btn-d btn-s" onclick="deleteSched(${s.id})" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
-                </div>
-            </div>
-        </div>`;
-    }).join('');
-}
-
-function toggleSched(id) {
-    const s = schedules.find(x => x.id === id);
-    if (s) { s.status = s.status === 'active' ? 'paused' : 'active'; saveState(); renderAll(); }
-}
-
-function deleteSched(id) {
-    if (!confirm('Delete this schedule?')) return;
-    schedules = schedules.filter(s => s.id !== id);
-    saveState();
-    renderAll();
-}
-
-function runNow(id) {
-    const s = schedules.find(x => x.id === id);
-    if (!s) return;
-    addSimulatedHistory(s);
-    const btn = event.target.closest('button');
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-    setTimeout(() => { btn.innerHTML = '<i class="fa-solid fa-forward"></i>'; }, 1500);
-}
-
-// ── Render History ─────────────────────────────────────────────────
-function renderHistory() {
-    const tbody = document.getElementById('historyBody');
-    if (!runHistory.length) {
-        tbody.innerHTML = '<tr><td colspan="12" class="empty-td"><i class="fa-solid fa-clock-rotate-left"></i> No run history yet.</td></tr>';
-        return;
-    }
-    tbody.innerHTML = runHistory.map((r, i) => {
-        const d = new Date(r.started);
-        const dateStr = isNaN(d) ? '—' : d.toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true });
-        const dur = r.duration ? `${Math.floor(r.duration/60)}m ${r.duration%60}s` : '—';
-        const rCls = r.result === 'critical' ? 'bc' : r.result === 'warning' ? 'bh' : 'bac';
-        const rLbl = r.result === 'critical' ? 'Critical Found' : r.result === 'warning' ? 'Issues Found' : 'Clean';
-
-        return `<tr>
-            <td style="font-size:.72rem;color:var(--text-muted);">${runHistory.length - i}</td>
-            <td><strong style="font-size:.8rem;">${r.scheduleName}</strong></td>
-            <td style="font-size:.78rem;color:var(--blue);">${(r.target||'').replace('https://','')}</td>
-            <td style="font-size:.72rem;">${dateStr}</td>
-            <td style="font-size:.78rem;">${dur}</td>
-            <td style="font-weight:700;">${r.findings}</td>
-            <td style="color:#ef4444;font-weight:700;">${r.critical}</td>
-            <td style="color:#f97316;font-weight:700;">${r.high}</td>
-            <td style="color:#eab308;font-weight:700;">${r.medium}</td>
-            <td style="color:#22c55e;font-weight:700;">${r.low}</td>
-            <td><span class="bx ${rCls}" style="font-size:.65rem;">${rLbl}</span></td>
-            <td>
-                <button class="btn btn-o btn-s" title="View Report"><i class="fa-regular fa-eye"></i></button>
-            </td>
-        </tr>`;
-    }).join('');
-}
-
-// ── Render Vuln Tracker ────────────────────────────────────────────
-function renderVulnTracker() {
-    const tbody = document.getElementById('vulnTrackBody');
-    if (!trackedVulns.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="empty-td"><i class="fa-solid fa-shield-halved"></i> No vulnerabilities tracked yet.</td></tr>';
-        return;
-    }
-
-    const sevOrd = { critical:0, high:1, medium:2, low:3, info:4 };
-    const sorted = [...trackedVulns].sort((a,b) => (sevOrd[a.severity]??4) - (sevOrd[b.severity]??4));
-
-    tbody.innerHTML = sorted.map(v => {
-        const sev = v.severity || 'info';
-        const sevCls = { critical:'bc', high:'bh', medium:'bm', low:'bl', info:'bi' }[sev] || 'bi';
-        const isFixed = v.status === 'fixed';
-        const d = new Date(v.discovered);
-        const dateStr = isNaN(d) ? '—' : d.toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', hour12:true });
-        const openMs = Date.now() - new Date(v.discovered).getTime();
-        const openDays = Math.floor(openMs / 86400000);
-        const openStr = openDays === 0 ? 'Today' : openDays === 1 ? '1 day' : `${openDays} days`;
-        const urgentClass = !isFixed && sev === 'critical' && openDays > 0 ? 'urgent-row' : '';
-
-        return `<tr class="${urgentClass}">
-            <td><strong style="font-size:.825rem;">${v.name}</strong></td>
-            <td><span class="bx ${sevCls}">${sev.charAt(0).toUpperCase()+sev.slice(1)}</span></td>
-            <td style="font-size:.75rem;color:var(--blue);">${(v.target||'').replace('https://','')}</td>
-            <td style="font-size:.72rem;">${dateStr}</td>
-            <td style="font-size:.72rem;color:var(--text-muted);">${v.scheduleName||'—'}</td>
-            <td>
-                <span class="bx ${isFixed ? 'bac' : sevCls}" style="font-size:.65rem;">
-                    <i class="fa-solid ${isFixed ? 'fa-circle-check' : 'fa-circle-exclamation'}"></i>
-                    ${isFixed ? 'Fixed' : 'Open'}
-                </span>
-            </td>
-            <td style="font-size:.72rem;${!isFixed && sev==='critical' ? 'color:#ef4444;font-weight:700;' : 'color:var(--text-muted);'}">${isFixed ? '—' : openStr}</td>
-            <td>
-                <button class="btn btn-s ${isFixed ? 'btn-o' : 'btn-p'}" onclick="toggleVulnFix(${v.id})" style="font-size:.65rem;padding:.2rem .5rem;">
-                    <i class="fa-solid ${isFixed ? 'fa-rotate-left' : 'fa-circle-check'}"></i>
-                    ${isFixed ? 'Reopen' : 'Mark Fixed'}
-                </button>
-            </td>
-        </tr>`;
-    }).join('');
-}
-
-function toggleVulnFix(id) {
-    const v = trackedVulns.find(x => x.id === id);
-    if (v) { v.status = v.status === 'fixed' ? 'open' : 'fixed'; saveState(); renderVulnTracker(); updateStats(); renderPriority(); }
-}
-
-// ── Render Priority & Fixes ────────────────────────────────────────
-function renderPriority() {
-    const openVulns = trackedVulns.filter(v => v.status === 'open');
-    const sevOrd = { critical:0, high:1, medium:2, low:3, info:4 };
-    const sorted = [...openVulns].sort((a,b) => (sevOrd[a.severity]??4) - (sevOrd[b.severity]??4));
-
-    const pList = document.getElementById('priorityList');
-    if (!sorted.length) {
-        pList.innerHTML = `<div class="empty-state"><i class="fa-solid fa-shield-check" style="color:#22c55e;font-size:2rem;"></i><p style="color:#22c55e;font-weight:600;">All clear!</p><small>No open vulnerabilities.</small></div>`;
-    } else {
-        pList.innerHTML = sorted.map((v, i) => {
-            const sev = v.severity || 'info';
-            const sevCls = { critical:'bc', high:'bh', medium:'bm', low:'bl' }[sev] || 'bi';
-            const priorityNum = i + 1;
-            return `<div class="priority-item">
-                <div class="priority-num ${sev}">${priorityNum}</div>
-                <div style="flex:1;min-width:0;">
-                    <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
-                        <strong style="font-size:.825rem;">${v.name}</strong>
-                        <span class="bx ${sevCls}" style="font-size:.62rem;">${sev.charAt(0).toUpperCase()+sev.slice(1)}</span>
-                    </div>
-                    <small style="color:var(--text-muted);font-size:.72rem;">${(v.target||'').replace('https://','')}</small>
-                </div>
-                <button class="btn btn-p btn-s" onclick="toggleVulnFix(${v.id})" style="font-size:.65rem;">
-                    <i class="fa-solid fa-circle-check"></i> Fix
-                </button>
-            </div>`;
-        }).join('');
-    }
-
-    // Solutions
-    const sList = document.getElementById('solutionList');
-    const withRem = sorted.filter(v => v.remediation);
-    if (!withRem.length) {
-        sList.innerHTML = `<div class="empty-state"><i class="fa-solid fa-screwdriver-wrench" style="color:var(--border);"></i><p>No solutions yet.</p></div>`;
-    } else {
-        sList.innerHTML = withRem.map(v => {
-            const sev = v.severity || 'info';
-            const sevCls = { critical:'bc', high:'bh', medium:'bm', low:'bl' }[sev] || 'bi';
-            return `<div class="solution-item">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem;flex-wrap:wrap;gap:.3rem;">
-                    <strong style="font-size:.8rem;">${v.name}</strong>
-                    <span class="bx ${sevCls}" style="font-size:.62rem;">${sev.charAt(0).toUpperCase()+sev.slice(1)}</span>
-                </div>
-                <p style="font-size:.78rem;color:var(--text);line-height:1.6;margin-bottom:.5rem;">${v.remediation}</p>
-                ${v.steps ? `<div class="solution-steps">
-                    ${v.steps.map((s,i) => `<div class="sol-step"><div class="sol-num">${i+1}</div><small>${s}</small></div>`).join('')}
-                </div>` : ''}
-            </div>`;
-        }).join('');
-    }
-
-    // Fix timeline
-    const timelineEl = document.getElementById('fixTimeline');
-    const activeScheds = schedules.filter(s => s.status === 'active');
-    if (!activeScheds.length || !openVulns.length) {
-        timelineEl.innerHTML = `<div class="empty-state"><i class="fa-solid fa-timeline" style="color:var(--border);"></i><p>No active schedules with open vulnerabilities.</p></div>`;
-    } else {
-        timelineEl.innerHTML = activeScheds.map(s => {
-            const freqLabels = { once:'One-time', '6h':'Every 6h', '12h':'Every 12h', daily:'Daily', weekly:'Weekly', monthly:'Monthly', '247':'24/7' };
-            const schedVulns = trackedVulns.filter(v => v.scheduleName === s.name && v.status === 'open');
-            return `<div class="timeline-item">
-                <div class="tl-dot"></div>
-                <div class="tl-content">
-                    <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.25rem;">
-                        <strong style="font-size:.825rem;">${s.name}</strong>
-                        <span class="bx bac" style="font-size:.62rem;">${freqLabels[s.freq]||s.freq}</span>
-                        <span style="font-size:.72rem;color:var(--text-muted);">Next: ${fmtNextRun(s.nextRun)}</span>
-                    </div>
-                    <p style="font-size:.75rem;color:var(--text-muted);">${schedVulns.length} open vuln${schedVulns.length !== 1 ? 's' : ''} will be re-checked on next run</p>
-                    ${schedVulns.length ? `<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.3rem;">${schedVulns.slice(0,3).map(v=>`<span class="bx ${{ critical:'bc', high:'bh', medium:'bm', low:'bl' }[v.severity]||'bi'}" style="font-size:.62rem;">${v.name}</span>`).join('')}${schedVulns.length>3?`<span style="font-size:.72rem;color:var(--text-muted);">+${schedVulns.length-3} more</span>`:''}</div>` : ''}
-                </div>
-            </div>`;
-        }).join('');
-    }
-}
-
-// Initial render
-renderAll();
-setInterval(updateStats, 30000);
 {% endraw %}
 </script>
 {% endblock %}
