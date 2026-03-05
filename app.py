@@ -800,19 +800,37 @@ def api_reports():
 @app.route('/api/reports/<int:report_id>')
 @login_required
 def api_report_detail(report_id):
-    """Return full details for a single report, including its vulnerabilities."""
+    """Return full details for a single report, vulnerabilities scoped to that scan's date."""
     import db
     report = db.get_report_by_id(report_id, _uid())
     if not report:
         return jsonify({'status': 'error', 'message': 'Report not found'}), 404
 
     target_url = report.get('target_url', '')
-    target_vulns = db.get_vulnerabilities(_uid(), target_url=target_url)
+    scan_date  = report.get('scan_time') or report.get('date') or ''
+
+    # Fetch all vulns for this URL, then scope to this scan's date so
+    # fixes from other scans of the same URL never bleed across reports.
+    all_vulns = db.get_vulnerabilities(_uid(), target_url=target_url)
+    if scan_date:
+        scan_day = scan_date[:10]  # "2026-03-05"
+        target_vulns = [v for v in all_vulns if (v.get('scan_date') or '')[:10] == scan_day]
+        if not target_vulns:        # fallback for older data without scan_date
+            target_vulns = all_vulns
+    else:
+        target_vulns = all_vulns
+
+    fixed_count = sum(1 for v in target_vulns if (v.get('_display_status') or v.get('Status') or '').lower() == 'fixed')
+    vuln_count  = sum(1 for v in target_vulns if (v.get('_display_status') or v.get('Status') or '').lower() == 'vulnerable')
+    fix_pct     = round(fixed_count / len(target_vulns) * 100) if target_vulns else 0
 
     result = dict(report)
     result['vulnerabilities'] = target_vulns
-    result['urls_tested'] = len(target_vulns)
-    result['duration'] = f"{report.get('runtime_seconds', 0) // 60} min {report.get('runtime_seconds', 0) % 60} sec" if report.get('runtime_seconds') else 'N/A'
+    result['urls_tested']     = len(target_vulns)
+    result['fixed_count']     = fixed_count
+    result['vuln_count']      = vuln_count
+    result['fix_pct']         = fix_pct
+    result['duration']        = f"{report.get('runtime_seconds', 0) // 60} min {report.get('runtime_seconds', 0) % 60} sec" if report.get('runtime_seconds') else 'N/A'
 
     return jsonify({'status': 'success', 'report': result})
 
