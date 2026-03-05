@@ -937,13 +937,18 @@ def api_report_detail(report_id):
     target_url = report.get('target_url', '')
     scan_date  = report.get('scan_time') or report.get('date') or ''
 
-    # Fetch all vulns for this URL, then scope to this scan's date so
-    # fixes from other scans of the same URL never bleed across reports.
+    # Fetch all vulns for this URL, then scope to this specific scan's exact
+    # minute so fixes in one report never bleed across other reports for the
+    # same target (even when multiple scans ran on the same day).
     all_vulns = db.get_vulnerabilities(_uid(), target_url=target_url)
     if scan_date:
-        scan_day = scan_date[:10]  # "2026-03-05"
-        target_vulns = [v for v in all_vulns if (v.get('scan_date') or '')[:10] == scan_day]
-        if not target_vulns:        # fallback for older data without scan_date
+        scan_minute = scan_date[:16]  # "2026-03-05 15:14"
+        target_vulns = [v for v in all_vulns if (v.get('scan_date') or '')[:16] == scan_minute]
+        if not target_vulns:
+            # Fallback: date-only for older data lacking exact times
+            scan_day = scan_date[:10]
+            target_vulns = [v for v in all_vulns if (v.get('scan_date') or '')[:10] == scan_day]
+        if not target_vulns:        # final fallback if scan_date missing on vulns
             target_vulns = all_vulns
     else:
         target_vulns = all_vulns
