@@ -955,7 +955,10 @@ def api_report_detail(report_id):
 
     fixed_count = sum(1 for v in target_vulns if (v.get('_display_status') or v.get('Status') or '').lower() == 'fixed')
     vuln_count  = sum(1 for v in target_vulns if (v.get('_display_status') or v.get('Status') or '').lower() == 'vulnerable')
-    fix_pct     = round(fixed_count / len(target_vulns) * 100) if target_vulns else 0
+    # Use same denominator as vulnerabilities page: fixed/(fixed+vulnerable) — excludes
+    # already-passing checks (complete/success/secure) that were never toggled
+    fix_denom = fixed_count + vuln_count
+    fix_pct   = round(fixed_count / fix_denom * 100) if fix_denom > 0 else 0
 
     result = dict(report)
     result['vulnerabilities'] = target_vulns
