@@ -31,9 +31,9 @@
       </div>
     </div>
     <div class="cb" style="padding:0;" id="reportsList">
-      <div style="text-align:center;padding:2.5rem;color:var(--text-muted);" id="reportsEmpty" data-empty="1">
-        <i class="fa-regular fa-file-lines" style="font-size:2rem;margin-bottom:.5rem;display:block;color:var(--border)"></i>
-        No reports yet. <a href="/scanning" style="color:var(--blue)">Run a scan</a> to generate your first report.
+      <div style="text-align:center;padding:2.5rem;color:var(--text-muted);" id="reportsLoading">
+        <i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;margin-bottom:.5rem;display:block;color:var(--blue)"></i>
+        Loading reports...
       </div>
     </div>
     <div style="padding:.625rem 1rem;text-align:center;border-top:1px solid var(--border);">
@@ -80,8 +80,9 @@ function formatDateTime(dateStr) {
 }
 
 let reportMeta  = {};
-let renderedIds = new Set(); // track which report rows are already in the DOM
-let fixedCache  = {};        // cache fixed counts so we don't re-fetch on every poll
+let renderedIds = new Set();
+let fixedCache  = {};
+let hasLoaded   = false;  // true after first successful API response
 
 // Fetch fixed count scoped to this specific report (not all scans of that URL)
 async function fetchFixedCount(reportId) {
@@ -194,18 +195,32 @@ async function loadReports() {
         countEl.textContent = list.length ? `${list.length} report${list.length>1?'s':''}` : '';
         lastUpd.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
 
+        // Remove the loading spinner on first response (regardless of whether reports exist)
+        const loadingEl = document.getElementById('reportsLoading');
+        if (loadingEl) loadingEl.remove();
+
         if (list.length === 0) {
+            // Only show "No reports yet" after a confirmed empty response AND
+            // no rows are currently rendered — prevents flash on fast refresh
             if (!renderedIds.size) {
-                container.innerHTML = `<div style="text-align:center;padding:2.5rem;color:var(--text-muted);">
-                    <i class="fa-regular fa-file-lines" style="font-size:2rem;margin-bottom:.5rem;display:block;color:var(--border)"></i>
-                    No reports yet. <a href="/scanning" style="color:var(--blue)">Run a scan</a> to generate your first report.</div>`;
+                if (!container.querySelector('[data-empty]')) {
+                    const emptyDiv = document.createElement('div');
+                    emptyDiv.setAttribute('data-empty', '1');
+                    emptyDiv.style.cssText = 'text-align:center;padding:2.5rem;color:var(--text-muted);';
+                    emptyDiv.innerHTML = `<i class="fa-regular fa-file-lines" style="font-size:2rem;margin-bottom:.5rem;display:block;color:var(--border)"></i>
+                        No reports yet. <a href="/scanning" style="color:var(--blue)">Run a scan</a> to generate your first report.`;
+                    container.appendChild(emptyDiv);
+                }
             }
+            hasLoaded = true;
             return;
         }
 
         // Remove empty-state placeholder if it exists
         const emptyEl = container.querySelector('[data-empty]');
         if (emptyEl) emptyEl.remove();
+
+        hasLoaded = true;
 
         reportMeta = {};
         list.forEach(r => { reportMeta[r.id] = r.scan_time || r.date || ''; });
