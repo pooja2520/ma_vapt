@@ -485,6 +485,134 @@ def settings():
 #  LIVE DATA API ENDPOINTS
 # ─────────────────────────────────────────────
 
+@app.route('/api/notifications')
+@login_required
+def api_notifications():
+    """
+    Return live notifications derived from real DB data:
+      - Critical / high vulnerabilities found recently
+      - Completed scans
+      - Newly added targets
+    Each item: { id, type, title, body, time_label, dot_color, read }
+    """
+    import db
+    uid = _uid()
+    notifications = []
+
+    # ── 1. Recent critical/high vulnerabilities ──────────────────────────
+    try:
+        recent_vulns = db.get_recent_vulnerabilities(uid, limit=20)
+        seen_vuln_ids = set()
+        for v in recent_vulns:
+            sev = (v.get('severity') or v.get('Severity', '')).lower()
+            if sev not in ('critical', 'high'):
+                continue
+            vid = v.get('id') or v.get('test', '')
+            if vid in seen_vuln_ids:
+                continue
+            seen_vuln_ids.add(vid)
+            test_name = v.get('test') or v.get('finding') or 'Unknown vulnerability'
+            target = (v.get('target_url') or '').replace('https://', '').replace('http://', '').split('/')[0]
+            scan_date = v.get('scan_date') or v.get('date') or ''
+            # Human-readable time label
+            try:
+                dt = datetime.strptime(scan_date, '%Y-%m-%d %H:%M')
+                diff = datetime.now() - dt
+                if diff.seconds < 3600 and diff.days == 0:
+                    time_label = f"{diff.seconds // 60} min ago"
+                elif diff.days == 0:
+                    time_label = f"{diff.seconds // 3600} hr ago"
+                else:
+                    time_label = f"{diff.days}d ago"
+            except Exception:
+                time_label = scan_date or 'Recently'
+            notifications.append({
+                'id':         f"vuln_{vid}",
+                'type':       'vulnerability',
+                'dot_color':  'r' if sev == 'critical' else 'o',
+                'title':      f"{'Critical' if sev == 'critical' else 'High'} vulnerability found",
+                'body':       f"{test_name}" + (f" on {target}" if target else ''),
+                'time_label': time_label,
+                'read':       False,
+                'href':       '/vulnerabilities',
+            })
+            if len(notifications) >= 5:
+                break
+    except Exception as e:
+        app.logger.warning(f"Notifications: vuln fetch failed: {e}")
+
+    # ── 2. Recently completed scans ──────────────────────────────────────
+    try:
+        reports = db.get_reports(uid)
+        for r in reports[:3]:
+            rid    = r.get('id', '')
+            target = (r.get('target_url') or r.get('name', '')).replace('https://', '').replace('http://', '').split('/')[0]
+            date   = r.get('date') or r.get('scan_time') or ''
+            total  = r.get('total', 0)
+            try:
+                dt = datetime.strptime(date, '%Y-%m-%d %H:%M')
+                diff = datetime.now() - dt
+                if diff.seconds < 3600 and diff.days == 0:
+                    time_label = f"{diff.seconds // 60} min ago"
+                elif diff.days == 0:
+                    time_label = f"{diff.seconds // 3600} hr ago"
+                else:
+                    time_label = f"{diff.days}d ago"
+            except Exception:
+                time_label = date or 'Recently'
+            notifications.append({
+                'id':         f"scan_{rid}",
+                'type':       'scan',
+                'dot_color':  'b',
+                'title':      'Scan completed',
+                'body':       f"{target} — {total} finding{'s' if total != 1 else ''} discovered",
+                'time_label': time_label,
+                'read':       False,
+                'href':       f"/reports/{rid}" if rid else '/reports',
+            })
+    except Exception as e:
+        app.logger.warning(f"Notifications: scan fetch failed: {e}")
+
+    # ── 3. Recently added targets ────────────────────────────────────────
+    try:
+        targets = db.get_all_targets(uid)
+        for t in targets[:2]:
+            tid    = t.get('id', '')
+            url    = (t.get('url') or '').replace('https://', '').replace('http://', '').split('/')[0]
+            created = t.get('created_at') or t.get('date') or ''
+            try:
+                if isinstance(created, str) and created:
+                    dt = datetime.strptime(created[:16], '%Y-%m-%d %H:%M')
+                    diff = datetime.now() - dt
+                    if diff.seconds < 3600 and diff.days == 0:
+                        time_label = f"{diff.seconds // 60} min ago"
+                    elif diff.days == 0:
+                        time_label = f"{diff.seconds // 3600} hr ago"
+                    else:
+                        time_label = f"{diff.days}d ago"
+                else:
+                    time_label = 'Recently'
+            except Exception:
+                time_label = 'Recently'
+            notifications.append({
+                'id':         f"target_{tid}",
+                'type':       'target',
+                'dot_color':  'g',
+                'title':      'Target added',
+                'body':       f"{url} was added to your targets",
+                'time_label': time_label,
+                'read':       False,
+                'href':       f"/targets/{tid}/view" if tid else '/targets',
+            })
+    except Exception as e:
+        app.logger.warning(f"Notifications: target fetch failed: {e}")
+
+    # Cap at 8 and count unread
+    notifications = notifications[:8]
+    unread = sum(1 for n in notifications if not n['read'])
+    return jsonify({'notifications': notifications, 'unread': unread})
+
+
 @app.route('/api/dashboard-stats')
 @login_required
 def api_dashboard_stats():
