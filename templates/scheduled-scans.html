@@ -16,9 +16,6 @@
       <p style="font-size:.78rem;color:var(--text-muted);">Automate security scans &mdash; night, day, afternoon &amp; custom schedules</p>
     </div>
     <div style="display:flex;gap:.5rem;align-items:center;">
-      <div id="liveScanBadge" style="display:none;align-items:center;gap:.5rem;background:linear-gradient(90deg,#1d4ed8,#2563EB);color:#fff;padding:.4rem .875rem;border-radius:9px;font-size:.78rem;font-weight:600;cursor:pointer;" onclick="openLivePopup()">
-        <span class="live-dot"></span> Scan Running <span style="font-size:.68rem;opacity:.8;">&mdash; click to view</span>
-      </div>
       <button class="btn btn-p" onclick="openModal()"><i class="fa-solid fa-plus"></i> New Schedule</button>
     </div>
   </div>
@@ -352,23 +349,31 @@ async function pollLiveScan() {
     try {
         var res  = await fetch('/api/scan-logs');
         var data = await res.json();
-        var badge = document.getElementById('liveScanBadge');
 
         if (data.running) {
-            wasRunning = true;
-            badge.style.display = 'flex';
-            if (popupOpen) {
-                var pct = data.progress || 0;
-                document.getElementById('popupBar').style.width   = pct + '%';
-                document.getElementById('popupPct').textContent    = pct + '%';
-                document.getElementById('popupTarget').textContent = data.target || '';
-                document.getElementById('popupPhase').textContent  = data.phase_name || 'Scanning\u2026';
-                updatePopupPhases(data.phase || 1);
-                var logs = data.logs || [];
-                while (popupLogLen < logs.length) { appendPopupLog(logs[popupLogLen]); popupLogLen++; }
+            // Scan started externally (auto-scheduled) — open popup automatically
+            if (!wasRunning) {
+                wasRunning = true; popupLogLen = 0;
+                document.getElementById('popupSchedName').textContent = 'Scheduled Scan \u2014 Running';
+                document.getElementById('popupTarget').textContent    = data.target || '';
+                document.getElementById('popupBar').style.width       = '0%';
+                document.getElementById('popupPct').textContent       = '0%';
+                document.getElementById('popupPhase').textContent     = 'Initializing\u2026';
+                document.getElementById('popupLog').innerHTML         = '<span style="color:#475569;">Scan started\u2026</span>';
+                document.getElementById('popupResult').style.display  = 'none';
+                updatePopupPhases(0);
+                openLivePopup();
             }
+            // Always update popup content while running
+            var pct = data.progress || 0;
+            document.getElementById('popupBar').style.width   = pct + '%';
+            document.getElementById('popupPct').textContent    = pct + '%';
+            document.getElementById('popupTarget').textContent = data.target || '';
+            document.getElementById('popupPhase').textContent  = data.phase_name || 'Scanning\u2026';
+            updatePopupPhases(data.phase || 1);
+            var logs = data.logs || [];
+            while (popupLogLen < logs.length) { appendPopupLog(logs[popupLogLen]); popupLogLen++; }
         } else {
-            badge.style.display = 'none';
             if (wasRunning) {
                 wasRunning = false; popupLogLen = 0;
                 var rs = schedules.find(function(s){ return s.status==='running'; });
@@ -385,15 +390,14 @@ async function pollLiveScan() {
                     }
                     saveState(); renderAll();
                 }
-                if (popupOpen) {
-                    document.getElementById('popupBar').style.width='100%'; document.getElementById('popupPct').textContent='100%';
-                    document.getElementById('popupPhase').textContent='\u2705 Scan Complete'; updatePopupPhases(4);
-                    document.getElementById('popupResult').style.display='block';
-                    var vc2={critical:0,high:0,medium:0,low:0};
-                    if (scanResults) { scanResults.forEach(function(f){ var sv=(f.Severity||'').toLowerCase(); if(vc2[sv]!==undefined) vc2[sv]++; }); document.getElementById('popupResultCounts').innerHTML='<span style="color:#ef4444;">\u25cf '+vc2.critical+' Critical</span> &nbsp;<span style="color:#f97316;">\u25cf '+vc2.high+' High</span> &nbsp;<span style="color:#eab308;">\u25cf '+vc2.medium+' Medium</span> &nbsp;<span style="color:#22c55e;">\u25cf '+vc2.low+' Low</span>'; }
-                    else { document.getElementById('popupResultCounts').textContent='Scan finished. Check Reports for details.'; }
-                    document.getElementById('popupResultTitle').textContent=(rs?rs.name+' \u2014 ':'')+'Complete';
-                }
+                // Always show completion result in popup
+                document.getElementById('popupBar').style.width='100%'; document.getElementById('popupPct').textContent='100%';
+                document.getElementById('popupPhase').textContent='\u2705 Scan Complete'; updatePopupPhases(4);
+                document.getElementById('popupResult').style.display='block';
+                var vc2={critical:0,high:0,medium:0,low:0};
+                if (scanResults) { scanResults.forEach(function(f){ var sv=(f.Severity||'').toLowerCase(); if(vc2[sv]!==undefined) vc2[sv]++; }); document.getElementById('popupResultCounts').innerHTML='<span style="color:#ef4444;">\u25cf '+vc2.critical+' Critical</span> &nbsp;<span style="color:#f97316;">\u25cf '+vc2.high+' High</span> &nbsp;<span style="color:#eab308;">\u25cf '+vc2.medium+' Medium</span> &nbsp;<span style="color:#22c55e;">\u25cf '+vc2.low+' Low</span>'; }
+                else { document.getElementById('popupResultCounts').textContent='Scan finished. Check Reports for details.'; }
+                document.getElementById('popupResultTitle').textContent=(rs?rs.name+' \u2014 ':'')+'Complete';
             }
         }
     } catch(e) {}
@@ -567,7 +571,7 @@ function renderSchedules(){
           '<div><div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;"><strong style="font-size:.9rem;">'+s.name+'</strong><span class="bx '+sc+'" style="font-size:.65rem;"><i class="fa-solid '+si+'"></i> '+sl+'</span>'+authBadge+'</div>'+
           '<div class="sched-meta"><span><i class="fa-solid fa-crosshairs"></i> '+s.target+'</span><span><i class="fa-solid fa-clock"></i> '+ts+'</span><span><i class="fa-solid '+(fi[s.freq]||'fa-clock')+'"></i> '+(fl[s.freq]||s.freq)+'</span><span><i class="fa-solid fa-hourglass-half"></i> '+(s.timeout||30)+'min</span>'+(s.runCount?'<span><i class="fa-solid fa-rotate"></i> '+s.runCount+' runs</span>':'')+'</div></div></div>'+
           '<div class="sched-right"><div class="next-run-badge"><small>'+(isR?'Status':'Next run')+'</small><strong style="'+(isR?'color:var(--blue);':'')+'">'+(isR?'Scanning\u2026':fmtNextRun(s.nextRun))+'</strong></div>'+
-          '<div style="display:flex;gap:.35rem;">'+(isR?'<button class="btn btn-p btn-s" onclick="openLivePopup()" style="font-size:.7rem;"><i class="fa-solid fa-chart-line"></i> Live</button>':'<button class="btn btn-p btn-s" onclick="runNow('+s.id+')" title="Run Now"><i class="fa-solid fa-play"></i></button>')+
+          '<div style="display:flex;gap:.35rem;">'+(isR?'':'<button class="btn btn-p btn-s" onclick="runNow('+s.id+')" title="Run Now"><i class="fa-solid fa-play"></i></button>')+
           '<button class="btn '+(isA?'btn-o':'btn-p')+' btn-s" onclick="toggleSched('+s.id+')" '+dis+'><i class="fa-solid '+(isA?'fa-pause':'fa-play')+'"></i></button>'+
           '<button class="btn btn-o btn-s" onclick="openModal('+s.id+')" '+dis+'><i class="fa-regular fa-pen-to-square"></i></button>'+
           '<button class="btn btn-d btn-s" onclick="deleteSched('+s.id+')" '+dis+'><i class="fa-regular fa-trash-can"></i></button></div></div></div>';
@@ -613,15 +617,67 @@ function updateStats(){
 
 function renderAll(){renderSchedules();renderHistory();updateStats();if(document.getElementById('tab-vulns').classList.contains('active'))renderVulnTracker();if(document.getElementById('tab-priority').classList.contains('active'))renderPriority();}
 
+// ── Auto-run: fire scans when nextRun time is reached ────────────────
+async function checkScheduledRuns() {
+    var now = Date.now();
+    for (var i = 0; i < schedules.length; i++) {
+        var s = schedules[i];
+        if (s.status !== 'active' || !s.nextRun) continue;
+        var due = new Date(s.nextRun).getTime();
+        if (due > now) continue; // not time yet
+        // Check no scan already running
+        try {
+            var chk = await fetch('/api/scan-logs');
+            var cd  = await chk.json();
+            if (cd.running) continue; // another scan in progress, skip
+        } catch(e) { continue; }
+        // Fire the scan
+        var authType = s.authType || 'none', authData = s.authData || {}, adPayload = {};
+        if (authType==='basic') { adPayload={username:authData.basicUsername||'',password:authData.basicPassword||''}; }
+        else if (authType==='form') { adPayload={login_url:authData.formLoginUrl||'',username:authData.formUsername||'',password:authData.formPassword||'',username_field:authData.formUsernameField||'username',password_field:authData.formPasswordField||'password',success_indicator:authData.formSuccessIndicator||''}; }
+        try {
+            var res  = await fetch('/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({target:s.target,auth_type:authType,auth_data:adPayload,owasp_enabled:true}) });
+            var data = await res.json();
+            if (data.status === 'started') {
+                s.status = 'running'; saveState(); renderSchedules(); updateStats();
+                wasRunning = true; popupLogLen = 0;
+                document.getElementById('popupSchedName').textContent = s.name + ' \u2014 Auto Running';
+                document.getElementById('popupTarget').textContent    = s.target;
+                document.getElementById('popupBar').style.width       = '0%';
+                document.getElementById('popupPct').textContent       = '0%';
+                document.getElementById('popupPhase').textContent     = 'Initializing\u2026';
+                document.getElementById('popupLog').innerHTML         = '<span style="color:#475569;">Scheduled scan started at ' + new Date().toLocaleTimeString() + '\u2026</span>';
+                document.getElementById('popupResult').style.display  = 'none';
+                updatePopupPhases(0);
+                openLivePopup(); // auto-open popup
+            }
+        } catch(e) {}
+        break; // only start one scan per tick
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.day-btn').forEach(function(b){ b.addEventListener('click',function(){ b.classList.toggle('active'); updatePreview(); }); });
     document.getElementById('mTime').addEventListener('change', updatePreview);
     renderAll();
     startLivePolling();
     setInterval(updateStats, 30000);
-    // Check if scan was running on page load
+    // Check scheduled runs every 60 seconds
+    checkScheduledRuns();
+    setInterval(checkScheduledRuns, 60000);
+    // If a scan was already running when page loaded, open popup immediately
     fetch('/api/scan-logs').then(function(r){return r.json();}).then(function(d){
-        if(d.running){wasRunning=true;document.getElementById('liveScanBadge').style.display='flex';document.getElementById('popupTarget').textContent=d.target||'';}
+        if (d.running) {
+            wasRunning = true;
+            document.getElementById('popupSchedName').textContent = 'Scan In Progress';
+            document.getElementById('popupTarget').textContent    = d.target || '';
+            document.getElementById('popupBar').style.width       = (d.progress||0) + '%';
+            document.getElementById('popupPct').textContent       = (d.progress||0) + '%';
+            document.getElementById('popupPhase').textContent     = d.phase_name || 'Scanning\u2026';
+            updatePopupPhases(d.phase || 1);
+            (d.logs||[]).forEach(function(l){ appendPopupLog(l); popupLogLen++; });
+            openLivePopup();
+        }
     }).catch(function(){});
 });
 {% endraw %}
