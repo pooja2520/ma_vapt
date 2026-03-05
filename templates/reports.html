@@ -99,10 +99,14 @@ async function fetchFixedCount(reportId) {
                 pct:   report.fix_pct || 0
             };
         } else {
-            const vulns = report.vulnerabilities || [];
-            const fixed = vulns.filter(v => (v._display_status || v.Status || '').toLowerCase() === 'fixed').length;
-            const total = vulns.length;
-            result = { fixed, total, pct: total ? Math.round(fixed / total * 100) : 0 };
+            const vulns    = report.vulnerabilities || [];
+            const fixed    = vulns.filter(v => (v._display_status || v.Status || '').toLowerCase() === 'fixed').length;
+            const vuln     = vulns.filter(v => (v._display_status || v.Status || '').toLowerCase() === 'vulnerable').length;
+            const total    = vulns.length;
+            // Match vulnerabilities page formula: fixed/(fixed+vulnerable) — excludes
+            // already-passing items (complete/success/secure) from the denominator
+            const denom    = fixed + vuln;
+            result = { fixed, total, pct: denom > 0 ? Math.round(fixed / denom * 100) : 0 };
         }
         if (result.fixed > 0) fixedCache[reportId] = result; // only cache if meaningful
         return result;
