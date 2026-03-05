@@ -396,3 +396,35 @@
 .bx.bi  { background: #eff6ff; color: #1d4ed8; border-color: #93c5fd; }
 .bx.bac { background: #f0fdf4; color: #15803d; border-color: #86efac; }
 .bx.bpd { background: #fefce8; color: #a16207; border-color: #fde047; }
+/* ── Live pulse dot ──────────────────────────────────────── */
+.live-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #22c55e;
+    display: inline-block; flex-shrink: 0;
+    animation: livePulse 1s ease-in-out infinite;
+}
+@keyframes livePulse { 0%,100%{ opacity:1; transform:scale(1); } 50%{ opacity:.4; transform:scale(.85); } }
+
+/* ── Popup entry animation ───────────────────────────────── */
+@keyframes popupIn { from { opacity:0; transform:scale(.95) translateY(10px); } to { opacity:1; transform:none; } }
+
+/* ── Popup phase steps ───────────────────────────────────── */
+.popup-phase {
+    display: flex; align-items: center; gap: .3rem;
+    padding: .3rem .65rem; border-radius: 7px;
+    font-size: .7rem; color: #475569;
+    background: #1e293b; white-space: nowrap;
+    border: 1.5px solid transparent; transition: all .25s;
+}
+.popup-phase.active {
+    color: #60a5fa; background: rgba(37,99,235,.15);
+    border-color: #2563EB; font-weight: 600;
+}
+.popup-phase.done { color: #22c55e; background: rgba(34,197,94,.1); border-color: rgba(34,197,94,.3); }
+
+/* ── Running sched icon pulse ────────────────────────────── */
+.sched-icon.running {
+    background: #eff6ff; color: var(--blue);
+    animation: iconPulse 1.4s ease-in-out infinite;
+}
+@keyframes iconPulse { 0%,100%{ box-shadow:0 0 0 0 rgba(37,99,235,.3); } 60%{ box-shadow:0 0 0 7px rgba(37,99,235,0); } }
