@@ -7,6 +7,7 @@
             ['/scanning', 'fa-solid fa-magnifying-glass', 'Scanning'],
             ['/vulnerabilities', 'fa-solid fa-bug', 'Vulnerabilities'],
             ['/reports', 'fa-regular fa-file-lines', 'Reports'],
+            ['/scheduled', 'fa-solid fa-calendar-check', 'Scheduled'],
             ['/features', 'fa-solid fa-bolt', 'Features'],
             ['/documentation', 'fa-solid fa-book-open', 'Documentation'],
             ['/about', 'fa-solid fa-circle-info', 'About'],
