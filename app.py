@@ -451,6 +451,12 @@ def report_view(report_id):
     return render_template('report-view.html', report_id=report_id)
 
 
+@app.route('/scheduled')
+@login_required
+def scheduled():
+    return render_template('scheduled-scans.html')
+
+
 @app.route('/features')
 @login_required
 def features():
