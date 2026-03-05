@@ -180,10 +180,10 @@
       </div>
 
       <div class="fg"><label>Target URL <span style="color:var(--red)">*</span></label>
-        <div style="display:flex;gap:.5rem;">
-          <input type="text" id="mTarget" placeholder="https://app.example.com" style="flex:1;" oninput="updatePreview()">
-          <select id="mTargetSelect" onchange="loadModalTarget()" style="padding:.45rem .6rem;border:1.5px solid var(--border);border-radius:8px;font-size:.78rem;font-family:'DM Sans',sans-serif;outline:none;color:var(--text);min-width:120px;">
-            <option value="">Load saved&hellip;</option>
+        <input type="text" id="mTarget" placeholder="https://app.example.com" style="width:100%;box-sizing:border-box;" oninput="updatePreview()">
+        <div style="margin-top:.4rem;">
+          <select id="mTargetSelect" onchange="loadModalTarget()" style="width:100%;padding:.4rem .6rem;border:1.5px solid var(--border);border-radius:8px;font-size:.78rem;font-family:'DM Sans',sans-serif;outline:none;color:var(--text-muted);background:#fff;">
+            <option value="">&#128196; Or load from saved targets&hellip;</option>
           </select>
         </div>
       </div>
