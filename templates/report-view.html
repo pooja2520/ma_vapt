@@ -359,7 +359,10 @@ function renderResolutionBar(vulns) {
     });
     const fixed     = fixedArr.length;
     const vulnCount = actionable.filter(v => (v._display_status||v.Status||'').toLowerCase() === 'vulnerable').length;
-    const pct       = Math.round((fixed / total) * 100);
+    // Use same denominator as vulnerabilities page: fixed/(fixed+vulnerable)
+    // excludes already-passing items (complete/success/secure) from both sides
+    const fixDenom  = fixed + vulnCount;
+    const pct       = fixDenom > 0 ? Math.round((fixed / fixDenom) * 100) : 0;
 
     document.getElementById('resolutionBar').style.display = 'block';
     document.getElementById('resolutionPct').textContent   = `${pct}% resolved`;
@@ -453,8 +456,10 @@ async function loadReport() {
         }
 
         // Scan info table
-        const totalFixed = allVulns.filter(v => (v._display_status||v.Status||'').toLowerCase()==='fixed'||v._fixed).length;
-        const fixedPct   = allVulns.length > 0 ? Math.round((totalFixed / allVulns.length) * 100) : 0;
+        const totalFixed   = allVulns.filter(v => (v._display_status||v.Status||'').toLowerCase()==='fixed'||v._fixed).length;
+        const totalVulnRaw = allVulns.filter(v => (v._display_status||v.Status||'').toLowerCase()==='vulnerable').length;
+        const fixInfoDenom = totalFixed + totalVulnRaw;
+        const fixedPct     = fixInfoDenom > 0 ? Math.round((totalFixed / fixInfoDenom) * 100) : 0;
         document.getElementById('scanInfoTable').innerHTML = [
             ['Target',        r.target_url || '—'],
             ['Scan Type',     'Full VAPT'],
@@ -563,9 +568,11 @@ async function downloadPDF() {
         });
 
         // Resolution progress
-        const totalFixed = allVulns.filter(v => (v._display_status||v.Status||'').toLowerCase()==='fixed'||v._fixed).length;
-        const totalVulns = allVulns.length;
-        const fixedPct   = totalVulns > 0 ? Math.round((totalFixed / totalVulns) * 100) : 0;
+        const totalFixed   = allVulns.filter(v => (v._display_status||v.Status||'').toLowerCase()==='fixed'||v._fixed).length;
+        const totalVulns   = allVulns.length;
+        const pdfVulnCount = allVulns.filter(v => (v._display_status||v.Status||'').toLowerCase()==='vulnerable').length;
+        const pdfFixDenom  = totalFixed + pdfVulnCount;
+        const fixedPct     = pdfFixDenom > 0 ? Math.round((totalFixed / pdfFixDenom) * 100) : 0;
 
         doc.setTextColor(30, 41, 59);
         doc.setFontSize(10);
