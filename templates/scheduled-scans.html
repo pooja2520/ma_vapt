@@ -1,0 +1,905 @@
+{% extends "base.html" %}
+{% block title %}Scheduled Scans - VAPT Scanner Pro{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/scheduled.css') }}">
+{% endblock %}
+{% block body %}
+<div id="_main" style="padding-top:56px;min-height:100vh;">
+<div class="content">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.625rem;">
+    <div>
+      <h1 style="font-family:'Space Grotesk',sans-serif;font-size:1.375rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:.4rem;">
+        <i class="fa-solid fa-calendar-check" style="color:var(--blue)"></i> Scheduled Scans
+      </h1>
+      <p style="font-size:.78rem;color:var(--text-muted);">Automate security scans — night, day, afternoon &amp; custom schedules</p>
+    </div>
+    <button class="btn btn-p" onclick="openModal()">
+      <i class="fa-solid fa-plus"></i> New Schedule
+    </button>
+  </div>
+
+  <!-- Summary Stats -->
+  <div class="sched-stats" id="schedStats">
+    <div class="ss-card">
+      <div class="ss-icon" style="background:#eff6ff;color:#2563eb;"><i class="fa-solid fa-calendar-check"></i></div>
+      <div><strong id="statActive">0</strong><small>Active Schedules</small></div>
+    </div>
+    <div class="ss-card">
+      <div class="ss-icon" style="background:#f0fdf4;color:#16a34a;"><i class="fa-solid fa-circle-check"></i></div>
+      <div><strong id="statCompleted">0</strong><small>Runs Completed</small></div>
+    </div>
+    <div class="ss-card">
+      <div class="ss-icon" style="background:#fff7ed;color:#c2410c;"><i class="fa-solid fa-triangle-exclamation"></i></div>
+      <div><strong id="statFixed">0</strong><small>Vulns Fixed</small></div>
+    </div>
+    <div class="ss-card">
+      <div class="ss-icon" style="background:#fef2f2;color:#b91c1c;"><i class="fa-solid fa-bug"></i></div>
+      <div><strong id="statPriority">0</strong><small>Priority Vulns</small></div>
+    </div>
+    <div class="ss-card">
+      <div class="ss-icon" style="background:#faf5ff;color:#7c3aed;"><i class="fa-solid fa-clock-rotate-left"></i></div>
+      <div><strong id="statNextRun">—</strong><small>Next Run</small></div>
+    </div>
+  </div>
+
+  <!-- Time-of-day Quick Presets -->
+  <div class="card" style="margin-bottom:1rem;">
+    <div class="ch"><i class="fa-solid fa-sun"></i> Quick Schedule Presets</div>
+    <div class="cb">
+      <div class="preset-grid">
+        <button class="preset-btn" onclick="applyPreset('night')">
+          <span class="preset-icon">🌙</span>
+          <strong>Night Scan</strong>
+          <small>02:00 AM daily</small>
+          <span class="preset-tag">Low traffic</span>
+        </button>
+        <button class="preset-btn" onclick="applyPreset('morning')">
+          <span class="preset-icon">🌅</span>
+          <strong>Morning Scan</strong>
+          <small>06:00 AM daily</small>
+          <span class="preset-tag">Pre-business</span>
+        </button>
+        <button class="preset-btn" onclick="applyPreset('afternoon')">
+          <span class="preset-icon">☀️</span>
+          <strong>Afternoon Scan</strong>
+          <small>02:00 PM daily</small>
+          <span class="preset-tag">Mid-day check</span>
+        </button>
+        <button class="preset-btn" onclick="applyPreset('continuous')">
+          <span class="preset-icon">🔄</span>
+          <strong>Continuous</strong>
+          <small>Every 6 hours</small>
+          <span class="preset-tag">24/7 watch</span>
+        </button>
+        <button class="preset-btn" onclick="applyPreset('weekly')">
+          <span class="preset-icon">📅</span>
+          <strong>Weekly</strong>
+          <small>Sunday 01:00 AM</small>
+          <span class="preset-tag">Weekly report</span>
+        </button>
+        <button class="preset-btn" onclick="applyPreset('monthly')">
+          <span class="preset-icon">📆</span>
+          <strong>Monthly</strong>
+          <small>1st of month</small>
+          <span class="preset-tag">Compliance</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('schedules',this)"><i class="fa-solid fa-calendar-check"></i> Schedules <span class="tab-count" id="tcSchedules">0</span></button>
+    <button class="tab-btn" onclick="switchTab('history',this)"><i class="fa-solid fa-clock-rotate-left"></i> Run History <span class="tab-count" id="tcHistory">0</span></button>
+    <button class="tab-btn" onclick="switchTab('vulns',this)"><i class="fa-solid fa-bug"></i> Vulnerability Tracker <span class="tab-count" id="tcVulns">0</span></button>
+    <button class="tab-btn" onclick="switchTab('priority',this)"><i class="fa-solid fa-fire"></i> Priority & Fixes</button>
+  </div>
+
+  <!-- TAB: Schedules -->
+  <div id="tab-schedules" class="tab-content active">
+    <div class="card">
+      <div class="ch" style="display:flex;justify-content:space-between;align-items:center;">
+        <span><i class="fa-solid fa-list"></i> All Schedules</span>
+        <div style="display:flex;gap:.5rem;align-items:center;">
+          <select id="filterStatus" onchange="renderSchedules()" style="padding:.3rem .6rem;border:1.5px solid var(--border);border-radius:7px;font-size:.75rem;font-family:'DM Sans',sans-serif;outline:none;color:var(--text);">
+            <option value="">All Status</option>
+            <option value="active">Active</option>
+            <option value="paused">Paused</option>
+          </select>
+        </div>
+      </div>
+      <div class="cb" style="padding:0;" id="scheduleList">
+        <div class="empty-state" id="schedEmptyState">
+          <i class="fa-solid fa-calendar-xmark"></i>
+          <p>No schedules yet.</p>
+          <small>Create a schedule to automate your security scans.</small>
+          <button class="btn btn-p" onclick="openModal()" style="margin-top:.75rem;">
+            <i class="fa-solid fa-plus"></i> Create First Schedule
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: History -->
+  <div id="tab-history" class="tab-content">
+    <div class="card">
+      <div class="ch"><i class="fa-solid fa-clock-rotate-left"></i> Run History</div>
+      <div class="cb" style="padding:0;overflow-x:auto;">
+        <table class="dt" id="historyTable">
+          <thead>
+            <tr>
+              <th>#</th><th>Schedule</th><th>Target</th><th>Started</th><th>Duration</th>
+              <th>Findings</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Result</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="historyBody">
+            <tr><td colspan="12" class="empty-td"><i class="fa-solid fa-clock-rotate-left"></i> No run history yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: Vulnerability Tracker -->
+  <div id="tab-vulns" class="tab-content">
+    <div style="display:flex;gap:.75rem;margin-bottom:1rem;flex-wrap:wrap;">
+      <div class="vuln-stat-card" style="border-left:4px solid #ef4444;">
+        <strong id="vsTotal">0</strong><small>Total Found</small>
+      </div>
+      <div class="vuln-stat-card" style="border-left:4px solid #22c55e;">
+        <strong id="vsFixed" style="color:#22c55e;">0</strong><small>Fixed</small>
+      </div>
+      <div class="vuln-stat-card" style="border-left:4px solid #f97316;">
+        <strong id="vsOpen" style="color:#f97316;">0</strong><small>Still Open</small>
+      </div>
+      <div class="vuln-stat-card" style="border-left:4px solid #b91c1c;">
+        <strong id="vsCritOpen" style="color:#b91c1c;">0</strong><small>Critical Open</small>
+      </div>
+    </div>
+
+    <!-- Fix rate bar -->
+    <div class="card" style="margin-bottom:1rem;">
+      <div class="cb" style="padding:.875rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;">
+          <span style="font-size:.825rem;font-weight:600;color:var(--text);">Fix Rate Progress</span>
+          <span id="fixRatePct" style="font-size:1.1rem;font-weight:700;color:#22c55e;">0%</span>
+        </div>
+        <div style="height:10px;background:var(--border);border-radius:8px;overflow:hidden;">
+          <div id="fixRateBar" style="height:100%;background:linear-gradient(90deg,#22c55e,#16a34a);border-radius:8px;width:0%;transition:width 1s ease;"></div>
+        </div>
+        <p style="font-size:.7rem;color:var(--text-muted);margin-top:.4rem;">Percentage of discovered vulnerabilities marked as fixed</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><i class="fa-solid fa-bug"></i> Vulnerability Tracker</div>
+      <div class="cb" style="padding:0;overflow-x:auto;">
+        <table class="dt" id="vulnTrackTable">
+          <thead>
+            <tr>
+              <th>Vulnerability</th><th>Severity</th><th>Target</th><th>Discovered</th><th>Schedule</th><th>Status</th><th>Time Open</th><th>Fix</th>
+            </tr>
+          </thead>
+          <tbody id="vulnTrackBody">
+            <tr><td colspan="8" class="empty-td"><i class="fa-solid fa-shield-halved"></i> No vulnerabilities tracked yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: Priority & Fixes -->
+  <div id="tab-priority" class="tab-content">
+    <div class="g2" style="margin-bottom:1rem;">
+
+      <!-- Priority Queue -->
+      <div class="card">
+        <div class="ch" style="background:linear-gradient(90deg,#7f1d1d,#991b1b);">
+          <i class="fa-solid fa-fire"></i> Priority Fix Queue
+        </div>
+        <div class="cb" style="padding:0;" id="priorityList">
+          <div class="empty-state">
+            <i class="fa-solid fa-fire-flame-curved" style="color:#ef4444;"></i>
+            <p>No priority items.</p>
+            <small>Critical &amp; High severity vulnerabilities will appear here.</small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fix Solutions -->
+      <div class="card">
+        <div class="ch" style="background:linear-gradient(90deg,#14532d,#15803d);">
+          <i class="fa-solid fa-screwdriver-wrench"></i> Remediation Solutions
+        </div>
+        <div class="cb" style="padding:0;" id="solutionList">
+          <div class="empty-state">
+            <i class="fa-solid fa-screwdriver-wrench" style="color:#22c55e;"></i>
+            <p>No solutions yet.</p>
+            <small>Fix solutions for detected vulnerabilities appear here.</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Schedule-based fix timeline -->
+    <div class="card">
+      <div class="ch"><i class="fa-solid fa-timeline"></i> Scheduled Fix Timeline</div>
+      <div class="cb" id="fixTimeline">
+        <div class="empty-state">
+          <i class="fa-solid fa-timeline" style="color:var(--border);"></i>
+          <p>No fix timeline data.</p>
+          <small>Timeline will show scheduled fixes based on scan frequency.</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ─────────────────── CREATE/EDIT SCHEDULE MODAL ─────────────────── -->
+<div id="schedModal" class="modal-overlay" onclick="closeModalOutside(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2 id="modalTitle"><i class="fa-solid fa-calendar-plus"></i> Create Schedule</h2>
+      <button class="modal-close" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Schedule Name & Target -->
+      <div class="fg"><label>Schedule Name <span style="color:var(--red)">*</span></label>
+        <input type="text" id="mName" placeholder="e.g. Nightly Production Scan">
+      </div>
+      <div class="fg"><label>Target URL <span style="color:var(--red)">*</span></label>
+        <input type="text" id="mTarget" placeholder="https://app.example.com">
+      </div>
+
+      <!-- Time Preset -->
+      <div class="fg">
+        <label>Time of Day</label>
+        <div class="time-presets">
+          <button type="button" class="tp-btn" onclick="selTimePreset(this,'02:00')">🌙 Night<br><small>02:00</small></button>
+          <button type="button" class="tp-btn" onclick="selTimePreset(this,'06:00')">🌅 Morning<br><small>06:00</small></button>
+          <button type="button" class="tp-btn" onclick="selTimePreset(this,'14:00')">☀️ Afternoon<br><small>14:00</small></button>
+          <button type="button" class="tp-btn" onclick="selTimePreset(this,'22:00')">🌃 Evening<br><small>22:00</small></button>
+        </div>
+      </div>
+
+      <!-- Custom Time -->
+      <div class="fg">
+        <label>Custom Time</label>
+        <input type="time" id="mTime" value="02:00">
+      </div>
+
+      <!-- Frequency -->
+      <div class="fg">
+        <label>Frequency <span style="color:var(--red)">*</span></label>
+        <div class="freq-btns" id="freqBtns">
+          <button type="button" class="freq-btn active" data-freq="once" onclick="selFreq(this)">One-time</button>
+          <button type="button" class="freq-btn" data-freq="6h" onclick="selFreq(this)">Every 6h</button>
+          <button type="button" class="freq-btn" data-freq="12h" onclick="selFreq(this)">Every 12h</button>
+          <button type="button" class="freq-btn" data-freq="daily" onclick="selFreq(this)">Daily</button>
+          <button type="button" class="freq-btn" data-freq="weekly" onclick="selFreq(this)">Weekly</button>
+          <button type="button" class="freq-btn" data-freq="monthly" onclick="selFreq(this)">Monthly</button>
+          <button type="button" class="freq-btn" data-freq="247" onclick="selFreq(this)">24/7</button>
+        </div>
+      </div>
+
+      <!-- Weekly day picker -->
+      <div id="weekdayPicker" class="fg" style="display:none;">
+        <label>Day of Week</label>
+        <div class="day-btns">
+          <button type="button" class="day-btn active" data-day="0">Sun</button>
+          <button type="button" class="day-btn" data-day="1">Mon</button>
+          <button type="button" class="day-btn" data-day="2">Tue</button>
+          <button type="button" class="day-btn" data-day="3">Wed</button>
+          <button type="button" class="day-btn" data-day="4">Thu</button>
+          <button type="button" class="day-btn" data-day="5">Fri</button>
+          <button type="button" class="day-btn" data-day="6">Sat</button>
+        </div>
+      </div>
+
+      <!-- Monthly day picker -->
+      <div id="monthdayPicker" class="fg" style="display:none;">
+        <label>Day of Month</label>
+        <input type="number" id="mMonthDay" min="1" max="28" value="1" style="width:100px;">
+      </div>
+
+      <!-- Duration / timeout -->
+      <div class="fg">
+        <label>Scan Timeout (minutes)</label>
+        <select id="mTimeout" style="padding:.475rem .75rem;border:1.5px solid var(--border);border-radius:8px;font-size:.825rem;font-family:'DM Sans',sans-serif;outline:none;width:100%;">
+          <option value="15">15 minutes</option>
+          <option value="30" selected>30 minutes</option>
+          <option value="60">1 hour</option>
+          <option value="120">2 hours</option>
+          <option value="240">4 hours</option>
+        </select>
+      </div>
+
+      <!-- Notifications -->
+      <div class="fg">
+        <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;">
+          <input type="checkbox" id="mNotify" checked style="width:14px;height:14px;"> 
+          Notify on completion / critical findings
+        </label>
+      </div>
+
+      <!-- Preview -->
+      <div class="schedule-preview" id="schedPreview">
+        <i class="fa-solid fa-calendar-check" style="color:var(--blue)"></i>
+        <span id="previewText">This scan will run once at 02:00 AM</span>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-o" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-p" onclick="saveSchedule()" id="saveBtn"><i class="fa-solid fa-floppy-disk"></i> Save Schedule</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+{% raw %}
+initLayout('/scheduled');
+
+// ── State ──────────────────────────────────────────────────────────
+let schedules = JSON.parse(localStorage.getItem('vapt_schedules') || '[]');
+let runHistory = JSON.parse(localStorage.getItem('vapt_run_history') || '[]');
+let trackedVulns = JSON.parse(localStorage.getItem('vapt_tracked_vulns') || '[]');
+let editingId = null;
+
+// ── Tab switching ──────────────────────────────────────────────────
+function switchTab(name, btn) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    btn.classList.add('active');
+    if (name === 'vulns') renderVulnTracker();
+    if (name === 'priority') renderPriority();
+    if (name === 'history') renderHistory();
+}
+
+// ── Preset applyPreset ─────────────────────────────────────────────
+function applyPreset(type) {
+    const presets = {
+        night: { time: '02:00', freq: 'daily', name: 'Nightly Security Scan' },
+        morning: { time: '06:00', freq: 'daily', name: 'Morning Security Scan' },
+        afternoon: { time: '14:00', freq: 'daily', name: 'Afternoon Security Scan' },
+        continuous: { time: '00:00', freq: '6h', name: '24/7 Continuous Scan' },
+        weekly: { time: '01:00', freq: 'weekly', name: 'Weekly Full Scan' },
+        monthly: { time: '02:00', freq: 'monthly', name: 'Monthly Compliance Scan' },
+    };
+    const p = presets[type];
+    if (!p) return;
+    openModal();
+    document.getElementById('mName').value = p.name;
+    document.getElementById('mTime').value = p.time;
+    document.querySelectorAll('.freq-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.freq === p.freq);
+    });
+    updateWeekMonthPicker(p.freq);
+    updatePreview();
+}
+
+// ── Modal open/close ───────────────────────────────────────────────
+function openModal(id = null) {
+    editingId = id;
+    document.getElementById('schedModal').classList.add('open');
+    document.getElementById('modalTitle').innerHTML = id
+        ? '<i class="fa-solid fa-pen-to-square"></i> Edit Schedule'
+        : '<i class="fa-solid fa-calendar-plus"></i> Create Schedule';
+
+    if (id) {
+        const s = schedules.find(x => x.id === id);
+        if (s) {
+            document.getElementById('mName').value = s.name;
+            document.getElementById('mTarget').value = s.target;
+            document.getElementById('mTime').value = s.time;
+            document.getElementById('mTimeout').value = s.timeout || 30;
+            document.getElementById('mNotify').checked = s.notify !== false;
+            document.querySelectorAll('.freq-btn').forEach(b => b.classList.toggle('active', b.dataset.freq === s.freq));
+            updateWeekMonthPicker(s.freq);
+        }
+    } else {
+        document.getElementById('mName').value = '';
+        document.getElementById('mTarget').value = '';
+        document.getElementById('mTime').value = '02:00';
+        document.getElementById('mTimeout').value = '30';
+        document.getElementById('mNotify').checked = true;
+        document.querySelectorAll('.freq-btn').forEach(b => b.classList.toggle('active', b.dataset.freq === 'once'));
+        updateWeekMonthPicker('once');
+    }
+    updatePreview();
+}
+function closeModal() { document.getElementById('schedModal').classList.remove('open'); }
+function closeModalOutside(e) { if (e.target.id === 'schedModal') closeModal(); }
+
+// ── Time preset select ─────────────────────────────────────────────
+function selTimePreset(btn, time) {
+    document.querySelectorAll('.tp-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('mTime').value = time;
+    updatePreview();
+}
+
+// ── Frequency select ───────────────────────────────────────────────
+function selFreq(btn) {
+    document.querySelectorAll('.freq-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    updateWeekMonthPicker(btn.dataset.freq);
+    updatePreview();
+}
+function updateWeekMonthPicker(freq) {
+    document.getElementById('weekdayPicker').style.display = freq === 'weekly' ? 'block' : 'none';
+    document.getElementById('monthdayPicker').style.display = freq === 'monthly' ? 'block' : 'none';
+}
+
+// ── Day btn toggle ─────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.day-btn').forEach(b => {
+        b.addEventListener('click', () => {
+            b.classList.toggle('active');
+            updatePreview();
+        });
+    });
+    document.getElementById('mTime').addEventListener('change', updatePreview);
+    renderAll();
+});
+
+function getSelectedDays() {
+    return [...document.querySelectorAll('.day-btn.active')].map(b =>
+        ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][parseInt(b.dataset.day)]
+    );
+}
+
+// ── Preview text ───────────────────────────────────────────────────
+function updatePreview() {
+    const time = document.getElementById('mTime').value || '02:00';
+    const freq = document.querySelector('.freq-btn.active')?.dataset.freq || 'once';
+    const [h, m] = time.split(':');
+    const hour = parseInt(h);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const h12 = hour % 12 || 12;
+    const timeStr = `${h12}:${m} ${ampm}`;
+
+    const msgs = {
+        once: `This scan will run one-time at ${timeStr}`,
+        '6h': `This scan will run every 6 hours starting at ${timeStr}`,
+        '12h': `This scan will run every 12 hours starting at ${timeStr}`,
+        daily: `This scan will run every day at ${timeStr}`,
+        weekly: `This scan will run every ${getSelectedDays().join(', ') || 'Sunday'} at ${timeStr}`,
+        monthly: `This scan will run on day ${document.getElementById('mMonthDay')?.value || 1} of each month at ${timeStr}`,
+        '247': `This scan will run continuously, 24 hours a day, 7 days a week`,
+    };
+    document.getElementById('previewText').textContent = msgs[freq] || msgs.once;
+}
+
+// ── Save schedule ──────────────────────────────────────────────────
+function saveSchedule() {
+    const name   = document.getElementById('mName').value.trim();
+    const target = document.getElementById('mTarget').value.trim();
+    const time   = document.getElementById('mTime').value;
+    const freq   = document.querySelector('.freq-btn.active')?.dataset.freq || 'once';
+    const timeout = parseInt(document.getElementById('mTimeout').value);
+    const notify = document.getElementById('mNotify').checked;
+
+    if (!name || !target) { alert('Please fill in Schedule Name and Target URL.'); return; }
+
+    const now = new Date();
+    const nextRun = calcNextRun(time, freq);
+
+    if (editingId) {
+        const idx = schedules.findIndex(s => s.id === editingId);
+        if (idx !== -1) {
+            schedules[idx] = { ...schedules[idx], name, target, time, freq, timeout, notify, nextRun };
+        }
+    } else {
+        schedules.push({
+            id: Date.now(),
+            name, target, time, freq, timeout, notify, nextRun,
+            status: 'active',
+            created: now.toISOString(),
+            runCount: 0,
+            lastRun: null,
+        });
+    }
+
+    saveState();
+    closeModal();
+    renderAll();
+    addSimulatedHistory(schedules[schedules.length - 1]);
+}
+
+function calcNextRun(time, freq) {
+    const now = new Date();
+    const [h, m] = (time || '02:00').split(':').map(Number);
+    const next = new Date(now);
+    next.setHours(h, m, 0, 0);
+    if (next <= now) {
+        if (freq === '6h')  next.setHours(next.getHours() + 6);
+        else if (freq === '12h') next.setHours(next.getHours() + 12);
+        else next.setDate(next.getDate() + 1);
+    }
+    return next.toISOString();
+}
+
+function fmtNextRun(isoStr) {
+    if (!isoStr) return '—';
+    const d = new Date(isoStr);
+    if (isNaN(d)) return '—';
+    const diff = d - Date.now();
+    if (diff < 0) return 'Overdue';
+    const hrs = Math.floor(diff / 3600000);
+    const mins = Math.floor((diff % 3600000) / 60000);
+    if (hrs === 0) return `in ${mins}m`;
+    if (hrs < 24) return `in ${hrs}h ${mins}m`;
+    return `in ${Math.floor(hrs/24)}d ${hrs%24}h`;
+}
+
+// ── Simulated history on create ────────────────────────────────────
+function addSimulatedHistory(sched) {
+    if (!sched) return;
+    const findings = { critical: rnd(0,3), high: rnd(1,5), medium: rnd(2,8), low: rnd(0,6) };
+    const total = findings.critical + findings.high + findings.medium + findings.low;
+    const result = findings.critical > 0 ? 'critical' : findings.high > 1 ? 'warning' : 'clean';
+
+    runHistory.unshift({
+        id: Date.now(),
+        scheduleId: sched.id,
+        scheduleName: sched.name,
+        target: sched.target,
+        started: new Date(Date.now() - rnd(3600000, 86400000)).toISOString(),
+        duration: rnd(90, 1200),
+        findings: total,
+        critical: findings.critical,
+        high: findings.high,
+        medium: findings.medium,
+        low: findings.low,
+        result,
+        reportId: null,
+    });
+
+    // Add some tracked vulns
+    const vulnTypes = [
+        { name: 'SQL Injection', sev: 'critical', rem: 'Use parameterized queries and prepared statements. Never concatenate user input directly into SQL queries.' },
+        { name: 'XSS (Cross-Site Scripting)', sev: 'high', rem: 'Sanitize and encode all user input. Use Content Security Policy headers.' },
+        { name: 'CSRF Vulnerability', sev: 'medium', rem: 'Implement CSRF tokens on all state-changing requests.' },
+        { name: 'Open Redirect', sev: 'medium', rem: 'Validate and whitelist redirect URLs. Avoid user-controlled redirects.' },
+        { name: 'Missing Security Headers', sev: 'low', rem: 'Add X-Frame-Options, X-Content-Type-Options, and HSTS headers.' },
+        { name: 'Directory Listing', sev: 'low', rem: 'Disable directory listing in web server configuration.' },
+        { name: 'Outdated Dependencies', sev: 'high', rem: 'Update all dependencies to latest patched versions. Use Dependabot.' },
+        { name: 'Insecure Cookie Flags', sev: 'medium', rem: 'Set Secure and HttpOnly flags on all cookies.' },
+    ];
+
+    for (let i = 0; i < Math.min(findings.critical + findings.high + 1, 4); i++) {
+        const vt = vulnTypes[rnd(0, vulnTypes.length - 1)];
+        trackedVulns.unshift({
+            id: Date.now() + i,
+            name: vt.name,
+            severity: vt.sev,
+            target: sched.target,
+            discovered: new Date().toISOString(),
+            scheduleName: sched.name,
+            status: 'open',
+            remediation: vt.rem,
+            steps: [
+                'Identify all affected code locations',
+                vt.rem,
+                'Test the fix in a staging environment',
+                'Deploy fix to production',
+                'Re-run scan to verify resolution',
+            ],
+        });
+    }
+
+    saveState();
+    updateStats();
+    renderHistory();
+    document.getElementById('tcHistory').textContent = runHistory.length;
+}
+
+function rnd(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+// ── Save state ─────────────────────────────────────────────────────
+function saveState() {
+    localStorage.setItem('vapt_schedules', JSON.stringify(schedules));
+    localStorage.setItem('vapt_run_history', JSON.stringify(runHistory));
+    localStorage.setItem('vapt_tracked_vulns', JSON.stringify(trackedVulns));
+}
+
+// ── Render all ─────────────────────────────────────────────────────
+function renderAll() {
+    renderSchedules();
+    renderHistory();
+    renderVulnTracker();
+    renderPriority();
+    updateStats();
+}
+
+function updateStats() {
+    const active = schedules.filter(s => s.status === 'active').length;
+    const fixed = trackedVulns.filter(v => v.status === 'fixed').length;
+    const priority = trackedVulns.filter(v => v.severity === 'critical' && v.status === 'open').length;
+    const next = schedules.filter(s => s.status === 'active' && s.nextRun).sort((a,b) => new Date(a.nextRun) - new Date(b.nextRun))[0];
+
+    document.getElementById('statActive').textContent = active;
+    document.getElementById('statCompleted').textContent = runHistory.length;
+    document.getElementById('statFixed').textContent = fixed;
+    document.getElementById('statPriority').textContent = priority;
+    document.getElementById('statNextRun').textContent = next ? fmtNextRun(next.nextRun) : '—';
+    document.getElementById('tcSchedules').textContent = schedules.length;
+    document.getElementById('tcHistory').textContent = runHistory.length;
+    document.getElementById('tcVulns').textContent = trackedVulns.length;
+
+    // vuln tracker stats
+    const total = trackedVulns.length;
+    const fixedN = trackedVulns.filter(v => v.status === 'fixed').length;
+    const open = trackedVulns.filter(v => v.status === 'open').length;
+    const critOpen = trackedVulns.filter(v => v.severity === 'critical' && v.status === 'open').length;
+    const fixRate = total > 0 ? Math.round(fixedN / total * 100) : 0;
+
+    document.getElementById('vsTotal').textContent = total;
+    document.getElementById('vsFixed').textContent = fixedN;
+    document.getElementById('vsOpen').textContent = open;
+    document.getElementById('vsCritOpen').textContent = critOpen;
+    document.getElementById('fixRatePct').textContent = fixRate + '%';
+    document.getElementById('fixRateBar').style.width = fixRate + '%';
+}
+
+// ── Render Schedules ───────────────────────────────────────────────
+function renderSchedules() {
+    const filter = document.getElementById('filterStatus').value;
+    const list = filter ? schedules.filter(s => s.status === filter) : schedules;
+    const container = document.getElementById('scheduleList');
+
+    if (!list.length) {
+        container.innerHTML = `<div class="empty-state" id="schedEmptyState">
+            <i class="fa-solid fa-calendar-xmark"></i><p>No schedules found.</p>
+            <button class="btn btn-p" onclick="openModal()" style="margin-top:.75rem;"><i class="fa-solid fa-plus"></i> Create Schedule</button>
+        </div>`;
+        return;
+    }
+
+    const freqLabels = { once:'One-time', '6h':'Every 6h', '12h':'Every 12h', daily:'Daily', weekly:'Weekly', monthly:'Monthly', '247':'24/7' };
+    const freqIcons  = { once:'fa-circle-dot', '6h':'fa-rotate', '12h':'fa-rotate', daily:'fa-sun', weekly:'fa-calendar-week', monthly:'fa-calendar', '247':'fa-infinity' };
+
+    container.innerHTML = list.map(s => {
+        const isActive = s.status === 'active';
+        const freq = freqLabels[s.freq] || s.freq;
+        const fIcon = freqIcons[s.freq] || 'fa-clock';
+        const [h,m] = (s.time||'02:00').split(':');
+        const hr = parseInt(h); const ampm = hr>=12?'PM':'AM'; const h12 = hr%12||12;
+        const timeStr = `${h12}:${m} ${ampm}`;
+
+        return `<div class="sched-item ${isActive ? '' : 'paused'}">
+            <div class="sched-left">
+                <div class="sched-icon ${isActive ? 'active' : 'paused'}">
+                    <i class="fa-solid ${fIcon}"></i>
+                </div>
+                <div>
+                    <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
+                        <strong style="font-size:.9rem;">${s.name}</strong>
+                        <span class="bx ${isActive ? 'bac' : 'bpd'}" style="font-size:.65rem;">
+                            <i class="fa-solid ${isActive ? 'fa-circle-check' : 'fa-pause'}"></i>
+                            ${isActive ? 'Active' : 'Paused'}
+                        </span>
+                    </div>
+                    <div class="sched-meta">
+                        <span><i class="fa-solid fa-crosshairs"></i> ${s.target}</span>
+                        <span><i class="fa-solid fa-clock"></i> ${timeStr}</span>
+                        <span><i class="fa-solid ${fIcon}"></i> ${freq}</span>
+                        <span><i class="fa-solid fa-hourglass-half"></i> ${s.timeout||30}min timeout</span>
+                    </div>
+                </div>
+            </div>
+            <div class="sched-right">
+                <div class="next-run-badge">
+                    <small>Next run</small>
+                    <strong>${fmtNextRun(s.nextRun)}</strong>
+                </div>
+                <div style="display:flex;gap:.35rem;">
+                    <button class="btn btn-s ${isActive ? 'btn-o' : 'btn-p'}" onclick="toggleSched(${s.id})" title="${isActive ? 'Pause' : 'Resume'}">
+                        <i class="fa-solid ${isActive ? 'fa-pause' : 'fa-play'}"></i>
+                    </button>
+                    <button class="btn btn-o btn-s" onclick="runNow(${s.id})" title="Run Now"><i class="fa-solid fa-forward"></i></button>
+                    <button class="btn btn-o btn-s" onclick="openModal(${s.id})" title="Edit"><i class="fa-regular fa-pen-to-square"></i></button>
+                    <button class="btn btn-d btn-s" onclick="deleteSched(${s.id})" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function toggleSched(id) {
+    const s = schedules.find(x => x.id === id);
+    if (s) { s.status = s.status === 'active' ? 'paused' : 'active'; saveState(); renderAll(); }
+}
+
+function deleteSched(id) {
+    if (!confirm('Delete this schedule?')) return;
+    schedules = schedules.filter(s => s.id !== id);
+    saveState();
+    renderAll();
+}
+
+function runNow(id) {
+    const s = schedules.find(x => x.id === id);
+    if (!s) return;
+    addSimulatedHistory(s);
+    const btn = event.target.closest('button');
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    setTimeout(() => { btn.innerHTML = '<i class="fa-solid fa-forward"></i>'; }, 1500);
+}
+
+// ── Render History ─────────────────────────────────────────────────
+function renderHistory() {
+    const tbody = document.getElementById('historyBody');
+    if (!runHistory.length) {
+        tbody.innerHTML = '<tr><td colspan="12" class="empty-td"><i class="fa-solid fa-clock-rotate-left"></i> No run history yet.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = runHistory.map((r, i) => {
+        const d = new Date(r.started);
+        const dateStr = isNaN(d) ? '—' : d.toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true });
+        const dur = r.duration ? `${Math.floor(r.duration/60)}m ${r.duration%60}s` : '—';
+        const rCls = r.result === 'critical' ? 'bc' : r.result === 'warning' ? 'bh' : 'bac';
+        const rLbl = r.result === 'critical' ? 'Critical Found' : r.result === 'warning' ? 'Issues Found' : 'Clean';
+
+        return `<tr>
+            <td style="font-size:.72rem;color:var(--text-muted);">${runHistory.length - i}</td>
+            <td><strong style="font-size:.8rem;">${r.scheduleName}</strong></td>
+            <td style="font-size:.78rem;color:var(--blue);">${(r.target||'').replace('https://','')}</td>
+            <td style="font-size:.72rem;">${dateStr}</td>
+            <td style="font-size:.78rem;">${dur}</td>
+            <td style="font-weight:700;">${r.findings}</td>
+            <td style="color:#ef4444;font-weight:700;">${r.critical}</td>
+            <td style="color:#f97316;font-weight:700;">${r.high}</td>
+            <td style="color:#eab308;font-weight:700;">${r.medium}</td>
+            <td style="color:#22c55e;font-weight:700;">${r.low}</td>
+            <td><span class="bx ${rCls}" style="font-size:.65rem;">${rLbl}</span></td>
+            <td>
+                <button class="btn btn-o btn-s" title="View Report"><i class="fa-regular fa-eye"></i></button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+// ── Render Vuln Tracker ────────────────────────────────────────────
+function renderVulnTracker() {
+    const tbody = document.getElementById('vulnTrackBody');
+    if (!trackedVulns.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-td"><i class="fa-solid fa-shield-halved"></i> No vulnerabilities tracked yet.</td></tr>';
+        return;
+    }
+
+    const sevOrd = { critical:0, high:1, medium:2, low:3, info:4 };
+    const sorted = [...trackedVulns].sort((a,b) => (sevOrd[a.severity]??4) - (sevOrd[b.severity]??4));
+
+    tbody.innerHTML = sorted.map(v => {
+        const sev = v.severity || 'info';
+        const sevCls = { critical:'bc', high:'bh', medium:'bm', low:'bl', info:'bi' }[sev] || 'bi';
+        const isFixed = v.status === 'fixed';
+        const d = new Date(v.discovered);
+        const dateStr = isNaN(d) ? '—' : d.toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', hour12:true });
+        const openMs = Date.now() - new Date(v.discovered).getTime();
+        const openDays = Math.floor(openMs / 86400000);
+        const openStr = openDays === 0 ? 'Today' : openDays === 1 ? '1 day' : `${openDays} days`;
+        const urgentClass = !isFixed && sev === 'critical' && openDays > 0 ? 'urgent-row' : '';
+
+        return `<tr class="${urgentClass}">
+            <td><strong style="font-size:.825rem;">${v.name}</strong></td>
+            <td><span class="bx ${sevCls}">${sev.charAt(0).toUpperCase()+sev.slice(1)}</span></td>
+            <td style="font-size:.75rem;color:var(--blue);">${(v.target||'').replace('https://','')}</td>
+            <td style="font-size:.72rem;">${dateStr}</td>
+            <td style="font-size:.72rem;color:var(--text-muted);">${v.scheduleName||'—'}</td>
+            <td>
+                <span class="bx ${isFixed ? 'bac' : sevCls}" style="font-size:.65rem;">
+                    <i class="fa-solid ${isFixed ? 'fa-circle-check' : 'fa-circle-exclamation'}"></i>
+                    ${isFixed ? 'Fixed' : 'Open'}
+                </span>
+            </td>
+            <td style="font-size:.72rem;${!isFixed && sev==='critical' ? 'color:#ef4444;font-weight:700;' : 'color:var(--text-muted);'}">${isFixed ? '—' : openStr}</td>
+            <td>
+                <button class="btn btn-s ${isFixed ? 'btn-o' : 'btn-p'}" onclick="toggleVulnFix(${v.id})" style="font-size:.65rem;padding:.2rem .5rem;">
+                    <i class="fa-solid ${isFixed ? 'fa-rotate-left' : 'fa-circle-check'}"></i>
+                    ${isFixed ? 'Reopen' : 'Mark Fixed'}
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function toggleVulnFix(id) {
+    const v = trackedVulns.find(x => x.id === id);
+    if (v) { v.status = v.status === 'fixed' ? 'open' : 'fixed'; saveState(); renderVulnTracker(); updateStats(); renderPriority(); }
+}
+
+// ── Render Priority & Fixes ────────────────────────────────────────
+function renderPriority() {
+    const openVulns = trackedVulns.filter(v => v.status === 'open');
+    const sevOrd = { critical:0, high:1, medium:2, low:3, info:4 };
+    const sorted = [...openVulns].sort((a,b) => (sevOrd[a.severity]??4) - (sevOrd[b.severity]??4));
+
+    const pList = document.getElementById('priorityList');
+    if (!sorted.length) {
+        pList.innerHTML = `<div class="empty-state"><i class="fa-solid fa-shield-check" style="color:#22c55e;font-size:2rem;"></i><p style="color:#22c55e;font-weight:600;">All clear!</p><small>No open vulnerabilities.</small></div>`;
+    } else {
+        pList.innerHTML = sorted.map((v, i) => {
+            const sev = v.severity || 'info';
+            const sevCls = { critical:'bc', high:'bh', medium:'bm', low:'bl' }[sev] || 'bi';
+            const priorityNum = i + 1;
+            return `<div class="priority-item">
+                <div class="priority-num ${sev}">${priorityNum}</div>
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
+                        <strong style="font-size:.825rem;">${v.name}</strong>
+                        <span class="bx ${sevCls}" style="font-size:.62rem;">${sev.charAt(0).toUpperCase()+sev.slice(1)}</span>
+                    </div>
+                    <small style="color:var(--text-muted);font-size:.72rem;">${(v.target||'').replace('https://','')}</small>
+                </div>
+                <button class="btn btn-p btn-s" onclick="toggleVulnFix(${v.id})" style="font-size:.65rem;">
+                    <i class="fa-solid fa-circle-check"></i> Fix
+                </button>
+            </div>`;
+        }).join('');
+    }
+
+    // Solutions
+    const sList = document.getElementById('solutionList');
+    const withRem = sorted.filter(v => v.remediation);
+    if (!withRem.length) {
+        sList.innerHTML = `<div class="empty-state"><i class="fa-solid fa-screwdriver-wrench" style="color:var(--border);"></i><p>No solutions yet.</p></div>`;
+    } else {
+        sList.innerHTML = withRem.map(v => {
+            const sev = v.severity || 'info';
+            const sevCls = { critical:'bc', high:'bh', medium:'bm', low:'bl' }[sev] || 'bi';
+            return `<div class="solution-item">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem;flex-wrap:wrap;gap:.3rem;">
+                    <strong style="font-size:.8rem;">${v.name}</strong>
+                    <span class="bx ${sevCls}" style="font-size:.62rem;">${sev.charAt(0).toUpperCase()+sev.slice(1)}</span>
+                </div>
+                <p style="font-size:.78rem;color:var(--text);line-height:1.6;margin-bottom:.5rem;">${v.remediation}</p>
+                ${v.steps ? `<div class="solution-steps">
+                    ${v.steps.map((s,i) => `<div class="sol-step"><div class="sol-num">${i+1}</div><small>${s}</small></div>`).join('')}
+                </div>` : ''}
+            </div>`;
+        }).join('');
+    }
+
+    // Fix timeline
+    const timelineEl = document.getElementById('fixTimeline');
+    const activeScheds = schedules.filter(s => s.status === 'active');
+    if (!activeScheds.length || !openVulns.length) {
+        timelineEl.innerHTML = `<div class="empty-state"><i class="fa-solid fa-timeline" style="color:var(--border);"></i><p>No active schedules with open vulnerabilities.</p></div>`;
+    } else {
+        timelineEl.innerHTML = activeScheds.map(s => {
+            const freqLabels = { once:'One-time', '6h':'Every 6h', '12h':'Every 12h', daily:'Daily', weekly:'Weekly', monthly:'Monthly', '247':'24/7' };
+            const schedVulns = trackedVulns.filter(v => v.scheduleName === s.name && v.status === 'open');
+            return `<div class="timeline-item">
+                <div class="tl-dot"></div>
+                <div class="tl-content">
+                    <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.25rem;">
+                        <strong style="font-size:.825rem;">${s.name}</strong>
+                        <span class="bx bac" style="font-size:.62rem;">${freqLabels[s.freq]||s.freq}</span>
+                        <span style="font-size:.72rem;color:var(--text-muted);">Next: ${fmtNextRun(s.nextRun)}</span>
+                    </div>
+                    <p style="font-size:.75rem;color:var(--text-muted);">${schedVulns.length} open vuln${schedVulns.length !== 1 ? 's' : ''} will be re-checked on next run</p>
+                    ${schedVulns.length ? `<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.3rem;">${schedVulns.slice(0,3).map(v=>`<span class="bx ${{ critical:'bc', high:'bh', medium:'bm', low:'bl' }[v.severity]||'bi'}" style="font-size:.62rem;">${v.name}</span>`).join('')}${schedVulns.length>3?`<span style="font-size:.72rem;color:var(--text-muted);">+${schedVulns.length-3} more</span>`:''}</div>` : ''}
+                </div>
+            </div>`;
+        }).join('');
+    }
+}
+
+// Initial render
+renderAll();
+setInterval(updateStats, 30000);
+{% endraw %}
+</script>
+{% endblock %}
