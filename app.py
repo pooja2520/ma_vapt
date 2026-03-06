@@ -12,6 +12,26 @@ from vapt_auto import perform_vapt_scan
 
 load_dotenv()
 
+
+def _parse_mysql_datetime(value):
+    """Convert an ISO 8601 datetime string (e.g. '2026-03-06T10:45:00.000Z') to a
+    MySQL-compatible 'YYYY-MM-DD HH:MM:SS' string.  Returns the original value
+    unchanged if it is already in the correct format, None, or a datetime object."""
+    if not value or isinstance(value, datetime):
+        return value
+    s = str(value).strip()
+    # Already MySQL format
+    if len(s) == 19 and 'T' not in s:
+        return s
+    # ISO 8601 – strip trailing Z then try common formats
+    clean = s.rstrip('Z').split('+')[0]
+    for fmt in ('%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S'):
+        try:
+            return datetime.strptime(clean, fmt).strftime('%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            continue
+    return s  # return as-is so MySQL raises a clear error
+
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', '929465f4cc9c6769c0d77377b820975d19bf0b5cada96422bec0608ebc4e32b5')
 
@@ -217,7 +237,10 @@ def signup_send_otp():
     otp_plain = ''.join(str(random.randint(0, 9)) for _ in range(6))
     otp_hash = generate_password_hash(otp_plain)
     expires_at = datetime.utcnow() + timedelta(minutes=10)
-    db.save_signup_otp(email, otp_hash, expires_at)
+    result = db.save_signup_otp(email, otp_hash, expires_at)
+    print(f"[DEBUG] save_signup_otp result (rowcount): {result}")
+    if result <= 0:
+        return jsonify({'ok': False, 'error': 'Failed to save OTP. Please try again.'}), 500
     subject = 'Verify your email — VAPT Scanner Pro'
     body_text = (
         f'Your VAPT Scanner Pro verification code is: {otp_plain}\n\n'
@@ -318,7 +341,10 @@ def forgot_password_send_otp():
     otp_plain = ''.join(str(random.randint(0, 9)) for _ in range(6))
     otp_hash = generate_password_hash(otp_plain)
     expires_at = datetime.utcnow() + timedelta(minutes=10)
-    db.save_password_reset_otp(email, otp_hash, expires_at)
+    result = db.save_password_reset_otp(email, otp_hash, expires_at)
+    print(f"[DEBUG] save_password_reset_otp result (rowcount): {result}")
+    if result <= 0:
+        return jsonify({'ok': False, 'error': 'Failed to save OTP. Please try again.'}), 500
     subject = 'Reset your password — VAPT Scanner Pro'
     body_text = (
         f'Your password reset code is: {otp_plain}\n\n'
@@ -1007,6 +1033,290 @@ def api_reset_scan():
 
 
 # ─────────────────────────────────────────────
+#  SCHEDULED SCANS API
+# ─────────────────────────────────────────────
+
+@app.route('/api/scheduled-scans', methods=['GET'])
+@login_required
+def api_scheduled_scans_list():
+    """Get all scheduled scans for the logged-in user."""
+    import db
+    uid = _uid()
+    scans = db.get_all_scheduled_scans(uid)
+    return jsonify({'status': 'ok', 'schedules': scans or []})
+
+
+@app.route('/api/scheduled-scans', methods=['POST'])
+@login_required
+def api_scheduled_scans_create():
+    """Create a new scheduled scan."""
+    import db
+    uid = _uid()
+    data = request.get_json()
+    
+    # Validate required fields
+    name = (data.get('name') or '').strip()
+    target_url = (data.get('target_url') or '').strip()
+    if not name or not target_url:
+        return jsonify({'status': 'error', 'message': 'name and target_url are required'}), 400
+    
+    # Normalize URL
+    if not target_url.startswith(('http://', 'https://')):
+        target_url = 'https://' + target_url
+    
+    frequency = data.get('frequency', 'daily')
+    scan_time = data.get('scan_time', '02:00')
+    day_of_week = data.get('day_of_week')
+    day_of_month = data.get('day_of_month')
+    auth_type = data.get('auth_type', 'none')
+    auth_config = data.get('auth_config')
+    timeout_minutes = int(data.get('timeout_minutes', 30))
+    notify_on_done = bool(data.get('notify_on_done', True))
+    target_id = data.get('target_id')
+    next_run_at = _parse_mysql_datetime(data.get('next_run_at'))
+    
+    try:
+        schedule = db.create_scheduled_scan(
+            user_id=uid,
+            name=name,
+            target_url=target_url,
+            frequency=frequency,
+            scan_time=scan_time,
+            day_of_week=day_of_week,
+            day_of_month=day_of_month,
+            auth_type=auth_type,
+            auth_config=auth_config,
+            timeout_minutes=timeout_minutes,
+            notify_on_done=notify_on_done,
+            target_id=target_id,
+            next_run_at=next_run_at
+        )
+        return jsonify({'status': 'success', 'schedule': schedule}), 201
+    except Exception as e:
+        app.logger.error(f"Error creating scheduled scan: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/scheduled-scans/<int:schedule_id>', methods=['GET'])
+@login_required
+def api_scheduled_scans_get(schedule_id):
+    """Get a single scheduled scan by id."""
+    import db
+    uid = _uid()
+    schedule = db.get_scheduled_scan_by_id(schedule_id, uid)
+    if not schedule:
+        return jsonify({'status': 'error', 'message': 'Schedule not found'}), 404
+    return jsonify({'status': 'ok', 'schedule': schedule})
+
+
+@app.route('/api/scheduled-scans/<int:schedule_id>', methods=['PUT', 'PATCH'])
+@login_required
+def api_scheduled_scans_update(schedule_id):
+    """Update a scheduled scan."""
+    import db
+    uid = _uid()
+    
+    # Verify ownership
+    schedule = db.get_scheduled_scan_by_id(schedule_id, uid)
+    if not schedule:
+        return jsonify({'status': 'error', 'message': 'Schedule not found'}), 404
+    
+    data = request.get_json()
+    updates = {}
+    
+    # Allowed update fields
+    if 'name' in data:
+        updates['name'] = (data['name'] or '').strip()
+    if 'target_url' in data:
+        target_url = (data['target_url'] or '').strip()
+        if not target_url.startswith(('http://', 'https://')):
+            target_url = 'https://' + target_url
+        updates['target_url'] = target_url
+    if 'frequency' in data:
+        updates['frequency'] = data['frequency']
+    if 'scan_time' in data:
+        updates['scan_time'] = data['scan_time']
+    if 'day_of_week' in data:
+        updates['day_of_week'] = data['day_of_week']
+    if 'day_of_month' in data:
+        updates['day_of_month'] = data['day_of_month']
+    if 'auth_type' in data:
+        updates['auth_type'] = data['auth_type']
+    if 'auth_config' in data:
+        updates['auth_config'] = data['auth_config']
+    if 'timeout_minutes' in data:
+        updates['timeout_minutes'] = int(data['timeout_minutes'])
+    if 'notify_on_done' in data:
+        updates['notify_on_done'] = bool(data['notify_on_done'])
+    if 'status' in data:
+        updates['status'] = data['status']
+    if 'next_run_at' in data:
+        updates['next_run_at'] = _parse_mysql_datetime(data['next_run_at'])
+    
+    if not updates:
+        return jsonify({'status': 'error', 'message': 'No updates provided'}), 400
+    
+    try:
+        db.update_scheduled_scan(schedule_id, uid, **updates)
+        updated = db.get_scheduled_scan_by_id(schedule_id, uid)
+        return jsonify({'status': 'ok', 'schedule': updated})
+    except Exception as e:
+        app.logger.error(f"Error updating scheduled scan: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/scheduled-scans/<int:schedule_id>', methods=['DELETE'])
+@login_required
+def api_scheduled_scans_delete(schedule_id):
+    """Delete a scheduled scan."""
+    import db
+    uid = _uid()
+    
+    # Verify ownership
+    schedule = db.get_scheduled_scan_by_id(schedule_id, uid)
+    if not schedule:
+        return jsonify({'status': 'error', 'message': 'Schedule not found'}), 404
+    
+    try:
+        db.delete_scheduled_scan(schedule_id, uid)
+        return jsonify({'status': 'ok', 'message': 'Schedule deleted'})
+    except Exception as e:
+        app.logger.error(f"Error deleting scheduled scan: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/scheduled-scans/<int:schedule_id>/toggle', methods=['POST'])
+@login_required
+def api_scheduled_scans_toggle(schedule_id):
+    """Toggle scheduled scan status (active <-> paused)."""
+    import db
+    uid = _uid()
+    
+    # Verify ownership
+    schedule = db.get_scheduled_scan_by_id(schedule_id, uid)
+    if not schedule:
+        return jsonify({'status': 'error', 'message': 'Schedule not found'}), 404
+    
+    try:
+        new_status = db.toggle_scheduled_scan_status(schedule_id, uid)
+        updated = db.get_scheduled_scan_by_id(schedule_id, uid)
+        return jsonify({'status': 'ok', 'schedule': updated, 'new_status': new_status})
+    except Exception as e:
+        app.logger.error(f"Error toggling scheduled scan status: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ─────────────────────────────────────────────
+#  SCHEDULED SCAN RUNS (History)
+# ─────────────────────────────────────────────
+
+@app.route('/api/scheduled-scan-runs', methods=['GET'])
+@login_required
+def api_scheduled_scan_runs_list():
+    """Get all scheduled scan runs (history) for the logged-in user."""
+    import db
+    uid = _uid()
+    try:
+        limit = request.args.get('limit', 50, type=int)
+        runs = db.get_run_history(uid, limit=limit)
+        return jsonify({'status': 'ok', 'runs': runs or []})
+    except Exception as e:
+        app.logger.error(f"Error fetching scheduled scan runs: {e}")
+        return jsonify({'status': 'ok', 'runs': []})
+
+
+@app.route('/api/scheduled-scan-runs', methods=['POST'])
+@login_required
+def api_scheduled_scan_runs_create():
+    """Create a new scheduled scan run record."""
+    import db
+    uid = _uid()
+    data = request.get_json()
+    
+    scheduled_scan_id = data.get('scheduled_scan_id')
+    target_url = data.get('target_url', '')
+    started_at = data.get('started_at')
+    
+    if not scheduled_scan_id or not target_url:
+        return jsonify({'status': 'error', 'message': 'scheduled_scan_id and target_url required'}), 400
+    
+    try:
+        run_id = db.create_scheduled_scan_run(scheduled_scan_id, uid, target_url, started_at)
+        # Fetch and return the created run
+        with db.get_connection() as conn:
+            cur = conn.cursor(dictionary=True)
+            cur.execute("""
+                SELECT id, scheduled_scan_id, user_id, target_url, started_at,
+                       finished_at, duration_seconds, result
+                FROM scheduled_scan_runs WHERE id = %s
+            """, (run_id,))
+            run = cur.fetchone()
+        return jsonify({'status': 'ok', 'run': run}), 201
+    except Exception as e:
+        app.logger.error(f"Error creating scheduled scan run: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ─────────────────────────────────────────────
+#  TRACKED VULNERABILITIES
+# ─────────────────────────────────────────────
+
+@app.route('/api/tracked-vulnerabilities', methods=['GET'])
+@login_required
+def api_tracked_vulnerabilities_list():
+    """Get all vulnerabilities tracked from scheduled scans."""
+    import db
+    uid = _uid()
+    try:
+        vulns = db.get_scheduled_scan_vulns(uid)
+        # Transform for frontend
+        result = []
+        for v in (vulns or []):
+            result.append({
+                'id':            v.get('id'),
+                'name':          v.get('name') or v.get('test') or v.get('Test') or 'Unknown vulnerability',
+                'severity':      (v.get('severity') or v.get('Severity') or 'info').lower(),
+                'target':        v.get('target_url'),
+                'discovered':    v.get('discovered_at') or v.get('created_at'),
+                'status':        'fixed' if v.get('is_fixed') else (v.get('status') or 'open'),
+                'remediation':   v.get('remediation') or '',
+                'finding':       v.get('finding') or '',
+                'scheduleName':  v.get('schedule_name') or '',
+                'schedule_name': v.get('schedule_name') or '',
+                'scheduled_scan_id': v.get('scheduled_scan_id'),
+                'run_id':        v.get('run_id'),
+            })
+        return jsonify({'status': 'ok', 'vulnerabilities': result})
+    except Exception as e:
+        app.logger.error(f"Error fetching tracked vulnerabilities: {e}")
+        return jsonify({'status': 'ok', 'vulnerabilities': []})
+
+
+@app.route('/api/tracked-vulnerabilities/<int:vuln_id>/toggle-fix', methods=['POST'])
+@login_required
+def api_toggle_vulnerability_fix(vuln_id):
+    """Toggle fixed status on a scheduled scan vulnerability."""
+    import db
+    uid = _uid()
+    try:
+        result = db.toggle_scheduled_vuln_fixed(vuln_id, uid)
+        if result is None:
+            return jsonify({'status': 'error', 'message': 'Vulnerability not found'}), 404
+        new_is_fixed, new_display_status = result
+        return jsonify({
+            'status': 'ok',
+            'vulnerability': {
+                'id':       vuln_id,
+                'is_fixed': new_is_fixed,
+                'status':   'fixed' if new_is_fixed else 'open'
+            }
+        })
+    except Exception as e:
+        app.logger.error(f"Error toggling vulnerability fix: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ─────────────────────────────────────────────
 # ─────────────────────────────────────────────
 #  AUTH HELPERS (form login robustness)
 # ─────────────────────────────────────────────
@@ -1389,6 +1699,7 @@ def scan():
         auth_type = data.get('auth_type', 'none')
         auth_data_payload = data.get('auth_data', {})
         owasp_enabled = data.get('owasp_enabled', True)
+        scheduled_scan_id = data.get('scheduled_scan_id')  # links scan to a schedule
 
         if not target:
             return jsonify({'status': 'error', 'message': 'Please enter a valid target URL or IP address'})
@@ -1448,11 +1759,25 @@ def scan():
             asc['progress']   = progress_pct
 
         user_id = uid
+        _scheduled_scan_id = scheduled_scan_id  # capture for thread closure
 
         @copy_current_request_context
         def run_scan():
             import time as _time
             _scan_start = _time.time()
+            _run_id = None
+
+            # ── Create run record at scan start ──────────────────────────
+            if _scheduled_scan_id:
+                try:
+                    import db as _db_run
+                    _run_id = _db_run.create_scheduled_scan_run(
+                        _scheduled_scan_id, user_id, target
+                    )
+                    _db_run.mark_scheduled_scan_running(_scheduled_scan_id)
+                except Exception as _re:
+                    print(f"[scan] Could not create run record: {_re}")
+
             try:
                 log(f"🚀 Scan started for {target}", user_id)
                 log(f"🔐 Authentication: {auth_type}", user_id)
@@ -1529,9 +1854,75 @@ def scan():
                 res['last_error'] = str(e)
                 log(f"❌ Error: {str(e)}", user_id)
             finally:
+                _runtime = int(_time.time() - _scan_start)
                 asc['progress'] = 100
                 asc['phase']    = 4
-                asc['running'] = False
+                asc['running']  = False
+
+                # ── Complete run record + reset schedule status ───────────
+                if _scheduled_scan_id:
+                    try:
+                        import db as _db_fin
+                        _last   = _get_scan_results(user_id)
+                        _raw    = (_last.get('last_result') or {}).get('results', [])
+                        _sc     = severity_counts(_raw)
+                        _fname  = (_last.get('last_result') or {}).get('filename', '') or ''
+                        _run_ok = 'success' if _raw else 'error'
+
+                        if _run_id:
+                            _db_fin.complete_scheduled_scan_run(
+                                _run_id, datetime.utcnow(), _runtime, _run_ok,
+                                len(_raw), _sc, _fname or None
+                            )
+                            if _raw:
+                                try:
+                                    _db_fin.insert_scheduled_scan_vulns(
+                                        _scheduled_scan_id, _run_id, user_id, target, _raw
+                                    )
+                                except Exception as _ve:
+                                    print(f"[scan] Could not save scheduled vulns: {_ve}")
+
+                        # Compute next run and reset schedule
+                        _sched = _db_fin.get_scheduled_scan_by_id(_scheduled_scan_id, user_id)
+                        if _sched:
+                            _freq  = _sched.get('frequency', 'daily')
+                            _stime = _sched.get('scan_time', '02:00')
+                            try:
+                                _h2, _m2 = [int(x) for x in _stime.split(':')]
+                            except Exception:
+                                _h2, _m2 = 2, 0
+                            _now2 = datetime.utcnow()
+                            if _freq == 'once':
+                                _next2, _nst = None, 'completed'
+                            elif _freq == '247':
+                                _next2, _nst = _now2 + timedelta(minutes=5), 'active'
+                            elif _freq == '6h':
+                                _next2, _nst = _now2 + timedelta(hours=6), 'active'
+                            elif _freq == '12h':
+                                _next2, _nst = _now2 + timedelta(hours=12), 'active'
+                            else:
+                                _cand2 = _now2.replace(hour=_h2, minute=_m2, second=0, microsecond=0)
+                                if _cand2 <= _now2:
+                                    _cand2 += timedelta(days=1)
+                                _next2, _nst = _cand2, 'active'
+                            _next_str2 = _next2.strftime('%Y-%m-%d %H:%M:%S') if _next2 else None
+                            _db_fin.finish_scheduled_scan(_scheduled_scan_id, _next_str2, _nst)
+                            print(f"[scan] Schedule {_scheduled_scan_id} → {_nst}, next={_next_str2}")
+                    except Exception as _fe:
+                        print(f"[scan] Could not finish scheduled run: {_fe}")
+                else:
+                    # Regular (non-scheduled) scan — reset any stuck running schedules
+                    try:
+                        import db as _db_sched
+                        with _db_sched.get_connection() as _conn:
+                            _cur = _conn.cursor()
+                            _cur.execute(
+                                "UPDATE scheduled_scans SET status='active' "
+                                "WHERE user_id=%s AND status='running'",
+                                (user_id,)
+                            )
+                    except Exception:
+                        pass
 
         t = threading.Thread(target=run_scan)  # run_scan has @copy_current_request_context
         t.daemon = True
