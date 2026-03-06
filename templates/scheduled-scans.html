@@ -55,7 +55,7 @@
       <div class="ch" style="display:flex;justify-content:space-between;align-items:center;">
         <span><i class="fa-solid fa-list"></i> All Schedules</span>
         <select id="filterStatus" onchange="renderSchedules()" style="padding:.3rem .6rem;border:1.5px solid var(--border);border-radius:7px;font-size:.75rem;font-family:'DM Sans',sans-serif;outline:none;color:var(--text);">
-          <option value="">All Status</option><option value="active">Active</option><option value="paused">Paused</option>
+          <option value="">All Status</option><option value="active">Active</option><option value="paused">Paused</option><option value="completed">Completed</option>
         </select>
       </div>
       <div class="cb" style="padding:0;" id="scheduleList">
@@ -380,7 +380,7 @@ async function pollLiveScan() {
                 var scanResults = null;
                 try { var sr=await fetch('/scan-status'); var sd=await sr.json(); if(sd.status==='success'&&sd.results) scanResults=sd.results; } catch(e){}
                 if (rs) {
-                    rs.status='active'; rs.lastRun=new Date().toISOString();
+                    rs.status=(rs.freq==='once')?'completed':'active'; rs.lastRun=new Date().toISOString();
                     rs.runCount=(rs.runCount||0)+1; rs.nextRun=calcNextRun(rs.time,rs.freq);
                     var vc={critical:0,high:0,medium:0,low:0};
                     if (scanResults) {
@@ -554,7 +554,8 @@ function saveSchedule(){
 function calcNextRun(time,freq){var now=new Date(),p=(time||'02:00').split(':').map(Number),next=new Date(now);next.setHours(p[0],p[1],0,0);if(next<=now){if(freq==='6h')next.setHours(next.getHours()+6);else if(freq==='12h')next.setHours(next.getHours()+12);else if(freq==='247')next.setMinutes(next.getMinutes()+5);else next.setDate(next.getDate()+1);}return next.toISOString();}
 function fmtNextRun(iso){if(!iso)return'\u2014';var d=new Date(iso),diff=d-Date.now();if(isNaN(d)||diff<0)return'Overdue';var hrs=Math.floor(diff/3600000),mins=Math.floor((diff%3600000)/60000);if(hrs===0)return'in '+mins+'m';if(hrs<24)return'in '+hrs+'h '+mins+'m';return'in '+Math.floor(hrs/24)+'d '+(hrs%24)+'h';}
 function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
-function toggleSched(id){var s=schedules.find(function(x){return x.id===id;});if(s&&s.status!=='running'){s.status=s.status==='active'?'paused':'active';saveState();renderAll();}}
+function toggleSched(id){var s=schedules.find(function(x){return x.id===id;});if(s&&s.status!=='running'&&s.status!=='completed'){s.status=s.status==='active'?'paused':'active';saveState();renderAll();}}
+function rerunSched(id){var s=schedules.find(function(x){return x.id===id;});if(!s)return;s.status='active';s.nextRun=calcNextRun(s.time,s.freq);saveState();renderAll();runNow(id);}
 function deleteSched(id){if(!confirm('Delete this schedule?'))return;schedules=schedules.filter(function(s){return s.id!==id;});saveState();renderAll();}
 
 function renderSchedules(){
@@ -565,14 +566,19 @@ function renderSchedules(){
     con.innerHTML=list.map(function(s){
         var isR=s.status==='running',isA=s.status==='active',pp=(s.time||'02:00').split(':'),hr=parseInt(pp[0]),ts=(hr%12||12)+':'+pp[1]+' '+(hr>=12?'PM':'AM');
         var authBadge='';if(s.authType&&s.authType!=='none')authBadge='<span style="font-size:.8rem;margin-left:.2rem;" title="'+(s.authType==='basic'?'Basic Auth':'Form Login')+'"> '+(s.authType==='basic'?'&#128272;':'&#128203;')+'</span>';
-        var sc=isR?'bsc':isA?'bac':'bpd',si=isR?'fa-spinner fa-spin':isA?'fa-circle-check':'fa-pause',sl=isR?'Running':isA?'Active':'Paused',dis=isR?'disabled':'';
-        return '<div class="sched-item'+(isA||isR?'':' paused')+'">'+
-          '<div class="sched-left"><div class="sched-icon '+(isR?'running':isA?'active':'paused')+'"><i class="fa-solid '+(isR?'fa-spinner fa-spin':fi[s.freq]||'fa-clock')+'"></i></div>'+
+        var isC=s.status==='completed';
+        var sc=isR?'bsc':isA?'bac':isC?'bcmp':'bpd',si=isR?'fa-spinner fa-spin':isA?'fa-circle-check':isC?'fa-circle-check':'fa-pause',sl=isR?'Running':isA?'Active':isC?'Completed':'Paused',dis=(isR||isC)?'disabled':'';
+        var itemClass='sched-item'+(isA||isR?'':isC?' completed':' paused');
+        var iconClass=isR?'running':isA?'active':isC?'completed':'paused';
+        var lastRunStr=s.lastRun?('<span><i class="fa-solid fa-flag-checkered"></i> Done: '+new Date(s.lastRun).toLocaleString()+'</span>'):'';
+        return '<div class="'+itemClass+'">'+
+          '<div class="sched-left"><div class="sched-icon '+iconClass+'"><i class="fa-solid '+(isR?'fa-spinner fa-spin':isC?'fa-circle-check':fi[s.freq]||'fa-clock')+'"></i></div>'+
           '<div><div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;"><strong style="font-size:.9rem;">'+s.name+'</strong><span class="bx '+sc+'" style="font-size:.65rem;"><i class="fa-solid '+si+'"></i> '+sl+'</span>'+authBadge+'</div>'+
-          '<div class="sched-meta"><span><i class="fa-solid fa-crosshairs"></i> '+s.target+'</span><span><i class="fa-solid fa-clock"></i> '+ts+'</span><span><i class="fa-solid '+(fi[s.freq]||'fa-clock')+'"></i> '+(fl[s.freq]||s.freq)+'</span><span><i class="fa-solid fa-hourglass-half"></i> '+(s.timeout||30)+'min</span>'+(s.runCount?'<span><i class="fa-solid fa-rotate"></i> '+s.runCount+' runs</span>':'')+'</div></div></div>'+
-          '<div class="sched-right"><div class="next-run-badge"><small>'+(isR?'Status':'Next run')+'</small><strong style="'+(isR?'color:var(--blue);':'')+'">'+(isR?'Scanning\u2026':fmtNextRun(s.nextRun))+'</strong></div>'+
-          '<div style="display:flex;gap:.35rem;">'+(isR?'':'<button class="btn btn-p btn-s" onclick="runNow('+s.id+')" title="Run Now"><i class="fa-solid fa-play"></i></button>')+
-          '<button class="btn '+(isA?'btn-o':'btn-p')+' btn-s" onclick="toggleSched('+s.id+')" '+dis+'><i class="fa-solid '+(isA?'fa-pause':'fa-play')+'"></i></button>'+
+          '<div class="sched-meta"><span><i class="fa-solid fa-crosshairs"></i> '+s.target+'</span><span><i class="fa-solid fa-clock"></i> '+ts+'</span><span><i class="fa-solid '+(fi[s.freq]||'fa-clock')+'"></i> '+(fl[s.freq]||s.freq)+'</span><span><i class="fa-solid fa-hourglass-half"></i> '+(s.timeout||30)+'min</span>'+(s.runCount?'<span><i class="fa-solid fa-rotate"></i> '+s.runCount+' runs</span>':'')+(isC?lastRunStr:'')+'</div></div></div>'+
+          '<div class="sched-right"><div class="next-run-badge"><small>'+(isR?'Status':isC?'Finished':'Next run')+'</small><strong style="'+(isR?'color:var(--blue);':isC?'color:#16a34a;':'')+'">'+(isR?'Scanning\u2026':isC?'Completed':fmtNextRun(s.nextRun))+'</strong></div>'+
+          '<div style="display:flex;gap:.35rem;">'+(isR||isC?'':'<button class="btn btn-p btn-s" onclick="runNow('+s.id+')" title="Run Now"><i class="fa-solid fa-play"></i></button>')+
+          (isC?'<button class="btn btn-p btn-s" onclick="rerunSched('+s.id+')" title="Run Again"><i class="fa-solid fa-rotate-right"></i></button>':
+            '<button class="btn '+(isA?'btn-o':'btn-p')+' btn-s" onclick="toggleSched('+s.id+')" '+dis+'><i class="fa-solid '+(isA?'fa-pause':'fa-play')+'"></i></button>')+
           '<button class="btn btn-o btn-s" onclick="openModal('+s.id+')" '+dis+'><i class="fa-regular fa-pen-to-square"></i></button>'+
           '<button class="btn btn-d btn-s" onclick="deleteSched('+s.id+')" '+dis+'><i class="fa-regular fa-trash-can"></i></button></div></div></div>';
     }).join('');
