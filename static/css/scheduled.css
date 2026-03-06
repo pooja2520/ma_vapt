@@ -447,3 +447,25 @@
     border-color: #86efac;
 }
 .next-run-badge.completed-badge strong { color: #16a34a; }
+/* ── Completed Schedule State ─────────────────────────────── */
+.bx.bcmp  { background:#f0fdf4; color:#15803d; border-color:#4ade80; }
+.bx.bsc   { background:#eff6ff; color:#1d4ed8; border-color:#93c5fd; }
+
+.sched-icon.completed {
+    background: #dcfce7;
+    color: #16a34a;
+}
+
+.sched-item.completed {
+    background: #f0fdf4;
+    border-left: 3px solid #22c55e;
+    opacity: 1;
+}
+.sched-item.completed:hover { background: #dcfce7; }
+.sched-item.completed .sched-meta span { color: #4b7c59; }
+
+.next-run-badge.cmp-badge {
+    background: #f0fdf4;
+    border-color: #86efac;
+}
+.next-run-badge.cmp-badge strong { color: #16a34a !important; }
