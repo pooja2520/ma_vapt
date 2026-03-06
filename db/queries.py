@@ -86,17 +86,24 @@ def create_user(
 
 
 def save_signup_otp(email, otp_hash, expires_at):
-    """Store or replace OTP for signup verification. email is normalized (lower)."""
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO signup_otps (email, otp_hash, expires_at)
-            VALUES (%s, %s, %s)
-            ON DUPLICATE KEY UPDATE otp_hash = VALUES(otp_hash), expires_at = VALUES(expires_at)
-            """,
-            (email, otp_hash, expires_at),
-        )
+    """Store or replace OTP for signup verification. email is normalized (lower). Returns rowcount or 0 on error."""
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO signup_otps (email, otp_hash, expires_at)
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE otp_hash = VALUES(otp_hash), expires_at = VALUES(expires_at)
+                """,
+                (email, otp_hash, expires_at),
+            )
+            rowcount = cur.rowcount
+        # Context exits here, commit is called BEFORE we return
+        return rowcount
+    except Exception as e:
+        print(f"[ERROR] save_signup_otp failed: {e}")
+        return 0
 
 
 def verify_signup_otp(email, otp_plain):
@@ -125,17 +132,24 @@ def delete_signup_otp(email):
 
 
 def save_password_reset_otp(email, otp_hash, expires_at):
-    """Store or replace OTP for password reset. email is normalized (lower)."""
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO password_reset_otps (email, otp_hash, expires_at)
-            VALUES (%s, %s, %s)
-            ON DUPLICATE KEY UPDATE otp_hash = VALUES(otp_hash), expires_at = VALUES(expires_at)
-            """,
-            (email, otp_hash, expires_at),
-        )
+    """Store or replace OTP for password reset. email is normalized (lower). Returns rowcount or 0 on error."""
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO password_reset_otps (email, otp_hash, expires_at)
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE otp_hash = VALUES(otp_hash), expires_at = VALUES(expires_at)
+                """,
+                (email, otp_hash, expires_at),
+            )
+            rowcount = cur.rowcount
+        # Context exits here, commit is called BEFORE we return
+        return rowcount
+    except Exception as e:
+        print(f"[ERROR] save_password_reset_otp failed: {e}")
+        return 0
 
 
 def verify_password_reset_otp(email, otp_plain):
