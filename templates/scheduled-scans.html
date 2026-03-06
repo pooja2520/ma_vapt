@@ -285,27 +285,125 @@
 {% block scripts %}
 <script>
 {% raw %}
-initLayout('/scheduled');
 
-var schedules    = JSON.parse(localStorage.getItem('vapt_schedules')     || '[]');
-var runHistory   = JSON.parse(localStorage.getItem('vapt_run_history')   || '[]');
-var trackedVulns = JSON.parse(localStorage.getItem('vapt_tracked_vulns') || '[]');
+var schedules    = [];  // Loaded from API
+var runHistory   = [];  // Loaded from API  
+var trackedVulns = [];  // Loaded from API
 var editingId = null, livePoller = null, wasRunning = false, popupOpen = false, popupLogLen = 0;
 
-function saveState() {
-    localStorage.setItem('vapt_schedules',     JSON.stringify(schedules));
-    localStorage.setItem('vapt_run_history',   JSON.stringify(runHistory));
-    localStorage.setItem('vapt_tracked_vulns', JSON.stringify(trackedVulns));
+// Load all data from APIs
+async function loadAllDataFromAPI() {
+    try {
+        // Load schedules
+        var res1 = await fetch('/api/scheduled-scans');
+        var data1 = await res1.json();
+        if (data1.status === 'ok' && Array.isArray(data1.schedules)) {
+            schedules = data1.schedules.map(function(s) {
+                return {
+                    id: s.id,
+                    name: s.name,
+                    target: s.target_url,
+                    target_url: s.target_url,
+                    target_id: s.target_id,
+                    time: s.scan_time,
+                    scan_time: s.scan_time,
+                    freq: s.frequency,
+                    frequency: s.frequency,
+                    timeout: s.timeout_minutes,
+                    timeout_minutes: s.timeout_minutes,
+                    notify: s.notify_on_done,
+                    notify_on_done: s.notify_on_done,
+                    status: s.status,
+                    authType: s.auth_type,
+                    auth_type: s.auth_type,
+                    authData: s.auth_config || {},
+                    auth_config: s.auth_config || {},
+                    created: s.created_at,
+                    created_at: s.created_at,
+                    runCount: s.run_count || 0,
+                    run_count: s.run_count || 0,
+                    lastRun: s.last_run_at,
+                    last_run_at: s.last_run_at,
+                    nextRun: s.next_run_at,
+                    next_run_at: s.next_run_at
+                };
+            });
+        }
+        
+        // Load run history
+        var res2 = await fetch('/api/scheduled-scan-runs');
+        var data2 = await res2.json();
+        if (data2.status === 'ok' && Array.isArray(data2.runs)) {
+            runHistory = data2.runs.map(function(r) {
+                return {
+                    id: r.id,
+                    scheduleId: r.scheduled_scan_id,
+                    scheduleName: r.schedule_name,
+                    target: r.target_url,
+                    started: r.started_at,
+                    duration: r.duration_seconds || 0,
+                    findings: r.total_findings || 0,
+                    critical: r.critical || 0,
+                    high: r.high || 0,
+                    medium: r.medium || 0,
+                    low: r.low || 0,
+                    result: r.result
+                };
+            });
+        }
+        
+        // Load tracked vulnerabilities
+        var res3 = await fetch('/api/tracked-vulnerabilities');
+        var data3 = await res3.json();
+        if (data3.status === 'ok' && Array.isArray(data3.vulnerabilities)) {
+            trackedVulns = data3.vulnerabilities;
+        }
+        
+        renderAll();
+    } catch (e) {
+        console.error('Failed to load data from API:', e);
+    }
+}
+
+// Initialize by loading from API
+async function initPage() {
+    initLayout('/scheduled');
+    await loadAllDataFromAPI();
+    document.querySelectorAll('.day-btn').forEach(function(b){ b.addEventListener('click',function(){ b.classList.toggle('active'); updatePreview(); }); });
+    document.getElementById('mTime').addEventListener('change', updatePreview);
+    renderAll();
+    startLivePolling();
+    setInterval(updateStats, 30000);
+    // Check scheduled runs every 60 seconds
+    checkScheduledRuns();
+    setInterval(checkScheduledRuns, 60000);
+    // If a scan was already running when page loaded, open popup immediately
+    fetch('/api/scan-logs').then(function(r){return r.json();}).then(function(d){
+        if (d.running) {
+            wasRunning = true;
+            document.getElementById('popupSchedName').textContent = 'Scan In Progress';
+            document.getElementById('popupTarget').textContent    = d.target || '';
+            document.getElementById('popupBar').style.width       = (d.progress||0) + '%';
+            document.getElementById('popupPct').textContent       = (d.progress||0) + '%';
+            document.getElementById('popupPhase').textContent     = d.phase_name || 'Scanning\u2026';
+            updatePopupPhases(d.phase || 1);
+            (d.logs||[]).forEach(function(l){ appendPopupLog(l); popupLogLen++; });
+            openLivePopup();
+        }
+    }).catch(function(){});
 }
 
 function switchTab(name, btn) {
     document.querySelectorAll('.tab-content').forEach(function(t){ t.classList.remove('active'); });
     document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active'); });
-    document.getElementById('tab-'+name).classList.add('active'); btn.classList.add('active');
+    document.getElementById('tab-'+name).classList.add('active');
+    btn.classList.add('active');
     if (name==='vulns')    renderVulnTracker();
     if (name==='priority') renderPriority();
     if (name==='history')  renderHistory();
 }
+
+document.addEventListener('DOMContentLoaded', initPage);
 
 // ── Live Scan Popup ──────────────────────────────────────────────────
 function openLivePopup() {
@@ -423,25 +521,41 @@ async function pollLiveScan() {
                 var rs = schedules.find(function(s){ return s.status==='running'; });
                 var scanResults = null;
                 try { var sr=await fetch('/scan-status'); var sd=await sr.json(); if(sd.status==='success'&&sd.results) scanResults=sd.results; } catch(e){}
-                if (rs) {
-                    rs.status=(rs.freq==='once')?'completed':'active'; rs.lastRun=new Date().toISOString();
-                    rs.runCount=(rs.runCount||0)+1; rs.nextRun=(rs.freq==='once')?null:calcNextRun(rs.time,rs.freq);
-                    var vc={critical:0,high:0,medium:0,low:0};
-                    if (scanResults) {
-                        scanResults.forEach(function(f){ var sv=(f.Severity||'').toLowerCase(); if(vc[sv]!==undefined) vc[sv]++; });
-                        runHistory.unshift({ id:Date.now(),scheduleId:rs.id,scheduleName:rs.name,target:rs.target,started:new Date(Date.now()-180000).toISOString(),duration:rnd(90,900),findings:scanResults.length,critical:vc.critical,high:vc.high,medium:vc.medium,low:vc.low,result:vc.critical>0?'critical':vc.high>1?'warning':'clean' });
-                        scanResults.filter(function(f){return ['critical','high'].indexOf((f.Severity||'').toLowerCase())!==-1;}).slice(0,8).forEach(function(f){ trackedVulns.unshift({id:Date.now()+Math.random(),name:f.Test||'Unknown',severity:(f.Severity||'info').toLowerCase(),target:rs.target,discovered:new Date().toISOString(),scheduleName:rs.name,status:'open',remediation:f.Remediation||'',steps:f['Resolution Steps']?f['Resolution Steps'].split('\n').filter(Boolean):[]});});
-                    }
-                    saveState(); renderAll();
+
+                // ── Always reload from DB first so we get the real current status ──
+                await loadAllDataFromAPI();
+
+                // ── If a schedule is still stuck as 'running' in DB, fix it via API ──
+                var stillRunning = schedules.filter(function(s){ return s.status==='running'; });
+                for (var si=0; si<stillRunning.length; si++) {
+                    var sr2 = stillRunning[si];
+                    var newStatus2  = (sr2.freq === 'once') ? 'completed' : 'active';
+                    var newNextRun2 = (sr2.freq === 'once') ? null : calcNextRun(sr2.time, sr2.freq);
+                    try {
+                        await fetch('/api/scheduled-scans/' + sr2.id, {
+                            method: 'PUT',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                status:      newStatus2,
+                                next_run_at: newNextRun2,
+                                run_count:   (sr2.runCount||0) + 1,
+                                last_run_at: new Date().toISOString()
+                            })
+                        });
+                    } catch(e2) {}
                 }
-                // Always show completion result in popup
+                // Reload again after fixing
+                if (stillRunning.length > 0) await loadAllDataFromAPI();
+
+                // Show completion in popup
                 document.getElementById('popupBar').style.width='100%'; document.getElementById('popupPct').textContent='100%';
                 document.getElementById('popupPhase').textContent='\u2705 Scan Complete'; updatePopupPhases(4);
                 document.getElementById('popupResult').style.display='block';
                 var vc2={critical:0,high:0,medium:0,low:0};
                 if (scanResults) { scanResults.forEach(function(f){ var sv=(f.Severity||'').toLowerCase(); if(vc2[sv]!==undefined) vc2[sv]++; }); document.getElementById('popupResultCounts').innerHTML='<span style="color:#ef4444;">\u25cf '+vc2.critical+' Critical</span> &nbsp;<span style="color:#f97316;">\u25cf '+vc2.high+' High</span> &nbsp;<span style="color:#eab308;">\u25cf '+vc2.medium+' Medium</span> &nbsp;<span style="color:#22c55e;">\u25cf '+vc2.low+' Low</span>'; }
                 else { document.getElementById('popupResultCounts').textContent='Scan finished. Check Reports for details.'; }
-                document.getElementById('popupResultTitle').textContent=(rs?rs.name+' \u2014 ':'')+'Complete';
+                var dispName = rs ? rs.name : (stillRunning[0] ? stillRunning[0].name : '');
+                document.getElementById('popupResultTitle').textContent=(dispName ? dispName+' \u2014 ' : '')+'Complete';
             }
         }
     } catch(e) {}
@@ -472,7 +586,7 @@ async function runNow(id) {
         var res  = await fetch('/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({target:s.target,auth_type:authType,auth_data:adPayload,owasp_enabled:true}) });
         var data = await res.json();
         if (data.status==='started') {
-            s.status='running'; saveState(); renderSchedules(); updateStats();
+            s.status='running'; renderSchedules(); updateStats();
             wasRunning=true; popupLogLen=0;
             document.getElementById('popupSchedName').textContent = s.name+' \u2014 Running';
             document.getElementById('popupTarget').textContent    = s.target;
@@ -585,22 +699,101 @@ function updatePreview() {
 
 function readModalAuth(){var t=document.getElementById('mAuth').value,a={type:t};if(t==='basic'){a.basicUsername=document.getElementById('mBasicUser').value.trim();a.basicPassword=document.getElementById('mBasicPass').value;}else if(t==='form'){a.formLoginUrl=document.getElementById('mFormLoginUrl').value.trim();a.formUsername=document.getElementById('mFormUser').value.trim();a.formPassword=document.getElementById('mFormPass').value;a.formUsernameField=document.getElementById('mFormUserField').value.trim()||'username';a.formPasswordField=document.getElementById('mFormPassField').value.trim()||'password';a.formSuccessIndicator=document.getElementById('mFormSuccess').value.trim();}return a;}
 
-function saveSchedule(){
+async function saveSchedule(){
     var name=document.getElementById('mName').value.trim(),target=document.getElementById('mTarget').value.trim();
     if(!name||!target){alert('Please fill in Schedule Name and Target URL.');return;}
     var time=document.getElementById('mTime').value,fBtn=document.querySelector('.freq-btn.active'),freq=fBtn?fBtn.dataset.freq:'once';
     var timeout=parseInt(document.getElementById('mTimeout').value),notify=document.getElementById('mNotify').checked,authData=readModalAuth(),nextRun=calcNextRun(time,freq);
-    if(editingId){var idx=schedules.findIndex(function(s){return s.id===editingId;});if(idx!==-1)schedules[idx]=Object.assign({},schedules[idx],{name,target,time,freq,timeout,notify,nextRun,authType:authData.type,authData});}
-    else{schedules.push({id:Date.now(),name,target,time,freq,timeout,notify,nextRun,authType:authData.type,authData,status:'active',created:new Date().toISOString(),runCount:0,lastRun:null});}
-    saveState();closeModal();renderAll();
+    
+    var payload={
+        name:name,
+        target_url:target,
+        frequency:freq,
+        scan_time:time,
+        auth_type:authData.type,
+        auth_config:authData,
+        timeout_minutes:timeout,
+        notify_on_done:notify,
+        next_run_at:nextRun
+    };
+    
+    try {
+        var url='/api/scheduled-scans';
+        var method='POST';
+        
+        if(editingId){
+            url+='/'+editingId;
+            method='PUT';
+        }
+        
+        var res=await fetch(url,{
+            method:method,
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(payload)
+        });
+        var data=await res.json();
+        
+        if(data.status==='success'||data.status==='ok'){
+            await loadAllDataFromAPI();
+            closeModal();
+            editingId=null;
+        } else {
+            alert('Error saving schedule: '+(data.message||'Unknown error'));
+        }
+    } catch(e){
+        console.error('Error saving schedule:',e);
+        alert('Failed to save schedule: '+e.message);
+    }
 }
 
 function calcNextRun(time,freq){var now=new Date(),p=(time||'02:00').split(':').map(Number),next=new Date(now);next.setHours(p[0],p[1],0,0);if(next<=now){if(freq==='6h')next.setHours(next.getHours()+6);else if(freq==='12h')next.setHours(next.getHours()+12);else if(freq==='247')next.setMinutes(next.getMinutes()+5);else next.setDate(next.getDate()+1);}return next.toISOString();}
 function fmtNextRun(iso){if(!iso)return'\u2014';var d=new Date(iso),diff=d-Date.now();if(isNaN(d)||diff<0)return'Overdue';var hrs=Math.floor(diff/3600000),mins=Math.floor((diff%3600000)/60000);if(hrs===0)return'in '+mins+'m';if(hrs<24)return'in '+hrs+'h '+mins+'m';return'in '+Math.floor(hrs/24)+'d '+(hrs%24)+'h';}
 function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
-function toggleSched(id){var s=schedules.find(function(x){return x.id===id;});if(s&&s.status!=='running'&&s.status!=='completed'){s.status=s.status==='active'?'paused':'active';saveState();renderAll();}}
-function rerunSched(id){var s=schedules.find(function(x){return x.id===id;});if(!s)return;s.status='active';s.nextRun=calcNextRun(s.time,s.freq);saveState();renderAll();runNow(id);}
-function deleteSched(id){if(!confirm('Delete this schedule?'))return;schedules=schedules.filter(function(s){return s.id!==id;});saveState();renderAll();}
+async function toggleSched(id){
+    var s=schedules.find(function(x){return x.id===id;});
+    if(!s||s.status==='running'||s.status==='completed')return;
+    try {
+        var res=await fetch('/api/scheduled-scans/'+id+'/toggle',{method:'POST'});
+        var data=await res.json();
+        if(data.status==='ok'){
+            await loadAllDataFromAPI();
+        }
+    } catch(e){
+        console.error('Error toggling schedule:',e);
+    }
+}
+async function rerunSched(id){
+    var s=schedules.find(function(x){return x.id===id;});
+    if(!s)return;
+    try {
+        var nextRun=calcNextRun(s.time,s.freq);
+        var res=await fetch('/api/scheduled-scans/'+id,{
+            method:'PUT',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({status:'active',next_run_at:nextRun})
+        });
+        var data=await res.json();
+        if(data.status==='ok'){
+            await loadAllDataFromAPI();
+            runNow(id);
+        }
+    } catch(e){
+        console.error('Error rerunning schedule:',e);
+    }
+}
+async function deleteSched(id){
+    if(!confirm('Delete this schedule?'))return;
+    try {
+        var res=await fetch('/api/scheduled-scans/'+id,{method:'DELETE'});
+        var data=await res.json();
+        if(data.status==='ok'){
+            await loadAllDataFromAPI();
+        }
+    } catch(e){
+        console.error('Error deleting schedule:',e);
+        alert('Failed to delete schedule');
+    }
+}
 
 function renderSchedules(){
     var filter=document.getElementById('filterStatus')?document.getElementById('filterStatus').value:'',list=filter?schedules.filter(function(s){return s.status===filter;}):schedules,con=document.getElementById('scheduleList');
@@ -653,10 +846,12 @@ function renderHistory(){
         var dur=r.duration?Math.floor(r.duration/60)+'m '+(r.duration%60)+'s':'\u2014';
         // Result badge: clear labels based on severity found
         var rc,rl,ri;
-        if(r.result==='critical'){
+        if(r.critical>0){
             rc='bc'; rl='Critical Found'; ri='fa-triangle-exclamation';
-        } else if(r.result==='warning'){
+        } else if(r.high>0){
             rc='bh'; rl='High Found'; ri='fa-triangle-exclamation';
+        } else if(r.medium>0||r.low>0){
+            rc='bm'; rl='Issues Found'; ri='fa-circle-exclamation';
         } else if(r.findings>0){
             rc='bm'; rl='Issues Found'; ri='fa-circle-exclamation';
         } else {
@@ -690,7 +885,29 @@ function renderVulnTracker(){
     var so={critical:0,high:1,medium:2,low:3,info:4},sorted=[].concat(trackedVulns).sort(function(a,b){return(so[a.severity]||4)-(so[b.severity]||4);});
     tbody.innerHTML=sorted.map(function(v){var sev=v.severity||'info',sc={critical:'bc',high:'bh',medium:'bm',low:'bl',info:'bi'}[sev]||'bi',fix=v.status==='fixed',d=new Date(v.discovered),ds=isNaN(d)?'\u2014':d.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true}),od=Math.floor((Date.now()-new Date(v.discovered).getTime())/86400000),os=od===0?'Today':od===1?'1 day':od+' days',ug=!fix&&sev==='critical'&&od>0?'urgent-row':'';return'<tr class="'+ug+'"><td><strong style="font-size:.825rem;">'+v.name+'</strong></td><td><span class="bx '+sc+'">'+sev.charAt(0).toUpperCase()+sev.slice(1)+'</span></td><td style="font-size:.75rem;color:var(--blue);">'+(v.target||'').replace('https://','').replace('http://','')+'</td><td style="font-size:.72rem;">'+ds+'</td><td style="font-size:.72rem;color:var(--text-muted);">'+(v.scheduleName||'\u2014')+'</td><td><span class="bx '+(fix?'bac':sc)+'" style="font-size:.65rem;"><i class="fa-solid '+(fix?'fa-circle-check':'fa-circle-exclamation')+'"></i> '+(fix?'Fixed':'Open')+'</span></td><td style="font-size:.72rem;'+(!fix&&sev==='critical'?'color:#ef4444;font-weight:700;':'color:var(--text-muted);')+'">'+(fix?'\u2014':os)+'</td><td><button class="btn btn-s '+(fix?'btn-o':'btn-p')+'" onclick="toggleVulnFix(\''+v.id+'\')" style="font-size:.65rem;padding:.2rem .5rem;"><i class="fa-solid '+(fix?'fa-rotate-left':'fa-circle-check')+'"></i> '+(fix?'Reopen':'Fix')+'</button></td></tr>';}).join('');
 }
-function toggleVulnFix(id){var v=trackedVulns.find(function(x){return String(x.id)===String(id);});if(v){v.status=v.status==='fixed'?'open':'fixed';saveState();renderVulnTracker();updateStats();renderPriority();}}
+
+function toggleVulnFix(id){
+    // Call API to toggle the fix status
+    fetch('/api/tracked-vulnerabilities/'+id+'/toggle-fix', {method: 'POST'})
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                // Reload vulnerabilities from API
+                fetch('/api/tracked-vulnerabilities')
+                    .then(function(res) { return res.json(); })
+                    .then(function(res) {
+                        if (res.status === 'ok') {
+                            trackedVulns = res.vulnerabilities || [];
+                            renderVulnTracker();
+                            updateStats();
+                            renderPriority();
+                        }
+                    })
+                    .catch(function(e) { console.error('Error reloading vulns:', e); });
+            }
+        })
+        .catch(function(e) { console.error('Error toggling fix:', e); });
+}
 
 function renderPriority(){
     var ov=trackedVulns.filter(function(v){return v.status==='open';}),so={critical:0,high:1,medium:2,low:3,info:4},sorted=[].concat(ov).sort(function(a,b){return(so[a.severity]||4)-(so[b.severity]||4);});
@@ -737,7 +954,7 @@ async function checkScheduledRuns() {
             var res  = await fetch('/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({target:s.target,auth_type:authType,auth_data:adPayload,owasp_enabled:true}) });
             var data = await res.json();
             if (data.status === 'started') {
-                s.status = 'running'; saveState(); renderSchedules(); updateStats();
+                s.status = 'running'; renderSchedules(); updateStats();
                 wasRunning = true; popupLogLen = 0;
                 document.getElementById('popupSchedName').textContent = s.name + ' \u2014 Auto Running';
                 document.getElementById('popupTarget').textContent    = s.target;
@@ -754,30 +971,6 @@ async function checkScheduledRuns() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('.day-btn').forEach(function(b){ b.addEventListener('click',function(){ b.classList.toggle('active'); updatePreview(); }); });
-    document.getElementById('mTime').addEventListener('change', updatePreview);
-    renderAll();
-    startLivePolling();
-    setInterval(updateStats, 30000);
-    // Check scheduled runs every 60 seconds
-    checkScheduledRuns();
-    setInterval(checkScheduledRuns, 60000);
-    // If a scan was already running when page loaded, open popup immediately
-    fetch('/api/scan-logs').then(function(r){return r.json();}).then(function(d){
-        if (d.running) {
-            wasRunning = true;
-            document.getElementById('popupSchedName').textContent = 'Scan In Progress';
-            document.getElementById('popupTarget').textContent    = d.target || '';
-            document.getElementById('popupBar').style.width       = (d.progress||0) + '%';
-            document.getElementById('popupPct').textContent       = (d.progress||0) + '%';
-            document.getElementById('popupPhase').textContent     = d.phase_name || 'Scanning\u2026';
-            updatePopupPhases(d.phase || 1);
-            (d.logs||[]).forEach(function(l){ appendPopupLog(l); popupLogLen++; });
-            openLivePopup();
-        }
-    }).catch(function(){});
-});
 {% endraw %}
 </script>
 {% endblock %}
