@@ -641,3 +641,381 @@ def scan_completion_transaction(target, raw_results, filename, scan_time, severi
         raise
     finally:
         conn.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SCHEDULED SCANS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _decode_schedule(r):
+    """Decode auth_config_json field on a raw scheduled_scans row."""
+    if not r:
+        return None
+    if r.get('auth_config_json'):
+        try:
+            r['auth_config'] = json.loads(r['auth_config_json'])
+        except (json.JSONDecodeError, TypeError):
+            r['auth_config'] = {'type': 'none'}
+    else:
+        r['auth_config'] = {'type': 'none'}
+    return r
+
+
+def create_scheduled_scan(user_id, name, target_url, frequency='daily', scan_time='02:00',
+                           day_of_week=None, day_of_month=None, auth_type='none',
+                           auth_config=None, timeout_minutes=30, notify_on_done=True,
+                           target_id=None, next_run_at=None):
+    """Insert a new scheduled scan for a user. Returns full schedule dict."""
+    auth_config_json = json.dumps(auth_config) if auth_config else None
+    with get_connection() as conn:
+        cur = conn.cursor(dictionary=True)
+        cur.execute("""
+            INSERT INTO scheduled_scans
+                (user_id, target_id, name, target_url,
+                 frequency, scan_time, day_of_week, day_of_month,
+                 auth_type, auth_config_json,
+                 timeout_minutes, notify_on_done, status, next_run_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s)
+        """, (user_id, target_id, name[:255], target_url[:2048],
+              frequency, scan_time, day_of_week, day_of_month,
+              auth_type, auth_config_json,
+              timeout_minutes, 1 if notify_on_done else 0, next_run_at))
+        new_id = cur.lastrowid
+    return get_scheduled_scan_by_id(new_id, user_id)
+
+
+def get_scheduled_scan_by_id(schedule_id, user_id):
+    """Fetch a single scheduled scan by id for a user. Returns dict or None."""
+    with get_connection() as conn:
+        cur = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT id, user_id, target_id, name, target_url,
+                   frequency, scan_time, day_of_week, day_of_month,
+                   auth_type, auth_config_json, timeout_minutes, notify_on_done,
+                   status, run_count, last_run_at, next_run_at, created_at, updated_at
+            FROM scheduled_scans WHERE id = %s AND user_id = %s
+        """, (schedule_id, user_id))
+        return _decode_schedule(cur.fetchone())
+
+
+def get_all_scheduled_scans(user_id, status_filter=None):
+    """Fetch all scheduled scans for a user, newest first. Optionally filter by status."""
+    with get_connection() as conn:
+        cur = conn.cursor(dictionary=True)
+        if status_filter:
+            cur.execute("""
+                SELECT id, user_id, target_id, name, target_url,
+                       frequency, scan_time, day_of_week, day_of_month,
+                       auth_type, auth_config_json, timeout_minutes, notify_on_done,
+                       status, run_count, last_run_at, next_run_at, created_at, updated_at
+                FROM scheduled_scans WHERE user_id = %s AND status = %s ORDER BY id DESC
+            """, (user_id, status_filter))
+        else:
+            cur.execute("""
+                SELECT id, user_id, target_id, name, target_url,
+                       frequency, scan_time, day_of_week, day_of_month,
+                       auth_type, auth_config_json, timeout_minutes, notify_on_done,
+                       status, run_count, last_run_at, next_run_at, created_at, updated_at
+                FROM scheduled_scans WHERE user_id = %s ORDER BY id DESC
+            """, (user_id,))
+        return [_decode_schedule(r) for r in cur.fetchall()]
+
+
+def update_scheduled_scan(schedule_id, user_id, **kwargs):
+    """Update scheduled scan fields. Valid kwargs: name, target_url, target_id, frequency,
+    scan_time, day_of_week, day_of_month, auth_type, auth_config, timeout_minutes,
+    notify_on_done, status, next_run_at, last_run_at, run_count."""
+    allowed = {'name', 'target_url', 'target_id', 'frequency', 'scan_time',
+               'day_of_week', 'day_of_month', 'auth_type', 'auth_config',
+               'timeout_minutes', 'notify_on_done', 'status',
+               'next_run_at', 'last_run_at', 'run_count'}
+    updates, values = [], []
+    for k, v in kwargs.items():
+        if k not in allowed:
+            continue
+        if k == 'auth_config':
+            updates.append("auth_config_json = %s")
+            values.append(json.dumps(v) if isinstance(v, dict) else v)
+        elif k == 'notify_on_done':
+            updates.append("notify_on_done = %s")
+            values.append(1 if v else 0)
+        elif k == 'target_url':
+            updates.append("target_url = %s")
+            values.append((v or '')[:2048])
+        elif k == 'name':
+            updates.append("name = %s")
+            values.append((v or '')[:255])
+        else:
+            updates.append(f"{k} = %s")
+            values.append(v)
+    if not updates:
+        return
+    values.extend([schedule_id, user_id])
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE scheduled_scans SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
+            values)
+
+
+def delete_scheduled_scan(schedule_id, user_id):
+    """Hard-delete a schedule (cascades to runs and tracked vulns). Returns True if deleted."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM scheduled_scans WHERE id = %s AND user_id = %s",
+                    (schedule_id, user_id))
+        return cur.rowcount > 0
+
+
+def toggle_scheduled_scan_status(schedule_id, user_id):
+    """Toggle active <-> paused. Returns new status string or None if not found."""
+    with get_connection() as conn:
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT status FROM scheduled_scans WHERE id = %s AND user_id = %s",
+                    (schedule_id, user_id))
+        r = cur.fetchone()
+        if not r:
+            return None
+        new_status = 'paused' if r['status'] == 'active' else 'active'
+        cur.execute("UPDATE scheduled_scans SET status = %s WHERE id = %s AND user_id = %s",
+                    (new_status, schedule_id, user_id))
+    return new_status
+
+
+def get_due_scheduled_scans(now=None):
+    """Return all active schedules whose next_run_at <= now (all users). Used by scheduler."""
+    from datetime import datetime
+    if now is None:
+        now = datetime.utcnow()
+    with get_connection() as conn:
+        cur = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT id, user_id, target_id, name, target_url,
+                   frequency, scan_time, day_of_week, day_of_month,
+                   auth_type, auth_config_json, timeout_minutes, notify_on_done,
+                   status, run_count, last_run_at, next_run_at, created_at, updated_at
+            FROM scheduled_scans
+            WHERE status = 'active' AND next_run_at IS NOT NULL AND next_run_at <= %s
+            ORDER BY next_run_at ASC
+        """, (now,))
+        return [_decode_schedule(r) for r in cur.fetchall()]
+
+
+def mark_scheduled_scan_running(schedule_id):
+    """Set scheduled scan status to 'running'. Called just before the scan fires."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("UPDATE scheduled_scans SET status = 'running' WHERE id = %s", (schedule_id,))
+
+
+# ── Scheduled Scan Runs ───────────────────────────────────────────────────────
+
+def create_scheduled_scan_run(scheduled_scan_id, user_id, target_url, started_at=None):
+    """Open a pending run record. Returns the new run id."""
+    from datetime import datetime
+    if started_at is None:
+        started_at = datetime.utcnow()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO scheduled_scan_runs
+                (scheduled_scan_id, user_id, target_url, started_at, result)
+            VALUES (%s, %s, %s, %s, 'pending')
+        """, (scheduled_scan_id, user_id, target_url[:2048], started_at))
+        return cur.lastrowid
+
+
+def complete_scheduled_scan_run(run_id, finished_at, duration_seconds, result,
+                                 total_findings, severity_counts,
+                                 report_filename=None, error_message=None):
+    """Mark a run as finished with final severity counts."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE scheduled_scan_runs
+            SET finished_at = %s, duration_seconds = %s, result = %s,
+                total_findings = %s,
+                critical = %s, high = %s, medium = %s, low = %s, info = %s,
+                report_filename = %s, error_message = %s
+            WHERE id = %s
+        """, (finished_at, duration_seconds, result, total_findings,
+              severity_counts.get('critical', 0), severity_counts.get('high', 0),
+              severity_counts.get('medium', 0), severity_counts.get('low', 0),
+              severity_counts.get('info', 0),
+              (report_filename or '')[:512], error_message, run_id))
+
+
+def finish_scheduled_scan(schedule_id, next_run_at, new_status='active'):
+    """After a run completes: reset status, bump run_count, update last/next run timestamps."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE scheduled_scans
+            SET status = %s, last_run_at = NOW(), next_run_at = %s, run_count = run_count + 1
+            WHERE id = %s
+        """, (new_status, next_run_at, schedule_id))
+
+
+def get_run_history(user_id, schedule_id=None, limit=50):
+    """Return run history for a user, optionally filtered to one schedule. Most recent first."""
+    with get_connection() as conn:
+        cur = conn.cursor(dictionary=True)
+        if schedule_id:
+            cur.execute("""
+                SELECT r.id, r.scheduled_scan_id, s.name AS schedule_name,
+                       r.target_url, r.started_at, r.finished_at, r.duration_seconds,
+                       r.result, r.total_findings, r.critical, r.high, r.medium, r.low, r.info,
+                       r.report_filename
+                FROM scheduled_scan_runs r
+                JOIN scheduled_scans s ON s.id = r.scheduled_scan_id
+                WHERE r.user_id = %s AND r.scheduled_scan_id = %s
+                ORDER BY r.id DESC LIMIT %s
+            """, (user_id, schedule_id, limit))
+        else:
+            cur.execute("""
+                SELECT r.id, r.scheduled_scan_id, s.name AS schedule_name,
+                       r.target_url, r.started_at, r.finished_at, r.duration_seconds,
+                       r.result, r.total_findings, r.critical, r.high, r.medium, r.low, r.info,
+                       r.report_filename
+                FROM scheduled_scan_runs r
+                JOIN scheduled_scans s ON s.id = r.scheduled_scan_id
+                WHERE r.user_id = %s
+                ORDER BY r.id DESC LIMIT %s
+            """, (user_id, limit))
+        return cur.fetchall()
+
+
+# ── Scheduled Scan Vulnerabilities ────────────────────────────────────────────
+
+def insert_scheduled_scan_vulns(scheduled_scan_id, run_id, user_id, target_url, vuln_list):
+    """Bulk-insert tracked vulnerabilities from a completed scheduled run."""
+    if not vuln_list:
+        return
+    from datetime import datetime
+    now = datetime.utcnow()
+    rows = []
+    for v in vuln_list:
+        rows.append((
+            scheduled_scan_id, run_id, user_id, target_url[:2048],
+            (v.get('Test') or v.get('name') or 'Unknown')[:255],
+            (v.get('Severity') or 'info').lower()[:50],
+            'fixed' if v.get('_fixed') else 'open',
+            v.get('Finding') or '',
+            v.get('Vulnerable Path') or '',
+            v.get('Remediation') or '',
+            v.get('Resolution Steps') or '',
+            1 if v.get('_fixed') else 0,
+            now if v.get('_fixed') else None,
+            now,
+        ))
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.executemany("""
+            INSERT INTO scheduled_scan_vulns
+                (scheduled_scan_id, run_id, user_id, target_url,
+                 name, severity, status, finding, vulnerable_path,
+                 remediation, resolution_steps, is_fixed, fixed_at, discovered_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, rows)
+
+
+def get_scheduled_scan_vulns(user_id, schedule_id=None, severity=None, fixed=None):
+    """Fetch tracked vulnerabilities for a user with optional filters."""
+    with get_connection() as conn:
+        cur = conn.cursor(dictionary=True)
+        sql = """
+            SELECT v.id, v.scheduled_scan_id, v.run_id, v.target_url,
+                   v.name, v.severity, v.status, v.finding, v.vulnerable_path,
+                   v.remediation, v.resolution_steps, v.is_fixed, v.fixed_at, v.discovered_at,
+                   s.name AS schedule_name
+            FROM scheduled_scan_vulns v
+            JOIN scheduled_scans s ON s.id = v.scheduled_scan_id
+            WHERE v.user_id = %s
+        """
+        params = [user_id]
+        if schedule_id:
+            sql += " AND v.scheduled_scan_id = %s"; params.append(schedule_id)
+        if severity:
+            sql += " AND LOWER(v.severity) = %s"; params.append(severity.lower())
+        if fixed is True:
+            sql += " AND v.is_fixed = 1"
+        elif fixed is False:
+            sql += " AND v.is_fixed = 0"
+        sql += " ORDER BY v.id DESC"
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+    return [{
+        'id':               r['id'],
+        'scheduled_scan_id': r['scheduled_scan_id'],
+        'schedule_name':    r['schedule_name'],
+        'run_id':           r['run_id'],
+        'target_url':       r['target_url'],
+        'name':             r['name'],
+        'severity':         r['severity'],
+        'status':           r['status'],
+        'finding':          r['finding'],
+        'vulnerable_path':  r['vulnerable_path'],
+        'remediation':      r['remediation'],
+        'resolution_steps': r['resolution_steps'],
+        'is_fixed':         bool(r['is_fixed']),
+        'fixed_at':         r['fixed_at'],
+        'discovered_at':    r['discovered_at'],
+        '_display_status':  'Fixed' if r['is_fixed'] else (r['status'] or 'Open'),
+    } for r in rows]
+
+
+def toggle_scheduled_vuln_fixed(vuln_id, user_id):
+    """Toggle is_fixed on a tracked scheduled vuln.
+    Returns (new_is_fixed: bool, new_display_status: str) or None."""
+    from datetime import datetime
+    with get_connection() as conn:
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT is_fixed, status FROM scheduled_scan_vulns WHERE id = %s AND user_id = %s",
+                    (vuln_id, user_id))
+        r = cur.fetchone()
+        if not r:
+            return None
+        new_fixed = 0 if r['is_fixed'] else 1
+        fixed_at = datetime.utcnow() if new_fixed else None
+        cur.execute("""
+            UPDATE scheduled_scan_vulns
+            SET is_fixed = %s, fixed_at = %s, status = %s
+            WHERE id = %s AND user_id = %s
+        """, (new_fixed, fixed_at, 'fixed' if new_fixed else 'open', vuln_id, user_id))
+    return (bool(new_fixed), 'Fixed' if new_fixed else (r['status'] or 'Open'))
+
+
+def get_scheduled_scan_stats(user_id):
+    """Aggregate stats for the Scheduled Scans dashboard cards.
+    Returns: active_schedules, runs_completed, vulns_fixed, priority_vulns, next_run_at."""
+    with get_connection() as conn:
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            "SELECT COUNT(*) AS cnt FROM scheduled_scans WHERE user_id = %s AND status = 'active'",
+            (user_id,))
+        active = (cur.fetchone() or {}).get('cnt', 0)
+        cur.execute(
+            "SELECT COUNT(*) AS cnt FROM scheduled_scan_runs WHERE user_id = %s AND result != 'pending'",
+            (user_id,))
+        runs_done = (cur.fetchone() or {}).get('cnt', 0)
+        cur.execute(
+            "SELECT COUNT(*) AS cnt FROM scheduled_scan_vulns WHERE user_id = %s AND is_fixed = 1",
+            (user_id,))
+        fixed = (cur.fetchone() or {}).get('cnt', 0)
+        cur.execute("""
+            SELECT COUNT(*) AS cnt FROM scheduled_scan_vulns
+            WHERE user_id = %s AND is_fixed = 0 AND LOWER(severity) IN ('critical','high')
+        """, (user_id,))
+        priority = (cur.fetchone() or {}).get('cnt', 0)
+        cur.execute("""
+            SELECT MIN(next_run_at) AS nxt FROM scheduled_scans
+            WHERE user_id = %s AND status = 'active' AND next_run_at IS NOT NULL
+        """, (user_id,))
+        nxt = (cur.fetchone() or {}).get('nxt')
+    return {
+        'active_schedules': active or 0,
+        'runs_completed':   runs_done or 0,
+        'vulns_fixed':      fixed or 0,
+        'priority_vulns':   priority or 0,
+        'next_run_at':      nxt,
+    }
