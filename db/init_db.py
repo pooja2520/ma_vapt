@@ -150,6 +150,97 @@ def init_database():
     """)
     print("[+] password_reset_otps table ready")
 
+    # ── Scheduled scans tables ────────────────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS scheduled_scans (
+            id               INT AUTO_INCREMENT PRIMARY KEY,
+            user_id          INT NOT NULL,
+            target_id        INT DEFAULT NULL,
+            name             VARCHAR(255) NOT NULL,
+            target_url       VARCHAR(2048) NOT NULL,
+            frequency        VARCHAR(20)  NOT NULL DEFAULT 'daily',
+            scan_time        VARCHAR(10)  NOT NULL DEFAULT '02:00',
+            day_of_week      TINYINT      DEFAULT NULL,
+            day_of_month     TINYINT      DEFAULT NULL,
+            auth_type        VARCHAR(20)  NOT NULL DEFAULT 'none',
+            auth_config_json TEXT         DEFAULT NULL,
+            timeout_minutes  SMALLINT     NOT NULL DEFAULT 30,
+            notify_on_done   TINYINT(1)   NOT NULL DEFAULT 1,
+            status           VARCHAR(20)  NOT NULL DEFAULT 'active',
+            run_count        INT          NOT NULL DEFAULT 0,
+            last_run_at      DATETIME     DEFAULT NULL,
+            next_run_at      DATETIME     DEFAULT NULL,
+            created_at       TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            updated_at       TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id)   REFERENCES users(id)    ON DELETE CASCADE,
+            FOREIGN KEY (target_id) REFERENCES targets(id)  ON DELETE SET NULL,
+            INDEX idx_ss_user        (user_id),
+            INDEX idx_ss_status      (status),
+            INDEX idx_ss_next_run    (next_run_at),
+            INDEX idx_ss_user_status (user_id, status)
+        )
+    """)
+    print("[+] scheduled_scans table ready")
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS scheduled_scan_runs (
+            id                 INT AUTO_INCREMENT PRIMARY KEY,
+            scheduled_scan_id  INT NOT NULL,
+            user_id            INT NOT NULL,
+            target_url         VARCHAR(2048) NOT NULL,
+            started_at         DATETIME  NOT NULL,
+            finished_at        DATETIME  DEFAULT NULL,
+            duration_seconds   INT       DEFAULT NULL,
+            result             VARCHAR(20) NOT NULL DEFAULT 'pending',
+            total_findings     INT NOT NULL DEFAULT 0,
+            critical           INT NOT NULL DEFAULT 0,
+            high               INT NOT NULL DEFAULT 0,
+            medium             INT NOT NULL DEFAULT 0,
+            low                INT NOT NULL DEFAULT 0,
+            info               INT NOT NULL DEFAULT 0,
+            report_filename    VARCHAR(512) DEFAULT NULL,
+            error_message      TEXT        DEFAULT NULL,
+            created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (scheduled_scan_id) REFERENCES scheduled_scans(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id)           REFERENCES users(id)            ON DELETE CASCADE,
+            INDEX idx_ssr_schedule (scheduled_scan_id),
+            INDEX idx_ssr_user     (user_id),
+            INDEX idx_ssr_result   (result),
+            INDEX idx_ssr_started  (started_at)
+        )
+    """)
+    print("[+] scheduled_scan_runs table ready")
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS scheduled_scan_vulns (
+            id                 INT AUTO_INCREMENT PRIMARY KEY,
+            scheduled_scan_id  INT NOT NULL,
+            run_id             INT NOT NULL,
+            user_id            INT NOT NULL,
+            target_url         VARCHAR(2048) NOT NULL,
+            name               VARCHAR(255) NOT NULL,
+            severity           VARCHAR(50)  NOT NULL,
+            status             VARCHAR(50)  NOT NULL DEFAULT 'open',
+            finding            TEXT         DEFAULT NULL,
+            vulnerable_path    TEXT         DEFAULT NULL,
+            remediation        TEXT         DEFAULT NULL,
+            resolution_steps   TEXT         DEFAULT NULL,
+            is_fixed           TINYINT(1)   NOT NULL DEFAULT 0,
+            fixed_at           DATETIME     DEFAULT NULL,
+            discovered_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at         TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (scheduled_scan_id) REFERENCES scheduled_scans(id)    ON DELETE CASCADE,
+            FOREIGN KEY (run_id)            REFERENCES scheduled_scan_runs(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id)           REFERENCES users(id)               ON DELETE CASCADE,
+            INDEX idx_ssv_schedule (scheduled_scan_id),
+            INDEX idx_ssv_run      (run_id),
+            INDEX idx_ssv_user     (user_id),
+            INDEX idx_ssv_severity (severity),
+            INDEX idx_ssv_fixed    (is_fixed)
+        )
+    """)
+    print("[+] scheduled_scan_vulns table ready")
+
     cur.close()
     conn.close()
     print(f"[+] Database '{db_name}' initialized successfully.")
