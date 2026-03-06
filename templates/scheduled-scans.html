@@ -55,7 +55,7 @@
       <div class="ch" style="display:flex;justify-content:space-between;align-items:center;">
         <span><i class="fa-solid fa-list"></i> All Schedules</span>
         <select id="filterStatus" onchange="renderSchedules()" style="padding:.3rem .6rem;border:1.5px solid var(--border);border-radius:7px;font-size:.75rem;font-family:'DM Sans',sans-serif;outline:none;color:var(--text);">
-          <option value="">All Status</option><option value="active">Active</option><option value="paused">Paused</option><option value="completed">Completed</option>
+          <option value="">All Status</option><option value="active">Active</option><option value="paused">Paused</option>
         </select>
       </div>
       <div class="cb" style="padding:0;" id="scheduleList">
@@ -107,18 +107,18 @@
      LIVE SCAN POPUP
 ════════════════════════════════════════════ -->
 <div id="liveScanPopup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9000;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
-  <div style="background:var(--card);border-radius:16px;width:min(700px,96vw);max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.5);animation:popupIn .25s ease-out;">
+  <div id="popupBox" style="background:var(--card);border-radius:16px;width:min(700px,96vw);max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.5);animation:popupIn .25s ease-out;transition:all .3s ease;">
 
     <!-- Header -->
-    <div style="background:linear-gradient(135deg,#0f2444,#1e40af);padding:1rem 1.25rem;display:flex;align-items:center;gap:.75rem;flex-shrink:0;">
+    <div id="popupHeader" style="background:linear-gradient(135deg,#0f2444,#1e40af);padding:1rem 1.25rem;display:flex;align-items:center;gap:.75rem;flex-shrink:0;">
       <span class="live-dot" style="width:12px;height:12px;"></span>
       <div style="flex:1;min-width:0;">
-        <strong style="color:#fff;font-size:1rem;display:block;" id="popupSchedName">Scan Running</strong>
+        <strong id="popupSchedName" style="color:#fff;font-size:1rem;display:block;">Scan Running</strong>
         <span style="color:rgba(255,255,255,.7);font-size:.73rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;" id="popupTarget"></span>
       </div>
-      <a href="/scanning" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:7px;color:#fff;padding:.35rem .75rem;text-decoration:none;font-size:.75rem;white-space:nowrap;">
-        <i class="fa-solid fa-arrow-up-right-from-square"></i> Full View
-      </a>
+      <button onclick="toggleFullscreen()" id="fullscreenBtn" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:7px;color:#fff;padding:.35rem .75rem;font-size:.75rem;cursor:pointer;white-space:nowrap;font-family:inherit;">
+        <i class="fa-solid fa-expand" id="fullscreenIcon"></i> <span id="fullscreenLabel">Full View</span>
+      </button>
       <button onclick="closeLivePopup()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:7px;color:#fff;padding:.35rem .6rem;cursor:pointer;font-size:.78rem;">
         <i class="fa-solid fa-xmark"></i>
       </button>
@@ -147,17 +147,17 @@
     </div>
 
     <!-- Result panel (shown after scan completes) -->
-    <div id="popupResult" style="display:none;padding:1rem 1.25rem;border-top:1px solid var(--border);background:var(--card);flex-shrink:0;">
+    <div id="popupResult" style="display:none;padding:1rem 1.25rem;border-top:1px solid #1e293b;background:#0f172a;flex-shrink:0;">
       <div style="display:flex;align-items:center;gap:.875rem;flex-wrap:wrap;">
         <i class="fa-solid fa-circle-check" style="color:#22c55e;font-size:1.6rem;flex-shrink:0;"></i>
         <div style="flex:1;min-width:0;">
-          <strong id="popupResultTitle" style="font-size:.9rem;display:block;">Scan Complete</strong>
-          <div id="popupResultCounts" style="font-size:.78rem;color:var(--text-muted);margin-top:.25rem;"></div>
+          <strong id="popupResultTitle" style="font-size:.9rem;display:block;color:#f1f5f9;">Scan Complete</strong>
+          <div id="popupResultCounts" style="font-size:.78rem;color:#94a3b8;margin-top:.25rem;"></div>
         </div>
         <a href="/reports" style="padding:.45rem 1rem;background:#2563EB;color:#fff;border-radius:8px;text-decoration:none;font-size:.8rem;font-weight:600;white-space:nowrap;">
           <i class="fa-regular fa-file-lines"></i> View Report
         </a>
-        <button onclick="closeLivePopup()" class="btn btn-o btn-s">Dismiss</button>
+        <button id="popupDismissBtn" onclick="closeLivePopup()" style="padding:.45rem 1rem;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;color:#e2e8f0;font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit;">Dismiss</button>
       </div>
     </div>
 
@@ -316,6 +316,50 @@ function openLivePopup() {
 function closeLivePopup() {
     popupOpen = false;
     document.getElementById('liveScanPopup').style.display = 'none';
+    // reset fullscreen state when closing
+    var box = document.getElementById('popupBox');
+    box.style.width = 'min(700px,96vw)';
+    box.style.maxHeight = '92vh';
+    box.style.borderRadius = '16px';
+    document.getElementById('fullscreenIcon').className = 'fa-solid fa-expand';
+    document.getElementById('fullscreenLabel').textContent = 'Full View';
+    document.getElementById('popupLog').style.maxHeight = '300px';
+    document.getElementById('popupDismissBtn').style.display = '';
+    popupIsFullscreen = false;
+}
+
+var popupIsFullscreen = false;
+function toggleFullscreen() {
+    popupIsFullscreen = !popupIsFullscreen;
+    var box   = document.getElementById('popupBox');
+    var log   = document.getElementById('popupLog');
+    var icon  = document.getElementById('fullscreenIcon');
+    var label = document.getElementById('fullscreenLabel');
+    var overlay = document.getElementById('liveScanPopup');
+    var dismiss = document.getElementById('popupDismissBtn');
+    if (popupIsFullscreen) {
+        box.style.width = '100vw';
+        box.style.maxHeight = '100vh';
+        box.style.height = '100vh';
+        box.style.borderRadius = '0';
+        overlay.style.padding = '0';
+        log.style.maxHeight = 'none';
+        log.style.flex = '1';
+        icon.className = 'fa-solid fa-compress';
+        label.textContent = 'Exit Full';
+        dismiss.style.display = 'none';
+    } else {
+        box.style.width = 'min(700px,96vw)';
+        box.style.maxHeight = '92vh';
+        box.style.height = '';
+        box.style.borderRadius = '16px';
+        overlay.style.padding = '';
+        log.style.maxHeight = '300px';
+        log.style.flex = '1';
+        icon.className = 'fa-solid fa-expand';
+        label.textContent = 'Full View';
+        dismiss.style.display = '';
+    }
 }
 
 function appendPopupLog(line) {
@@ -380,7 +424,7 @@ async function pollLiveScan() {
                 var scanResults = null;
                 try { var sr=await fetch('/scan-status'); var sd=await sr.json(); if(sd.status==='success'&&sd.results) scanResults=sd.results; } catch(e){}
                 if (rs) {
-                    rs.status=(rs.freq==='once')?'completed':'active'; rs.lastRun=new Date().toISOString();
+                    rs.status='active'; rs.lastRun=new Date().toISOString();
                     rs.runCount=(rs.runCount||0)+1; rs.nextRun=calcNextRun(rs.time,rs.freq);
                     var vc={critical:0,high:0,medium:0,low:0};
                     if (scanResults) {
@@ -554,8 +598,7 @@ function saveSchedule(){
 function calcNextRun(time,freq){var now=new Date(),p=(time||'02:00').split(':').map(Number),next=new Date(now);next.setHours(p[0],p[1],0,0);if(next<=now){if(freq==='6h')next.setHours(next.getHours()+6);else if(freq==='12h')next.setHours(next.getHours()+12);else if(freq==='247')next.setMinutes(next.getMinutes()+5);else next.setDate(next.getDate()+1);}return next.toISOString();}
 function fmtNextRun(iso){if(!iso)return'\u2014';var d=new Date(iso),diff=d-Date.now();if(isNaN(d)||diff<0)return'Overdue';var hrs=Math.floor(diff/3600000),mins=Math.floor((diff%3600000)/60000);if(hrs===0)return'in '+mins+'m';if(hrs<24)return'in '+hrs+'h '+mins+'m';return'in '+Math.floor(hrs/24)+'d '+(hrs%24)+'h';}
 function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
-function toggleSched(id){var s=schedules.find(function(x){return x.id===id;});if(s&&s.status!=='running'&&s.status!=='completed'){s.status=s.status==='active'?'paused':'active';saveState();renderAll();}}
-function rerunSched(id){var s=schedules.find(function(x){return x.id===id;});if(!s)return;s.status='active';s.nextRun=calcNextRun(s.time,s.freq);saveState();renderAll();runNow(id);}
+function toggleSched(id){var s=schedules.find(function(x){return x.id===id;});if(s&&s.status!=='running'){s.status=s.status==='active'?'paused':'active';saveState();renderAll();}}
 function deleteSched(id){if(!confirm('Delete this schedule?'))return;schedules=schedules.filter(function(s){return s.id!==id;});saveState();renderAll();}
 
 function renderSchedules(){
@@ -566,19 +609,14 @@ function renderSchedules(){
     con.innerHTML=list.map(function(s){
         var isR=s.status==='running',isA=s.status==='active',pp=(s.time||'02:00').split(':'),hr=parseInt(pp[0]),ts=(hr%12||12)+':'+pp[1]+' '+(hr>=12?'PM':'AM');
         var authBadge='';if(s.authType&&s.authType!=='none')authBadge='<span style="font-size:.8rem;margin-left:.2rem;" title="'+(s.authType==='basic'?'Basic Auth':'Form Login')+'"> '+(s.authType==='basic'?'&#128272;':'&#128203;')+'</span>';
-        var isC=s.status==='completed';
-        var sc=isR?'bsc':isA?'bac':isC?'bcmp':'bpd',si=isR?'fa-spinner fa-spin':isA?'fa-circle-check':isC?'fa-circle-check':'fa-pause',sl=isR?'Running':isA?'Active':isC?'Completed':'Paused',dis=(isR||isC)?'disabled':'';
-        var itemClass='sched-item'+(isA||isR?'':isC?' completed':' paused');
-        var iconClass=isR?'running':isA?'active':isC?'completed':'paused';
-        var lastRunStr=s.lastRun?('<span><i class="fa-solid fa-flag-checkered"></i> Done: '+new Date(s.lastRun).toLocaleString()+'</span>'):'';
-        return '<div class="'+itemClass+'">'+
-          '<div class="sched-left"><div class="sched-icon '+iconClass+'"><i class="fa-solid '+(isR?'fa-spinner fa-spin':isC?'fa-circle-check':fi[s.freq]||'fa-clock')+'"></i></div>'+
+        var sc=isR?'bsc':isA?'bac':'bpd',si=isR?'fa-spinner fa-spin':isA?'fa-circle-check':'fa-pause',sl=isR?'Running':isA?'Active':'Paused',dis=isR?'disabled':'';
+        return '<div class="sched-item'+(isA||isR?'':' paused')+'">'+
+          '<div class="sched-left"><div class="sched-icon '+(isR?'running':isA?'active':'paused')+'"><i class="fa-solid '+(isR?'fa-spinner fa-spin':fi[s.freq]||'fa-clock')+'"></i></div>'+
           '<div><div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;"><strong style="font-size:.9rem;">'+s.name+'</strong><span class="bx '+sc+'" style="font-size:.65rem;"><i class="fa-solid '+si+'"></i> '+sl+'</span>'+authBadge+'</div>'+
-          '<div class="sched-meta"><span><i class="fa-solid fa-crosshairs"></i> '+s.target+'</span><span><i class="fa-solid fa-clock"></i> '+ts+'</span><span><i class="fa-solid '+(fi[s.freq]||'fa-clock')+'"></i> '+(fl[s.freq]||s.freq)+'</span><span><i class="fa-solid fa-hourglass-half"></i> '+(s.timeout||30)+'min</span>'+(s.runCount?'<span><i class="fa-solid fa-rotate"></i> '+s.runCount+' runs</span>':'')+(isC?lastRunStr:'')+'</div></div></div>'+
-          '<div class="sched-right"><div class="next-run-badge"><small>'+(isR?'Status':isC?'Finished':'Next run')+'</small><strong style="'+(isR?'color:var(--blue);':isC?'color:#16a34a;':'')+'">'+(isR?'Scanning\u2026':isC?'Completed':fmtNextRun(s.nextRun))+'</strong></div>'+
-          '<div style="display:flex;gap:.35rem;">'+(isR||isC?'':'<button class="btn btn-p btn-s" onclick="runNow('+s.id+')" title="Run Now"><i class="fa-solid fa-play"></i></button>')+
-          (isC?'<button class="btn btn-p btn-s" onclick="rerunSched('+s.id+')" title="Run Again"><i class="fa-solid fa-rotate-right"></i></button>':
-            '<button class="btn '+(isA?'btn-o':'btn-p')+' btn-s" onclick="toggleSched('+s.id+')" '+dis+'><i class="fa-solid '+(isA?'fa-pause':'fa-play')+'"></i></button>')+
+          '<div class="sched-meta"><span><i class="fa-solid fa-crosshairs"></i> '+s.target+'</span><span><i class="fa-solid fa-clock"></i> '+ts+'</span><span><i class="fa-solid '+(fi[s.freq]||'fa-clock')+'"></i> '+(fl[s.freq]||s.freq)+'</span><span><i class="fa-solid fa-hourglass-half"></i> '+(s.timeout||30)+'min</span>'+(s.runCount?'<span><i class="fa-solid fa-rotate"></i> '+s.runCount+' runs</span>':'')+'</div></div></div>'+
+          '<div class="sched-right"><div class="next-run-badge"><small>'+(isR?'Status':'Next run')+'</small><strong style="'+(isR?'color:var(--blue);':'')+'">'+(isR?'Scanning\u2026':fmtNextRun(s.nextRun))+'</strong></div>'+
+          '<div style="display:flex;gap:.35rem;">'+(isR?'':'<button class="btn btn-p btn-s" onclick="runNow('+s.id+')" title="Run Now"><i class="fa-solid fa-play"></i></button>')+
+          '<button class="btn '+(isA?'btn-o':'btn-p')+' btn-s" onclick="toggleSched('+s.id+')" '+dis+'><i class="fa-solid '+(isA?'fa-pause':'fa-play')+'"></i></button>'+
           '<button class="btn btn-o btn-s" onclick="openModal('+s.id+')" '+dis+'><i class="fa-regular fa-pen-to-square"></i></button>'+
           '<button class="btn btn-d btn-s" onclick="deleteSched('+s.id+')" '+dis+'><i class="fa-regular fa-trash-can"></i></button></div></div></div>';
     }).join('');
