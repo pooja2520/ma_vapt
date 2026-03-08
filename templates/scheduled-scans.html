@@ -84,7 +84,19 @@
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;"><span style="font-size:.825rem;font-weight:600;">Fix Rate</span><span id="fixRatePct" style="font-size:1.1rem;font-weight:700;color:#22c55e;">0%</span></div>
       <div style="height:10px;background:var(--border);border-radius:8px;overflow:hidden;"><div id="fixRateBar" style="height:100%;background:linear-gradient(90deg,#22c55e,#16a34a);border-radius:8px;width:0%;transition:width 1s;"></div></div>
     </div></div>
-    <div class="card"><div class="ch"><i class="fa-solid fa-bug"></i> Vulnerability Tracker</div>
+    <div class="card"><div class="ch" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;">
+        <span><i class="fa-solid fa-bug"></i> Vulnerability Tracker</span>
+        <div style="display:flex;gap:.3rem;flex-wrap:wrap;align-items:center;">
+          <span style="font-size:.72rem;color:var(--text-muted);margin-right:.2rem;">Filter:</span>
+          <button class="vf-btn active" data-sev="all"      onclick="setVulnFilter(this)"  style="font-size:.68rem;padding:.2rem .55rem;border-radius:5px;border:1px solid var(--border);cursor:pointer;background:var(--blue);color:#fff;">All</button>
+          <button class="vf-btn"        data-sev="critical" onclick="setVulnFilter(this)"  style="font-size:.68rem;padding:.2rem .55rem;border-radius:5px;border:1px solid #fca5a5;cursor:pointer;background:var(--card);color:#ef4444;">Critical</button>
+          <button class="vf-btn"        data-sev="high"     onclick="setVulnFilter(this)"  style="font-size:.68rem;padding:.2rem .55rem;border-radius:5px;border:1px solid #fdba74;cursor:pointer;background:var(--card);color:#f97316;">High</button>
+          <button class="vf-btn"        data-sev="medium"   onclick="setVulnFilter(this)"  style="font-size:.68rem;padding:.2rem .55rem;border-radius:5px;border:1px solid #fde68a;cursor:pointer;background:var(--card);color:#eab308;">Medium</button>
+          <button class="vf-btn"        data-sev="low"      onclick="setVulnFilter(this)"  style="font-size:.68rem;padding:.2rem .55rem;border-radius:5px;border:1px solid #86efac;cursor:pointer;background:var(--card);color:#22c55e;">Low</button>
+          <button class="vf-btn"        data-sev="open"     onclick="setVulnFilter(this)"  style="font-size:.68rem;padding:.2rem .55rem;border-radius:5px;border:1px solid var(--border);cursor:pointer;background:var(--card);color:var(--text-muted);">Open only</button>
+          <button class="vf-btn"        data-sev="fixed"    onclick="setVulnFilter(this)"  style="font-size:.68rem;padding:.2rem .55rem;border-radius:5px;border:1px solid #6ee7b7;cursor:pointer;background:var(--card);color:#10b981;">Fixed only</button>
+        </div>
+      </div>
       <div class="cb" style="padding:0;overflow-x:auto;">
         <table class="dt"><thead><tr><th>Vulnerability</th><th>Severity</th><th>Target</th><th>Discovered</th><th>Schedule</th><th>Status</th><th>Open</th><th>Action</th></tr></thead>
         <tbody id="vulnTrackBody"><tr><td colspan="8" class="empty-td"><i class="fa-solid fa-shield-halved"></i> No vulnerabilities tracked yet.</td></tr></tbody></table>
@@ -289,6 +301,23 @@
 var schedules    = [];  // Loaded from API
 var runHistory   = [];  // Loaded from API  
 var trackedVulns = [];  // Loaded from API
+var vulnFilter   = 'all'; // active filter: all | critical | high | medium | low | open | fixed
+
+// Names that are scan-activity noise, not real vulnerabilities — exclude from tracker
+var SCAN_ACTIVITY_NAMES = [
+    'port scan','dns resolution','dns lookup','service detection','service scan',
+    'vulnerability scan','host discovery','network scan','ping sweep','os detection',
+    'traceroute','whois lookup','banner grabbing','version detection',
+    'ping test','ping'
+];
+function isRealVuln(v) {
+    var n = (v.name || '').toLowerCase().trim();
+    // Exclude scan-activity noise at ANY severity (covers Ping Test = Low, etc.)
+    if (SCAN_ACTIVITY_NAMES.some(function(a){ return n === a || n.startsWith(a); })) return false;
+    // Exclude Info severity items
+    if ((v.severity || '').toLowerCase() === 'info') return false;
+    return true;
+}
 var editingId = null, livePoller = null, wasRunning = false, popupOpen = false, popupLogLen = 0;
 
 // Load all data from APIs
@@ -877,13 +906,79 @@ function renderHistory(){
     }).join('');
 }
 
+function setVulnFilter(btn) {
+    vulnFilter = btn.dataset.sev;
+    document.querySelectorAll('.vf-btn').forEach(function(b){
+        var isActive = b === btn;
+        var colorMap = {critical:'#ef4444',high:'#f97316',medium:'#eab308',low:'#22c55e',fixed:'#10b981'};
+        b.style.background = isActive ? 'var(--blue)' : 'var(--card)';
+        b.style.color      = isActive ? '#fff' : (colorMap[b.dataset.sev] || 'var(--text-muted)');
+    });
+    renderVulnTracker();
+}
+
 function renderVulnTracker(){
-    var tbody=document.getElementById('vulnTrackBody'); document.getElementById('tcVulns').textContent=trackedVulns.length;
-    var total=trackedVulns.length,fixed=trackedVulns.filter(function(v){return v.status==='fixed';}).length,open=trackedVulns.filter(function(v){return v.status==='open';}).length,critOpen=trackedVulns.filter(function(v){return v.severity==='critical'&&v.status==='open';}).length,fr=total>0?Math.round(fixed/total*100):0;
-    document.getElementById('vsTotal').textContent=total;document.getElementById('vsFixed').textContent=fixed;document.getElementById('vsOpen').textContent=open;document.getElementById('vsCritOpen').textContent=critOpen;document.getElementById('fixRatePct').textContent=fr+'%';document.getElementById('fixRateBar').style.width=fr+'%';
-    if(!trackedVulns.length){tbody.innerHTML='<tr><td colspan="8" class="empty-td"><i class="fa-solid fa-shield-halved"></i> No vulnerabilities tracked yet.</td></tr>';return;}
-    var so={critical:0,high:1,medium:2,low:3,info:4},sorted=[].concat(trackedVulns).sort(function(a,b){return(so[a.severity]||4)-(so[b.severity]||4);});
-    tbody.innerHTML=sorted.map(function(v){var sev=v.severity||'info',sc={critical:'bc',high:'bh',medium:'bm',low:'bl',info:'bi'}[sev]||'bi',fix=v.status==='fixed',d=new Date(v.discovered),ds=isNaN(d)?'\u2014':d.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true}),od=Math.floor((Date.now()-new Date(v.discovered).getTime())/86400000),os=od===0?'Today':od===1?'1 day':od+' days',ug=!fix&&sev==='critical'&&od>0?'urgent-row':'';return'<tr class="'+ug+'"><td><strong style="font-size:.825rem;">'+v.name+'</strong></td><td><span class="bx '+sc+'">'+sev.charAt(0).toUpperCase()+sev.slice(1)+'</span></td><td style="font-size:.75rem;color:var(--blue);">'+(v.target||'').replace('https://','').replace('http://','')+'</td><td style="font-size:.72rem;">'+ds+'</td><td style="font-size:.72rem;color:var(--text-muted);">'+(v.scheduleName||'\u2014')+'</td><td><span class="bx '+(fix?'bac':sc)+'" style="font-size:.65rem;"><i class="fa-solid '+(fix?'fa-circle-check':'fa-circle-exclamation')+'"></i> '+(fix?'Fixed':'Open')+'</span></td><td style="font-size:.72rem;'+(!fix&&sev==='critical'?'color:#ef4444;font-weight:700;':'color:var(--text-muted);')+'">'+(fix?'\u2014':os)+'</td><td><button class="btn btn-s '+(fix?'btn-o':'btn-p')+'" onclick="toggleVulnFix(\''+v.id+'\')" style="font-size:.65rem;padding:.2rem .5rem;"><i class="fa-solid '+(fix?'fa-rotate-left':'fa-circle-check')+'"></i> '+(fix?'Reopen':'Fix')+'</button></td></tr>';}).join('');
+    var tbody = document.getElementById('vulnTrackBody');
+
+    // Filter out scan-activity noise (Info items with generic names like Port Scan, DNS Resolution, etc.)
+    var realVulns = trackedVulns.filter(isRealVuln);
+
+    // Stats are based on real vulns only
+    var total    = realVulns.length;
+    var fixedN   = realVulns.filter(function(v){ return v.status === 'fixed'; }).length;
+    var openN    = realVulns.filter(function(v){ return v.status === 'open';  }).length;
+    var critOpen = realVulns.filter(function(v){ return v.severity === 'critical' && v.status === 'open'; }).length;
+    var fr       = total > 0 ? Math.round(fixedN / total * 100) : 0;
+    document.getElementById('tcVulns').textContent    = total;
+    document.getElementById('vsTotal').textContent    = total;
+    document.getElementById('vsFixed').textContent    = fixedN;
+    document.getElementById('vsOpen').textContent     = openN;
+    document.getElementById('vsCritOpen').textContent = critOpen;
+    document.getElementById('fixRatePct').textContent = fr + '%';
+    document.getElementById('fixRateBar').style.width = fr + '%';
+
+    if (!total) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-td"><i class="fa-solid fa-shield-halved"></i> No vulnerabilities tracked yet.</td></tr>';
+        return;
+    }
+
+    // Apply active severity/status filter
+    var filtered = realVulns.filter(function(v){
+        if (vulnFilter === 'all')   return true;
+        if (vulnFilter === 'open')  return v.status === 'open';
+        if (vulnFilter === 'fixed') return v.status === 'fixed';
+        return (v.severity || '').toLowerCase() === vulnFilter;
+    });
+
+    if (!filtered.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-td"><i class="fa-solid fa-filter"></i> No vulnerabilities match this filter.</td></tr>';
+        return;
+    }
+
+    // Sort by severity
+    var so = {critical:0,high:1,medium:2,low:3,info:4};
+    filtered.sort(function(a,b){ return (so[a.severity]||4) - (so[b.severity]||4); });
+
+    tbody.innerHTML = filtered.map(function(v){
+        var sev = v.severity || 'info';
+        var sc  = {critical:'bc',high:'bh',medium:'bm',low:'bl',info:'bi'}[sev] || 'bi';
+        var fix = v.status === 'fixed';
+        var d   = new Date(v.discovered);
+        var ds  = isNaN(d) ? '—' : d.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true});
+        var od  = Math.floor((Date.now() - new Date(v.discovered).getTime()) / 86400000);
+        var os  = od === 0 ? 'Today' : od === 1 ? '1 day' : od + ' days';
+        var ug  = !fix && sev === 'critical' && od > 0 ? 'urgent-row' : '';
+        return '<tr class="'+ug+'">'
+            + '<td><strong style="font-size:.825rem;">'+v.name+'</strong></td>'
+            + '<td><span class="bx '+sc+'">'+sev.charAt(0).toUpperCase()+sev.slice(1)+'</span></td>'
+            + '<td style="font-size:.75rem;color:var(--blue);">'+(v.target||'').replace('https://','').replace('http://','')+'</td>'
+            + '<td style="font-size:.72rem;">'+ds+'</td>'
+            + '<td style="font-size:.72rem;color:var(--text-muted);">'+(v.scheduleName||'—')+'</td>'
+            + '<td><span class="bx '+(fix?'bac':sc)+'" style="font-size:.65rem;"><i class="fa-solid '+(fix?'fa-circle-check':'fa-circle-exclamation')+'"></i> '+(fix?'Fixed':'Open')+'</span></td>'
+            + '<td style="font-size:.72rem;'+(!fix&&sev==='critical'?'color:#ef4444;font-weight:700;':'color:var(--text-muted);')+'">'+(fix?'—':os)+'</td>'
+            + '<td><button class="btn btn-s '+(fix?'btn-o':'btn-p')+'" onclick="toggleVulnFix('+v.id+')" style="font-size:.65rem;padding:.2rem .5rem;"><i class="fa-solid '+(fix?'fa-rotate-left':'fa-circle-check')+'"></i> '+(fix?'Reopen':'Fix')+'</button></td>'
+            + '</tr>';
+    }).join('');
 }
 
 function toggleVulnFix(id){
@@ -910,51 +1005,83 @@ function toggleVulnFix(id){
 }
 
 function renderPriority(){
-    var ov=trackedVulns.filter(function(v){return v.status==='open';}),so={critical:0,high:1,medium:2,low:3,info:4},sorted=[].concat(ov).sort(function(a,b){return(so[a.severity]||4)-(so[b.severity]||4);});
+    // Exclude scan-activity noise; only show real open vulnerabilities
+    var realVulns = trackedVulns.filter(isRealVuln);
+    var ov=realVulns.filter(function(v){return v.status==='open';}),so={critical:0,high:1,medium:2,low:3,info:4},sorted=[].concat(ov).sort(function(a,b){return(so[a.severity]||4)-(so[b.severity]||4);});
     var pl=document.getElementById('priorityList');
     if(!sorted.length){pl.innerHTML='<div class="empty-state"><i class="fa-solid fa-shield-check" style="color:#22c55e;font-size:2rem;"></i><p style="color:#22c55e;font-weight:600;">All clear!</p></div>';}
-    else pl.innerHTML=sorted.map(function(v,i){var sev=v.severity||'info',sc={critical:'bc',high:'bh',medium:'bm',low:'bl'}[sev]||'bi';return'<div class="priority-item"><div class="priority-num '+sev+'">'+(i+1)+'</div><div style="flex:1;min-width:0;"><div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;"><strong style="font-size:.825rem;">'+v.name+'</strong><span class="bx '+sc+'" style="font-size:.62rem;">'+sev.charAt(0).toUpperCase()+sev.slice(1)+'</span></div><small style="color:var(--text-muted);font-size:.72rem;">'+(v.target||'').replace('https://','').replace('http://','')+'</small></div><button class="btn btn-p btn-s" onclick="toggleVulnFix(\''+v.id+'\')" style="font-size:.65rem;"><i class="fa-solid fa-circle-check"></i> Fix</button></div>';}).join('');
+    else pl.innerHTML=sorted.map(function(v,i){var sev=v.severity||'info',sc={critical:'bc',high:'bh',medium:'bm',low:'bl'}[sev]||'bi';return'<div class="priority-item"><div class="priority-num '+sev+'">'+(i+1)+'</div><div style="flex:1;min-width:0;"><div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;"><strong style="font-size:.825rem;">'+v.name+'</strong><span class="bx '+sc+'" style="font-size:.62rem;">'+sev.charAt(0).toUpperCase()+sev.slice(1)+'</span></div><small style="color:var(--text-muted);font-size:.72rem;">'+(v.target||'').replace('https://','').replace('http://','')+'</small></div><button class="btn btn-p btn-s" onclick="toggleVulnFix('+v.id+')" style="font-size:.65rem;"><i class="fa-solid fa-circle-check"></i> Fix</button></div>';}).join('');
     var sl=document.getElementById('solutionList'),wr=sorted.filter(function(v){return v.remediation;});
     if(!wr.length){sl.innerHTML='<div class="empty-state"><i class="fa-solid fa-screwdriver-wrench" style="color:var(--border);"></i><p>No solutions yet.</p></div>';}
     else sl.innerHTML=wr.map(function(v){var sev=v.severity||'info',sc={critical:'bc',high:'bh',medium:'bm',low:'bl'}[sev]||'bi',steps=v.steps&&v.steps.length?'<div class="solution-steps">'+v.steps.map(function(st,si){return'<div class="sol-step"><div class="sol-num">'+(si+1)+'</div><small>'+st+'</small></div>';}).join('')+'</div>':'';return'<div class="solution-item"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem;flex-wrap:wrap;gap:.3rem;"><strong style="font-size:.8rem;">'+v.name+'</strong><span class="bx '+sc+'" style="font-size:.62rem;">'+sev.charAt(0).toUpperCase()+sev.slice(1)+'</span></div><p style="font-size:.78rem;line-height:1.6;margin-bottom:.5rem;">'+v.remediation+'</p>'+steps+'</div>';}).join('');
     var tl=document.getElementById('fixTimeline'),as=schedules.filter(function(s){return s.status==='active'||s.status==='running';}),fl={once:'One-time','6h':'Every 6h','12h':'Every 12h',daily:'Daily',weekly:'Weekly',monthly:'Monthly','247':'24/7'};
-    if(!as.length||!ov.length){tl.innerHTML='<div class="empty-state"><i class="fa-solid fa-timeline" style="color:var(--border);"></i><p>No active schedules with open vulnerabilities.</p></div>';}
-    else tl.innerHTML=as.map(function(s){var sv=trackedVulns.filter(function(v){return v.scheduleName===s.name&&v.status==='open';}),bh=sv.slice(0,3).map(function(v){var sc2={critical:'bc',high:'bh',medium:'bm',low:'bl'}[v.severity]||'bi';return'<span class="bx '+sc2+'" style="font-size:.62rem;">'+v.name+'</span>';}).join('')+(sv.length>3?'<span style="font-size:.72rem;color:var(--text-muted);">+'+(sv.length-3)+' more</span>':'');return'<div class="timeline-item"><div class="tl-dot"></div><div class="tl-content"><div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.25rem;"><strong style="font-size:.825rem;">'+s.name+'</strong><span class="bx bac" style="font-size:.62rem;">'+(fl[s.freq]||s.freq)+'</span><span style="font-size:.72rem;color:var(--text-muted);">Next: '+fmtNextRun(s.nextRun)+'</span></div><p style="font-size:.75rem;color:var(--text-muted);">'+sv.length+' open vuln'+(sv.length!==1?'s':'')+' will be re-checked</p>'+(sv.length?'<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.3rem;">'+bh+'</div>':'')+'</div></div>';}).join('');
+    var realOpen=realVulns.filter(function(v){return v.status==='open';});
+    if(!as.length||!realOpen.length){tl.innerHTML='<div class="empty-state"><i class="fa-solid fa-timeline" style="color:var(--border);"></i><p>No active schedules with open vulnerabilities.</p></div>';}
+    else tl.innerHTML=as.map(function(s){var sv=realVulns.filter(function(v){return v.scheduleName===s.name&&v.status==='open';}),bh=sv.slice(0,3).map(function(v){var sc2={critical:'bc',high:'bh',medium:'bm',low:'bl'}[v.severity]||'bi';return'<span class="bx '+sc2+'" style="font-size:.62rem;">'+v.name+'</span>';}).join('')+(sv.length>3?'<span style="font-size:.72rem;color:var(--text-muted);">+'+(sv.length-3)+' more</span>':'');return'<div class="timeline-item"><div class="tl-dot"></div><div class="tl-content"><div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.25rem;"><strong style="font-size:.825rem;">'+s.name+'</strong><span class="bx bac" style="font-size:.62rem;">'+(fl[s.freq]||s.freq)+'</span><span style="font-size:.72rem;color:var(--text-muted);">Next: '+fmtNextRun(s.nextRun)+'</span></div><p style="font-size:.75rem;color:var(--text-muted);">'+sv.length+' open vuln'+(sv.length!==1?'s':'')+' will be re-checked</p>'+(sv.length?'<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.3rem;">'+bh+'</div>':'')+'</div></div>';}).join('');
 }
 
 function updateStats(){
-    var active=schedules.filter(function(s){return s.status==='active'||s.status==='running';}).length,fixed=trackedVulns.filter(function(v){return v.status==='fixed';}).length,priority=trackedVulns.filter(function(v){return v.severity==='critical'&&v.status==='open';}).length,nxt=schedules.filter(function(s){return s.status==='active'&&s.nextRun;}).sort(function(a,b){return new Date(a.nextRun)-new Date(b.nextRun);})[0];
+    var realVulns=trackedVulns.filter(isRealVuln);
+    var active=schedules.filter(function(s){return s.status==='active'||s.status==='running';}).length,fixed=realVulns.filter(function(v){return v.status==='fixed';}).length,priority=realVulns.filter(function(v){return v.severity==='critical'&&v.status==='open';}).length,nxt=schedules.filter(function(s){return s.status==='active'&&s.nextRun;}).sort(function(a,b){return new Date(a.nextRun)-new Date(b.nextRun);})[0];
     document.getElementById('statActive').textContent=active; document.getElementById('statCompleted').textContent=runHistory.length;
     document.getElementById('statFixed').textContent=fixed; document.getElementById('statPriority').textContent=priority;
-    document.getElementById('statNextRun').textContent=nxt?fmtNextRun(nxt.nextRun):'\u2014';
-    document.getElementById('tcSchedules').textContent=schedules.length; document.getElementById('tcHistory').textContent=runHistory.length; document.getElementById('tcVulns').textContent=trackedVulns.length;
+    document.getElementById('statNextRun').textContent=nxt?fmtNextRun(nxt.nextRun):'—';
+    document.getElementById('tcSchedules').textContent=schedules.length; document.getElementById('tcHistory').textContent=runHistory.length; document.getElementById('tcVulns').textContent=realVulns.length;
 }
 
 function renderAll(){renderSchedules();renderHistory();updateStats();if(document.getElementById('tab-vulns').classList.contains('active'))renderVulnTracker();if(document.getElementById('tab-priority').classList.contains('active'))renderPriority();}
 
 // ── Auto-run: fire scans when nextRun time is reached ────────────────
+// NOTE: The server-side background scheduler (app.py) is the primary trigger.
+// This client-side check is a secondary backup for when the page is open.
 async function checkScheduledRuns() {
     var now = Date.now();
     for (var i = 0; i < schedules.length; i++) {
         var s = schedules[i];
+        // Only fire 'active' schedules whose time is due
         if (s.status !== 'active' || !s.nextRun) continue;
         var due = new Date(s.nextRun).getTime();
         if (due > now) continue; // not time yet
-        // Check no scan already running
+
+        // Check no scan already running on the server
         try {
             var chk = await fetch('/api/scan-logs');
             var cd  = await chk.json();
             if (cd.running) continue; // another scan in progress, skip
         } catch(e) { continue; }
-        // Fire the scan
+
+        // ── Lock the schedule in DB as 'running' BEFORE firing ──
+        // This prevents duplicate triggers on refresh or the next poll tick.
+        try {
+            await fetch('/api/scheduled-scans/' + s.id, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ status: 'running' })
+            });
+            s.status = 'running'; // mirror locally so loop won't re-pick
+        } catch(e) { continue; }
+
+        // Build auth payload
         var authType = s.authType || 'none', authData = s.authData || {}, adPayload = {};
         if (authType==='basic') { adPayload={username:authData.basicUsername||'',password:authData.basicPassword||''}; }
         else if (authType==='form') { adPayload={login_url:authData.formLoginUrl||'',username:authData.formUsername||'',password:authData.formPassword||'',username_field:authData.formUsernameField||'username',password_field:authData.formPasswordField||'password',success_indicator:authData.formSuccessIndicator||''}; }
+
         try {
-            var res  = await fetch('/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({target:s.target,auth_type:authType,auth_data:adPayload,owasp_enabled:true}) });
+            // Pass scheduled_scan_id so server handles run records & status updates
+            var res  = await fetch('/scan', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    target:            s.target,
+                    auth_type:         authType,
+                    auth_data:         adPayload,
+                    owasp_enabled:     true,
+                    scheduled_scan_id: s.id   // ← critical: links scan to schedule
+                })
+            });
             var data = await res.json();
             if (data.status === 'started') {
-                s.status = 'running'; renderSchedules(); updateStats();
+                renderSchedules(); updateStats();
                 wasRunning = true; popupLogLen = 0;
                 document.getElementById('popupSchedName').textContent = s.name + ' \u2014 Auto Running';
                 document.getElementById('popupTarget').textContent    = s.target;
@@ -964,9 +1091,28 @@ async function checkScheduledRuns() {
                 document.getElementById('popupLog').innerHTML         = '<span style="color:#475569;">Scheduled scan started at ' + new Date().toLocaleTimeString() + '\u2026</span>';
                 document.getElementById('popupResult').style.display  = 'none';
                 updatePopupPhases(0);
-                openLivePopup(); // auto-open popup
+                openLivePopup();
+            } else {
+                // Scan failed to start — reset back to active so it retries next tick
+                await fetch('/api/scheduled-scans/' + s.id, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ status: 'active' })
+                });
+                s.status = 'active';
+                renderSchedules(); updateStats();
             }
-        } catch(e) {}
+        } catch(e) {
+            // On network error, reset so it can retry
+            try {
+                await fetch('/api/scheduled-scans/' + s.id, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ status: 'active' })
+                });
+                s.status = 'active';
+            } catch(e2) {}
+        }
         break; // only start one scan per tick
     }
 }
