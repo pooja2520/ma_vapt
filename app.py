@@ -2050,6 +2050,258 @@ def download_report(report_id):
 #  RUN
 # ─────────────────────────────────────────────
 
+# ─────────────────────────────────────────────
+#  SERVER-SIDE BACKGROUND SCHEDULER
+# ─────────────────────────────────────────────
+
+def _background_scheduler():
+    """
+    Runs in a daemon thread. Every 30 seconds it queries the DB for any
+    scheduled scan whose next_run_at <= NOW and status = 'active', then
+    fires each one via an internal HTTP call so all existing scan logic
+    (progress tracking, run records, one-time completion) is reused.
+    """
+    import time as _time
+    import requests as _req
+
+    _time.sleep(10)  # let Flask finish starting up first
+
+    print("[scheduler] Background scheduler started.")
+
+    while True:
+        try:
+            import db as _db_sched
+            # Use get_due_scheduled_scans if available, otherwise query inline
+            if hasattr(_db_sched, 'get_due_scheduled_scans'):
+                due_scans = _db_sched.get_due_scheduled_scans()
+            else:
+                due_scans = []
+                try:
+                    with _db_sched.get_connection() as _conn:
+                        _cur = _conn.cursor(dictionary=True)
+                        _cur.execute(
+                            "SELECT * FROM scheduled_scans "
+                            "WHERE status = %s "
+                            "AND next_run_at IS NOT NULL "
+                            "AND next_run_at <= NOW()",
+                            ('active',)
+                        )
+                        due_scans = _cur.fetchall() or []
+                except Exception as _qe:
+                    print(f'[scheduler] DB query error: {_qe}')
+                    due_scans = []
+            for sched in (due_scans or []):
+                sched_id   = sched.get('id')
+                user_id    = sched.get('user_id')
+                target_url = sched.get('target_url', '')
+                auth_type  = sched.get('auth_type', 'none')
+                auth_cfg   = sched.get('auth_config') or {}
+                freq       = sched.get('frequency', 'daily')
+
+                if not sched_id or not target_url:
+                    continue
+
+                # Immediately mark as 'running' so it won't be picked up again
+                try:
+                    _db_sched.mark_scheduled_scan_running(sched_id)
+                except Exception as _me:
+                    print(f"[scheduler] Could not mark running sched {sched_id}: {_me}")
+                    continue
+
+                print(f"[scheduler] Firing schedule id={sched_id} target={target_url} freq={freq}")
+
+                # Build auth payload
+                auth_data_payload = {}
+                if isinstance(auth_cfg, str):
+                    import json as _json
+                    try:
+                        auth_cfg = _json.loads(auth_cfg)
+                    except Exception:
+                        auth_cfg = {}
+                if auth_type == 'basic':
+                    auth_data_payload = {
+                        'username': auth_cfg.get('basicUsername', ''),
+                        'password': auth_cfg.get('basicPassword', ''),
+                    }
+                elif auth_type == 'form':
+                    auth_data_payload = {
+                        'login_url':        auth_cfg.get('formLoginUrl', ''),
+                        'username':         auth_cfg.get('formUsername', ''),
+                        'password':         auth_cfg.get('formPassword', ''),
+                        'username_field':   auth_cfg.get('formUsernameField', 'username'),
+                        'password_field':   auth_cfg.get('formPasswordField', 'password'),
+                        'success_indicator': auth_cfg.get('formSuccessIndicator', ''),
+                    }
+
+                # Fire scan using internal request context (run directly in thread)
+                try:
+                    with app.test_request_context('/scan', method='POST'):
+                        import json as _json2
+                        # Manually call the scan logic inline to avoid HTTP round-trip
+                        # We push the user session so _uid() works
+                        from flask import g
+                        # Store user_id in a thread-local accessible way
+                        # Use the scan API via internal POST with session cookie workaround
+                        pass  # fall through to direct thread approach
+
+                    # Direct thread approach: replicate scan startup without HTTP
+                    asc = _get_active_scan(user_id)
+                    if asc.get('running'):
+                        # Another scan is running for this user – re-queue by resetting to active
+                        _db_sched.update_scheduled_scan(sched_id, user_id, status='active')
+                        print(f"[scheduler] Scan already running for user {user_id}, re-queuing sched {sched_id}")
+                        continue
+
+                    uq  = _get_update_queue(user_id)
+                    res = _get_scan_results(user_id)
+
+                    # Normalize URL
+                    if not target_url.startswith(('http://', 'https://')):
+                        target_url = 'http://' + target_url
+
+                    asc['running']    = True
+                    asc['target']     = target_url
+                    asc['logs']       = []
+                    asc['phase']      = 1
+                    asc['phase_name'] = 'Network Security Testing'
+                    asc['progress']   = 5
+                    asc['started_at'] = datetime.now().isoformat()
+                    res.clear()
+                    while not uq.empty():
+                        try: uq.get_nowait()
+                        except: break
+
+                    # Mark target scanning
+                    try:
+                        _tgt = _db_sched.get_or_create_target(target_url, user_id)
+                        if _tgt:
+                            _db_sched.update_target(_tgt['id'], user_id, status='scanning')
+                    except Exception: pass
+
+                    # Create run record
+                    _run_id = None
+                    try:
+                        _run_id = _db_sched.create_scheduled_scan_run(sched_id, user_id, target_url)
+                    except Exception as _re:
+                        print(f"[scheduler] Could not create run record: {_re}")
+
+                    import time as _t2
+                    _scan_start = _t2.time()
+
+                    def _sched_scan_thread(_sid=sched_id, _uid2=user_id, _tgt_url=target_url,
+                                           _atype=auth_type, _adp=auth_data_payload,
+                                           _run=_run_id, _freq=freq, _asc=asc,
+                                           _uq=uq, _res=res):
+                        import time as _t3
+                        _s0 = _t3.time()
+                        try:
+                            from vapt_auto import perform_vapt_scan
+                            _result = perform_vapt_scan(
+                                _tgt_url,
+                                auth_credentials={'type': _atype, 'data': _adp, 'session': None, 'auth_data': None} if _atype != 'none' else None,
+                                owasp_enabled=True,
+                                progress_callback=lambda m: _uq.put(m),
+                            )
+                            if _result['status'] == 'success':
+                                _raw   = _result['results']
+                                _fname = _result['filename']
+                                _st    = datetime.now().strftime('%Y-%m-%d %H:%M')
+                                for r in _raw:
+                                    r['target_url'] = _tgt_url
+                                    r['scan_date']  = _st
+                                _sc = severity_counts(_raw)
+                                _rt = int(_t3.time() - _s0)
+                                import db as _dbi
+                                _dbi.scan_completion_transaction(_tgt_url, _raw, _fname, _st, _sc, _rt, _uid2)
+                                try:
+                                    _tgt2 = _dbi.get_or_create_target(_tgt_url, _uid2)
+                                    if _tgt2: _dbi.update_target(_tgt2['id'], _uid2, status='completed')
+                                except Exception: pass
+                                _res['last_file']   = _fname
+                                _res['last_result'] = _result
+                                _run_ok = 'success'
+                            else:
+                                _res['last_error'] = _result.get('message', 'Unknown error')
+                                _raw, _sc, _fname, _run_ok = [], {}, '', 'error'
+                        except Exception as _ex:
+                            print(f"[scheduler] Scan error sched {_sid}: {_ex}")
+                            _res['last_error'] = str(_ex)
+                            _raw, _sc, _fname, _run_ok = [], {}, '', 'error'
+                        finally:
+                            _rt = int(_t3.time() - _s0)
+                            _asc['progress'] = 100
+                            _asc['phase']    = 4
+                            _asc['running']  = False
+                            # Complete run record
+                            if _run:
+                                try:
+                                    import db as _dbf
+                                    _dbf.complete_scheduled_scan_run(
+                                        _run, datetime.utcnow(), _rt, _run_ok,
+                                        len(_raw), _sc, _fname or None
+                                    )
+                                    if _raw:
+                                        try: _dbf.insert_scheduled_scan_vulns(_sid, _run, _uid2, _tgt_url, _raw)
+                                        except Exception as _ve: print(f"[scheduler] Could not save vulns: {_ve}")
+                                except Exception as _fe:
+                                    print(f"[scheduler] Could not complete run record: {_fe}")
+                            # Update schedule status and next_run
+                            try:
+                                import db as _dbf2
+                                if _freq == 'once':
+                                    _dbf2.finish_scheduled_scan(_sid, None, 'completed')
+                                    print(f"[scheduler] Schedule {_sid} marked completed (one-time).")
+                                elif _freq == '247':
+                                    _nxt = (datetime.utcnow() + timedelta(minutes=5)).strftime('%Y-%m-%d %H:%M:%S')
+                                    _dbf2.finish_scheduled_scan(_sid, _nxt, 'active')
+                                elif _freq == '6h':
+                                    _nxt = (datetime.utcnow() + timedelta(hours=6)).strftime('%Y-%m-%d %H:%M:%S')
+                                    _dbf2.finish_scheduled_scan(_sid, _nxt, 'active')
+                                elif _freq == '12h':
+                                    _nxt = (datetime.utcnow() + timedelta(hours=12)).strftime('%Y-%m-%d %H:%M:%S')
+                                    _dbf2.finish_scheduled_scan(_sid, _nxt, 'active')
+                                else:
+                                    # daily/weekly/monthly — advance by 1 day minimum
+                                    _sched_rec = _dbf2.get_scheduled_scan_by_id(_sid, _uid2)
+                                    _stime = (_sched_rec or {}).get('scan_time', '02:00')
+                                    try: _sh, _sm = [int(x) for x in _stime.split(':')]
+                                    except: _sh, _sm = 2, 0
+                                    _cand = datetime.utcnow().replace(hour=_sh, minute=_sm, second=0, microsecond=0)
+                                    if _cand <= datetime.utcnow(): _cand += timedelta(days=1)
+                                    _dbf2.finish_scheduled_scan(_sid, _cand.strftime('%Y-%m-%d %H:%M:%S'), 'active')
+                                print(f"[scheduler] Schedule {_sid} finished, freq={_freq}.")
+                            except Exception as _ue:
+                                print(f"[scheduler] Could not update schedule after run: {_ue}")
+
+                    _t = threading.Thread(target=_sched_scan_thread)
+                    _t.daemon = True
+                    _t.start()
+
+                except Exception as _fire_err:
+                    print(f"[scheduler] Error firing sched {sched_id}: {_fire_err}")
+                    # Reset back to active so it can retry
+                    try:
+                        import db as _dbreset
+                        _dbreset.update_scheduled_scan(sched_id, user_id, status='active')
+                    except Exception: pass
+
+        except Exception as _loop_err:
+            print(f"[scheduler] Loop error: {_loop_err}")
+
+        _time.sleep(30)
+
+
+def _start_background_scheduler():
+    """Start the background scheduler thread (call once at app startup)."""
+    t = threading.Thread(target=_background_scheduler, name='SchedulerThread')
+    t.daemon = True
+    t.start()
+
+
+# Start scheduler when module is loaded (works with flask run, gunicorn, etc.)
+_start_background_scheduler()
+
+
 if __name__ == '__main__':
     print("=" * 80)
     print("              ADVANCED VAPT SCANNER PRO")
