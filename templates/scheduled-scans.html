@@ -791,7 +791,7 @@ async function saveSchedule(){
 }
 
 function calcNextRun(time,freq){var now=new Date(),p=(time||'02:00').split(':').map(Number),next=new Date(now);next.setHours(p[0],p[1],0,0);if(next<=now){if(freq==='6h')next.setHours(next.getHours()+6);else if(freq==='12h')next.setHours(next.getHours()+12);else if(freq==='247')next.setMinutes(next.getMinutes()+5);else next.setDate(next.getDate()+1);}return next.toISOString();}
-function fmtNextRun(iso){if(!iso)return'\u2014';var d=new Date(iso),diff=Math.floor((d-Date.now())/1000);if(isNaN(d.getTime())||diff<0)return'Overdue';var days=Math.floor(diff/86400),hrs=Math.floor((diff%86400)/3600),mins=Math.floor((diff%3600)/60),secs=diff%60;if(days>0)return'in '+days+'d '+hrs+'h '+mins+'m';if(hrs>0)return'in '+hrs+'h '+mins+'m '+String(secs).padStart(2,'0')+'s';if(mins>0)return'in '+mins+'m '+String(secs).padStart(2,'0')+'s';return'in '+secs+'s';}
+function fmtNextRun(iso){if(!iso)return'\u2014';var d=new Date(iso),diff=Math.floor((d-Date.now())/1000);if(isNaN(d.getTime()))return'\u2014';if(diff<0)return'Starting…';var days=Math.floor(diff/86400),hrs=Math.floor((diff%86400)/3600),mins=Math.floor((diff%3600)/60),secs=diff%60;if(days>0)return'in '+days+'d '+hrs+'h '+mins+'m';if(hrs>0)return'in '+hrs+'h '+mins+'m '+String(secs).padStart(2,'0')+'s';if(mins>0)return'in '+mins+'m '+String(secs).padStart(2,'0')+'s';return'in '+secs+'s';}
 function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
 async function toggleSched(id){
     var s=schedules.find(function(x){return x.id===id;});
