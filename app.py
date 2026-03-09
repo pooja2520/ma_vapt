@@ -2209,13 +2209,54 @@ def _background_scheduler():
                                            _uq=uq, _res=res):
                         import time as _t3
                         _s0 = _t3.time()
+
+                        # ── Full progress callback — mirrors the main /scan route ──
+                        def _sched_progress_cb(msg):
+                            _uq.put(msg)  # feed SSE queue
+                            if not isinstance(msg, dict): return
+                            mtype = msg.get('type', '')
+                            if mtype == 'phase':
+                                phase_num = msg.get('phase', 1)
+                                name      = msg.get('name', '')
+                                progress_map = {1: 10, 2: 35, 3: 65, 4: 90}
+                                _asc['phase']      = phase_num
+                                _asc['phase_name'] = name
+                                _asc['progress']   = progress_map.get(phase_num, 10)
+                                ts = datetime.now().strftime('%H:%M:%S')
+                                _asc['logs'].append(f"[{ts}] 📋 Phase {phase_num}: {name}")
+                            elif mtype == 'crawling':
+                                count = msg.get('count', 0)
+                                total = msg.get('total', 50)
+                                _asc['progress'] = 35 + int((count / max(total, 1)) * 15)
+                                ts = datetime.now().strftime('%H:%M:%S')
+                                _asc['logs'].append(f"[{ts}] 🕷️ Crawling [{count}/{total}]: {msg.get('url','')}")
+                            elif mtype == 'crawl_complete':
+                                _asc['phase']      = 2
+                                _asc['phase_name'] = 'Crawl Complete'
+                                _asc['progress']   = 50
+                                ts = datetime.now().strftime('%H:%M:%S')
+                                _asc['logs'].append(f"[{ts}] ✅ Crawl done — {msg.get('total_paths',0)} paths")
+                            elif mtype == 'crawl_start':
+                                ts = datetime.now().strftime('%H:%M:%S')
+                                _asc['logs'].append(f"[{ts}] 🕷️ Starting crawler...")
+                            elif mtype == 'log' or isinstance(msg.get('message'), str):
+                                ts = datetime.now().strftime('%H:%M:%S')
+                                line = msg.get('message', str(msg))
+                                if not any(line in l for l in _asc['logs'][-5:]):
+                                    _asc['logs'].append(f"[{ts}] {line}")
+
+                        # Log scan start
+                        ts0 = datetime.now().strftime('%H:%M:%S')
+                        _asc['logs'].append(f"[{ts0}] 🚀 Scheduled scan started for {_tgt_url}")
+                        _asc['logs'].append(f"[{ts0}] 🔐 Authentication: {_atype}")
+
                         try:
                             from vapt_auto import perform_vapt_scan
                             _result = perform_vapt_scan(
                                 _tgt_url,
                                 auth_credentials={'type': _atype, 'data': _adp, 'session': None, 'auth_data': None} if _atype != 'none' else None,
                                 owasp_enabled=True,
-                                progress_callback=lambda m: _uq.put(m),
+                                progress_callback=_sched_progress_cb,
                             )
                             if _result['status'] == 'success':
                                 _raw   = _result['results']
@@ -2247,6 +2288,8 @@ def _background_scheduler():
                             _asc['progress'] = 100
                             _asc['phase']    = 4
                             _asc['running']  = False
+                            _ts_end = datetime.now().strftime('%H:%M:%S')
+                            _asc['logs'].append(f"[{_ts_end}] ✅ Scan complete! Runtime: {_rt}s")
                             # Complete run record
                             if _run:
                                 try:
