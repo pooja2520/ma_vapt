@@ -180,7 +180,8 @@
 <script>
 initLayout('/reports');
 
-const reportId = parseInt(window.location.pathname.split('/').filter(Boolean).pop());
+// Use report_id injected directly by Flask — 100% reliable, no URL parsing
+const reportId = {{ report_id }};
 let chartInstance = null;
 let allVulns = [];
 let currentFilter = 'all';
@@ -386,34 +387,51 @@ let _loadAttempts = 0;
 let _reportLoaded = false;
 
 async function loadReport() {
+    // Guard: don't fetch if reportId is invalid
+    if (!reportId || isNaN(reportId)) {
+        document.getElementById('loadingState').style.display = 'none';
+        document.getElementById('errorState').style.display   = 'block';
+        console.error('[report-view] Invalid reportId:', reportId);
+        return;
+    }
     try {
         const res  = await fetch(`/api/reports/${reportId}`);
-        const data = await res.json();
 
-        if (data.status !== 'success' || !data.report) {
+        // Handle non-200 HTTP responses gracefully
+        if (!res.ok) {
             _loadAttempts++;
-            // Only show error after 6 tries (~18 seconds) and only if never loaded before
-            if (_loadAttempts >= 6 && !_reportLoaded) {
+            console.warn(`[report-view] HTTP ${res.status} on attempt ${_loadAttempts}`);
+            if (_loadAttempts >= 5 && !_reportLoaded) {
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('errorState').style.display   = 'block';
             }
             return;
         }
 
-        // SUCCESS: always hide error and show content
+        const data = await res.json();
+
+        if (data.status !== 'success' || !data.report) {
+            _loadAttempts++;
+            console.warn(`[report-view] API error on attempt ${_loadAttempts}:`, data.message);
+            if (_loadAttempts >= 5 && !_reportLoaded) {
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('errorState').style.display   = 'block';
+            }
+            return;
+        }
+
+        // ✅ SUCCESS — reset counters, hide error, show content
         _loadAttempts = 0;
         _reportLoaded = true;
-        document.getElementById('errorState').style.display = 'none';
+        document.getElementById('errorState').style.display  = 'none';
+        document.getElementById('loadingState').style.display = 'none';
+        document.getElementById('mainContent').style.display  = 'block';
 
         const r   = data.report;
         reportData = r;
         const vc  = r.vuln_counts || {};
         const SKIP = ['dns resolution','ping test','port scan','service detection','vulnerability scan'];
         allVulns = (r.vulnerabilities || []).filter(v => !SKIP.includes((v.Test||'').toLowerCase().trim()));
-
-        // Show main content
-        document.getElementById('loadingState').style.display  = 'none';
-        document.getElementById('mainContent').style.display   = 'block';
 
         // Title & generated time
         document.getElementById('rTitle').innerHTML =
@@ -500,10 +518,9 @@ async function loadReport() {
             `Last refreshed: ${new Date().toLocaleTimeString()}`;
 
     } catch (e) {
-        console.error('Failed to load report:', e);
         _loadAttempts++;
-        // Only show error if report was never loaded and tried many times
-        if (_loadAttempts >= 6 && !_reportLoaded) {
+        console.error(`[report-view] Exception on attempt ${_loadAttempts}:`, e);
+        if (_loadAttempts >= 5 && !_reportLoaded) {
             document.getElementById('loadingState').style.display = 'none';
             document.getElementById('errorState').style.display   = 'block';
         }
@@ -740,6 +757,6 @@ async function downloadPDF() {
 }
 
 loadReport();
-setInterval(loadReport, 2000); // live updates every 2s
+setInterval(loadReport, 2000); // poll every 2s for fast initial load
 </script>
 {% endblock %}
