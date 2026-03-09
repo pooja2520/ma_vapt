@@ -662,7 +662,7 @@ def scan_completion_transaction(target, raw_results, filename, scan_time, severi
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _decode_schedule(r):
-    """Decode auth_config_json field on a raw scheduled_scans row."""
+    """Decode auth_config_json and serialize datetime fields as local strings."""
     if not r:
         return None
     if r.get('auth_config_json'):
@@ -672,6 +672,11 @@ def _decode_schedule(r):
             r['auth_config'] = {'type': 'none'}
     else:
         r['auth_config'] = {'type': 'none'}
+    # Convert datetime objects → local string so JS never misinterprets as UTC
+    from datetime import datetime as _dt
+    for _col in ('last_run_at', 'next_run_at', 'created_at', 'updated_at'):
+        if isinstance(r.get(_col), _dt):
+            r[_col] = r[_col].strftime('%Y-%m-%d %H:%M:%S')
     return r
 
 
@@ -800,7 +805,7 @@ def get_due_scheduled_scans(now=None):
     """Return all active schedules whose next_run_at <= now (all users). Used by scheduler."""
     from datetime import datetime
     if now is None:
-        now = datetime.utcnow()
+        now = datetime.now()  # local time matches next_run_at storage
     with get_connection() as conn:
         cur = conn.cursor(dictionary=True)
         cur.execute("""
@@ -828,7 +833,7 @@ def create_scheduled_scan_run(scheduled_scan_id, user_id, target_url, started_at
     """Open a pending run record. Returns the new run id."""
     from datetime import datetime
     if started_at is None:
-        started_at = datetime.utcnow()
+        started_at = datetime.now()  # local time, not UTC
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
