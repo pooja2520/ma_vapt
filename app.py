@@ -955,51 +955,61 @@ def api_reports():
 @login_required
 def api_report_detail(report_id):
     """Return full details for a single report, vulnerabilities scoped to that scan's date."""
-    import db
-    report = db.get_report_by_id(report_id, _uid())
-    if not report:
-        return jsonify({'status': 'error', 'message': 'Report not found'}), 404
+    try:
+        import db
+        uid = _uid()
+        report = db.get_report_by_id(report_id, uid)
+        if not report:
+            return jsonify({'status': 'error', 'message': 'Report not found'}), 404
 
-    target_url = report.get('target_url', '')
-    scan_date  = report.get('scan_time') or report.get('date') or ''
+        target_url = report.get('target_url', '')
+        scan_date  = report.get('scan_time') or report.get('date') or ''
 
-    # Fetch all vulns for this URL — tiered date match to prevent empty reports
-    # from any clock skew between reports.scan_time and vulnerabilities.scan_date
-    all_vulns = db.get_vulnerabilities(_uid(), target_url=target_url)
-    if scan_date:
-        scan_minute = scan_date[:16]  # "2026-03-05 15:14"
-        scan_hour   = scan_date[:13]  # "2026-03-05 15"
-        scan_day    = scan_date[:10]  # "2026-03-05"
-        # Tier 1: exact minute
-        target_vulns = [v for v in all_vulns if (v.get('scan_date') or '')[:16] == scan_minute]
-        if not target_vulns:
-            # Tier 2: same hour (handles up to 59-min skew)
-            target_vulns = [v for v in all_vulns if (v.get('scan_date') or '')[:13] == scan_hour]
-        if not target_vulns:
-            # Tier 3: same day
-            target_vulns = [v for v in all_vulns if (v.get('scan_date') or '')[:10] == scan_day]
-        if not target_vulns:
-            # Tier 4: all vulns for this target (last resort)
+        # Fetch all vulns for this URL — tiered date match to prevent empty
+        # reports from any clock skew between reports.scan_time and
+        # vulnerabilities.scan_date
+        all_vulns = db.get_vulnerabilities(uid, target_url=target_url) or []
+        if scan_date:
+            scan_minute = scan_date[:16]  # "2026-03-05 15:14"
+            scan_hour   = scan_date[:13]  # "2026-03-05 15"
+            scan_day    = scan_date[:10]  # "2026-03-05"
+            # Tier 1: exact minute
+            target_vulns = [v for v in all_vulns if (v.get('scan_date') or '')[:16] == scan_minute]
+            if not target_vulns:
+                # Tier 2: same hour (handles up to 59-min clock skew)
+                target_vulns = [v for v in all_vulns if (v.get('scan_date') or '')[:13] == scan_hour]
+            if not target_vulns:
+                # Tier 3: same day
+                target_vulns = [v for v in all_vulns if (v.get('scan_date') or '')[:10] == scan_day]
+            if not target_vulns:
+                # Tier 4: all vulns for this target (last resort)
+                target_vulns = all_vulns
+        else:
             target_vulns = all_vulns
-    else:
-        target_vulns = all_vulns
 
-    fixed_count = sum(1 for v in target_vulns if (v.get('_display_status') or v.get('Status') or '').lower() == 'fixed')
-    vuln_count  = sum(1 for v in target_vulns if (v.get('_display_status') or v.get('Status') or '').lower() == 'vulnerable')
-    # Use same denominator as vulnerabilities page: fixed/(fixed+vulnerable) — excludes
-    # already-passing checks (complete/success/secure) that were never toggled
-    fix_denom = fixed_count + vuln_count
-    fix_pct   = round(fixed_count / fix_denom * 100) if fix_denom > 0 else 0
+        fixed_count = sum(1 for v in target_vulns if (v.get('_display_status') or v.get('Status') or '').lower() == 'fixed')
+        vuln_count  = sum(1 for v in target_vulns if (v.get('_display_status') or v.get('Status') or '').lower() == 'vulnerable')
+        fix_denom   = fixed_count + vuln_count
+        fix_pct     = round(fixed_count / fix_denom * 100) if fix_denom > 0 else 0
 
-    result = dict(report)
-    result['vulnerabilities'] = target_vulns
-    result['urls_tested']     = len(target_vulns)
-    result['fixed_count']     = fixed_count
-    result['vuln_count']      = vuln_count
-    result['fix_pct']         = fix_pct
-    result['duration']        = f"{report.get('runtime_seconds', 0) // 60} min {report.get('runtime_seconds', 0) % 60} sec" if report.get('runtime_seconds') else 'N/A'
+        result = dict(report)
+        result['vulnerabilities'] = target_vulns
+        result['urls_tested']     = len(target_vulns)
+        result['fixed_count']     = fixed_count
+        result['vuln_count']      = vuln_count
+        result['fix_pct']         = fix_pct
+        result['duration']        = (
+            f"{report.get('runtime_seconds', 0) // 60} min "
+            f"{report.get('runtime_seconds', 0) % 60} sec"
+            if report.get('runtime_seconds') else 'N/A'
+        )
 
-    return jsonify({'status': 'success', 'report': result})
+        return jsonify({'status': 'success', 'report': result})
+
+    except Exception as e:
+        print(f"[api_report_detail] ERROR for report_id={report_id}: {e}")
+        import traceback; traceback.print_exc()
+        return jsonify({'status': 'error', 'message': f'Server error: {str(e)}'}), 500
 
 
 @app.route('/api/scan-logs')
