@@ -585,7 +585,7 @@ async function pollLiveScan() {
                                 status:      newStatus2,
                                 next_run_at: newNextRun2,
                                 run_count:   (sr2.runCount||0) + 1,
-                                last_run_at: new Date().toISOString()
+                                last_run_at: new Date().toLocaleString('sv').replace('T',' ').slice(0,19)
                             })
                         });
                     } catch(e2) {}
@@ -794,6 +794,20 @@ async function saveSchedule(){
 
 function calcNextRun(time,freq){var now=new Date(),p=(time||'02:00').split(':').map(Number),next=new Date(now);next.setHours(p[0],p[1],0,0);if(next<=now){if(freq==='6h')next.setHours(next.getHours()+6);else if(freq==='12h')next.setHours(next.getHours()+12);else if(freq==='247')next.setMinutes(next.getMinutes()+5);else next.setDate(next.getDate()+1);}return next.toISOString();}
 function fmtNextRun(iso){if(!iso)return'\u2014';var d=new Date(iso),diff=Math.floor((d-Date.now())/1000);if(isNaN(d.getTime()))return'\u2014';if(diff<0)return'Starting…';var days=Math.floor(diff/86400),hrs=Math.floor((diff%86400)/3600),mins=Math.floor((diff%3600)/60),secs=diff%60;if(days>0)return'in '+days+'d '+hrs+'h '+mins+'m';if(hrs>0)return'in '+hrs+'h '+mins+'m '+String(secs).padStart(2,'0')+'s';if(mins>0)return'in '+mins+'m '+String(secs).padStart(2,'0')+'s';return'in '+secs+'s';}
+// Parse DB datetime string as LOCAL time — DB stores local, not UTC
+// Without this, JS treats "2026-03-09 12:41:00" as UTC → shows wrong hour
+function parseLocalDT(str) {
+    if (!str) return null;
+    if (str.indexOf('Z') !== -1 || str.indexOf('+') !== -1) return new Date(str);
+    var d = new Date(str.replace(' ', 'T')); // no Z = local time
+    return isNaN(d.getTime()) ? null : d;
+}
+function fmtLocalDT(str) {
+    var d = parseLocalDT(str);
+    if (!d) return '—';
+    return d.toLocaleString('en-IN', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true});
+}
+
 function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
 async function toggleSched(id){
     var s=schedules.find(function(x){return x.id===id;});
@@ -862,7 +876,16 @@ function renderSchedules(){
         var nextVal=isR?'Scanning\u2026':isC?'Completed':(fmtNextRun(s.nextRun));
         var nextColor=isR?'color:var(--blue);':isC?'color:#16a34a;':'';
         // Last run meta for completed
-        var lastRunMeta=isC&&s.lastRun?'<span><i class="fa-solid fa-flag-checkered"></i> '+new Date(s.lastRun).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true})+'</span>':'';
+        // Use last_run_at or fall back to most recent run in history
+        var _lastRunTime = s.lastRun;
+        if (!_lastRunTime && isC) {
+            var _histEntry = runHistory.filter(function(r){ return r.scheduleId === s.id; })
+                                       .sort(function(a,b){ return new Date(b.started)-new Date(a.started); })[0];
+            if (_histEntry) _lastRunTime = _histEntry.started;
+        }
+        var lastRunMeta = isC && _lastRunTime
+            ? '<span><i class="fa-solid fa-flag-checkered"></i> ' + fmtLocalDT(_lastRunTime) + '</span>'
+            : '';
         // Action buttons
         var actionBtns='';
         if(isR){
