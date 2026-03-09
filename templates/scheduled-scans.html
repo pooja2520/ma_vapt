@@ -2,6 +2,18 @@
 {% block title %}Scheduled Scans - VAPT Scanner Pro{% endblock %}
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/scheduled.css') }}">
+<style>
+.vf-btn{font-size:.72rem;font-weight:700;padding:.3rem .75rem;border-radius:6px;cursor:pointer;border:none;color:#fff;letter-spacing:.02em;transition:opacity .15s,transform .15s,box-shadow .15s;opacity:.55;}
+.vf-btn:hover{opacity:.8;}
+.vf-btn.active{opacity:1;transform:scale(1.07);box-shadow:0 0 0 3px rgba(255,255,255,.3);}
+.vf-btn[data-sev="all"]     {background:#3b82f6;}
+.vf-btn[data-sev="critical"]{background:#ef4444;}
+.vf-btn[data-sev="high"]    {background:#f97316;}
+.vf-btn[data-sev="medium"]  {background:#ca8a04;}
+.vf-btn[data-sev="low"]     {background:#16a34a;}
+.vf-btn[data-sev="open"]    {background:#475569;}
+.vf-btn[data-sev="fixed"]   {background:#0d9488;}
+</style>
 {% endblock %}
 {% block body %}
 <div id="_main" style="padding-top:56px;min-height:100vh;">
@@ -87,14 +99,14 @@
     <div class="card"><div class="ch" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;">
         <span><i class="fa-solid fa-bug"></i> Vulnerability Tracker</span>
         <div style="display:flex;gap:.3rem;flex-wrap:wrap;align-items:center;">
-          <span style="font-size:.72rem;color:var(--text-muted);margin-right:.2rem;">Filter:</span>
-          <button class="vf-btn active" data-sev="all"      onclick="setVulnFilter(this)"  style="font-size:.68rem;padding:.2rem .55rem;border-radius:5px;border:1px solid var(--border);cursor:pointer;background:var(--blue);color:#fff;">All</button>
-          <button class="vf-btn"        data-sev="critical" onclick="setVulnFilter(this)"  style="font-size:.68rem;padding:.2rem .55rem;border-radius:5px;border:1px solid #fca5a5;cursor:pointer;background:var(--card);color:#ef4444;">Critical</button>
-          <button class="vf-btn"        data-sev="high"     onclick="setVulnFilter(this)"  style="font-size:.68rem;padding:.2rem .55rem;border-radius:5px;border:1px solid #fdba74;cursor:pointer;background:var(--card);color:#f97316;">High</button>
-          <button class="vf-btn"        data-sev="medium"   onclick="setVulnFilter(this)"  style="font-size:.68rem;padding:.2rem .55rem;border-radius:5px;border:1px solid #fde68a;cursor:pointer;background:var(--card);color:#eab308;">Medium</button>
-          <button class="vf-btn"        data-sev="low"      onclick="setVulnFilter(this)"  style="font-size:.68rem;padding:.2rem .55rem;border-radius:5px;border:1px solid #86efac;cursor:pointer;background:var(--card);color:#22c55e;">Low</button>
-          <button class="vf-btn"        data-sev="open"     onclick="setVulnFilter(this)"  style="font-size:.68rem;padding:.2rem .55rem;border-radius:5px;border:1px solid var(--border);cursor:pointer;background:var(--card);color:var(--text-muted);">Open only</button>
-          <button class="vf-btn"        data-sev="fixed"    onclick="setVulnFilter(this)"  style="font-size:.68rem;padding:.2rem .55rem;border-radius:5px;border:1px solid #6ee7b7;cursor:pointer;background:var(--card);color:#10b981;">Fixed only</button>
+          <span style="font-size:.72rem;color:#fff;margin-right:.2rem;">Filter:</span>
+          <button class="vf-btn active" data-sev="all"      onclick="setVulnFilter(this)">All</button>
+          <button class="vf-btn"        data-sev="critical" onclick="setVulnFilter(this)">Critical</button>
+          <button class="vf-btn"        data-sev="high"     onclick="setVulnFilter(this)">High</button>
+          <button class="vf-btn"        data-sev="medium"   onclick="setVulnFilter(this)">Medium</button>
+          <button class="vf-btn"        data-sev="low"      onclick="setVulnFilter(this)">Low</button>
+          <button class="vf-btn"        data-sev="open"     onclick="setVulnFilter(this)">Open only</button>
+          <button class="vf-btn"        data-sev="fixed"    onclick="setVulnFilter(this)">Fixed only</button>
         </div>
       </div>
       <div class="cb" style="padding:0;overflow-x:auto;">
@@ -949,10 +961,7 @@ function renderHistory(){
 function setVulnFilter(btn) {
     vulnFilter = btn.dataset.sev;
     document.querySelectorAll('.vf-btn').forEach(function(b){
-        var isActive = b === btn;
-        var colorMap = {critical:'#ef4444',high:'#f97316',medium:'#eab308',low:'#22c55e',fixed:'#10b981'};
-        b.style.background = isActive ? 'var(--blue)' : 'var(--card)';
-        b.style.color      = isActive ? '#fff' : (colorMap[b.dataset.sev] || 'var(--text-muted)');
+        b.classList.toggle('active', b === btn);
     });
     renderVulnTracker();
 }
