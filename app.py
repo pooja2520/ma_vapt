@@ -659,7 +659,7 @@ def api_dashboard_stats():
 
     # Per-scan enriched history (last 10)
     scan_history = []
-    for r in reports[:10]:
+    for r in reports:  # all reports, not capped — chart shows latest 12
         total = r.get('total', 0)
         vc    = r.get('vuln_counts', {})
         crit  = vc.get('critical', 0)
@@ -701,7 +701,7 @@ def api_dashboard_stats():
     }
 
     bar_labels, bar_crit, bar_high, bar_med, bar_low, bar_info = [], [], [], [], [], []
-    for entry in list(reversed(scan_history))[-8:]:
+    for entry in list(reversed(scan_history))[-12:]:  # latest 12, oldest→newest left→right
         bar_labels.append(entry['target'][:12] or entry['date'])
         bar_crit.append(entry.get('critical', 0))
         bar_high.append(entry.get('high', 0))
@@ -1886,7 +1886,7 @@ def scan():
 
                         if _run_id:
                             _db_fin.complete_scheduled_scan_run(
-                                _run_id, datetime.now(), _runtime, _run_ok,
+                                _run_id, datetime.utcnow(), _runtime, _run_ok,
                                 len(_raw), _sc, _fname or None
                             )
                             if _raw:
@@ -1906,7 +1906,7 @@ def scan():
                                 _h2, _m2 = [int(x) for x in _stime.split(':')]
                             except Exception:
                                 _h2, _m2 = 2, 0
-                            _now2 = datetime.now()  # local time
+                            _now2 = datetime.utcnow()
                             if _freq == 'once':
                                 _next2, _nst = None, 'completed'
                             elif _freq == '247':
@@ -2295,7 +2295,7 @@ def _background_scheduler():
                                 try:
                                     import db as _dbf
                                     _dbf.complete_scheduled_scan_run(
-                                        _run, datetime.now(), _rt, _run_ok,
+                                        _run, datetime.utcnow(), _rt, _run_ok,
                                         len(_raw), _sc, _fname or None
                                     )
                                     if _raw:
@@ -2310,13 +2310,13 @@ def _background_scheduler():
                                     _dbf2.finish_scheduled_scan(_sid, None, 'completed')
                                     print(f"[scheduler] Schedule {_sid} marked completed (one-time).")
                                 elif _freq == '247':
-                                    _nxt = (datetime.now() + timedelta(minutes=5)).strftime('%Y-%m-%d %H:%M:%S')
+                                    _nxt = (datetime.utcnow() + timedelta(minutes=5)).strftime('%Y-%m-%d %H:%M:%S')
                                     _dbf2.finish_scheduled_scan(_sid, _nxt, 'active')
                                 elif _freq == '6h':
-                                    _nxt = (datetime.now() + timedelta(hours=6)).strftime('%Y-%m-%d %H:%M:%S')
+                                    _nxt = (datetime.utcnow() + timedelta(hours=6)).strftime('%Y-%m-%d %H:%M:%S')
                                     _dbf2.finish_scheduled_scan(_sid, _nxt, 'active')
                                 elif _freq == '12h':
-                                    _nxt = (datetime.now() + timedelta(hours=12)).strftime('%Y-%m-%d %H:%M:%S')
+                                    _nxt = (datetime.utcnow() + timedelta(hours=12)).strftime('%Y-%m-%d %H:%M:%S')
                                     _dbf2.finish_scheduled_scan(_sid, _nxt, 'active')
                                 else:
                                     # daily/weekly/monthly — advance by 1 day minimum
@@ -2324,7 +2324,7 @@ def _background_scheduler():
                                     _stime = (_sched_rec or {}).get('scan_time', '02:00')
                                     try: _sh, _sm = [int(x) for x in _stime.split(':')]
                                     except: _sh, _sm = 2, 0
-                                    _cand = datetime.now()  # local time.replace(hour=_sh, minute=_sm, second=0, microsecond=0)
+                                    _cand = datetime.utcnow().replace(hour=_sh, minute=_sm, second=0, microsecond=0)
                                     if _cand <= datetime.utcnow(): _cand += timedelta(days=1)
                                     _dbf2.finish_scheduled_scan(_sid, _cand.strftime('%Y-%m-%d %H:%M:%S'), 'active')
                                 print(f"[scheduler] Schedule {_sid} finished, freq={_freq}.")
