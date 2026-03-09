@@ -382,7 +382,8 @@ function renderResolutionBar(vulns) {
         </span>`;
 }
 
-let loadFailures = 0;
+let _loadAttempts = 0;
+let _reportLoaded = false;
 
 async function loadReport() {
     try {
@@ -390,15 +391,19 @@ async function loadReport() {
         const data = await res.json();
 
         if (data.status !== 'success' || !data.report) {
-            loadFailures++;
-            if (loadFailures >= 3) {   // only show error after 3 consecutive failures
+            _loadAttempts++;
+            // Only show error after 6 tries (~18 seconds) and only if never loaded before
+            if (_loadAttempts >= 6 && !_reportLoaded) {
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('errorState').style.display   = 'block';
             }
             return;
         }
-        loadFailures = 0;  // reset on success
-        // ... rest of function
+
+        // SUCCESS: always hide error and show content
+        _loadAttempts = 0;
+        _reportLoaded = true;
+        document.getElementById('errorState').style.display = 'none';
 
         const r   = data.report;
         reportData = r;
@@ -496,8 +501,12 @@ async function loadReport() {
 
     } catch (e) {
         console.error('Failed to load report:', e);
-        document.getElementById('loadingState').style.display = 'none';
-        document.getElementById('errorState').style.display   = 'block';
+        _loadAttempts++;
+        // Only show error if report was never loaded and tried many times
+        if (_loadAttempts >= 6 && !_reportLoaded) {
+            document.getElementById('loadingState').style.display = 'none';
+            document.getElementById('errorState').style.display   = 'block';
+        }
     }
 }
 
@@ -731,6 +740,6 @@ async function downloadPDF() {
 }
 
 loadReport();
-setInterval(loadReport, 5000); // live updates every 5s
+setInterval(loadReport, 2000); // live updates every 2s
 </script>
 {% endblock %}
