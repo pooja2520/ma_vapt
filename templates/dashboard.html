@@ -117,7 +117,7 @@
 
   <!-- Bar Chart -->
   <div class="card" id="barChartCard" style="display:none;">
-    <div class="ch"><i class="fa-solid fa-chart-bar"></i> Scan History — Vulnerability Trends</div>
+    <div class="ch" style="display:flex;align-items:center;justify-content:space-between;"><span><i class="fa-solid fa-chart-bar"></i> Scan History — Vulnerability Trends</span><span id="barChartTs" style="font-size:.68rem;color:rgba(255,255,255,.65);font-weight:400;"></span></div>
     <div class="cb"><canvas id="barC" style="max-height:220px;"></canvas></div>
   </div>
 
@@ -231,38 +231,60 @@ function renderDonut(s) {
         </span>`).join('');
 }
 
-// ── Bar chart — separate Critical, High, Medium, Low, Info bars ─────────────
+// ── Bar chart — live-updating, shows all recent scans ────────────────────────
+let _barFP = '';  // fingerprint — skip redraw if data unchanged
+
 function renderBarChart(bc) {
-    if (!bc||!bc.labels||!bc.labels.length) return;
+    if (!bc || !bc.labels || !bc.labels.length) return;
     document.getElementById('barChartCard').style.display = 'block';
 
-    // Scan-indexed labels so same URL shows as separate grouped bars
-    const labels = bc.labels.map((lbl, i) => `#${bc.labels.length - i} ${lbl}`);
+    // Build fingerprint — if nothing changed, skip
+    const fp = bc.labels.join(',') + '|' + (bc.critical||[]).join(',') + '|' + (bc.high||[]).join(',') + '|' + (bc.info||[]).join(',');
+    if (barChart && fp === _barFP) return;
+    _barFP = fp;
 
-    const ds = [
-        { label:'Critical', data: bc.critical || bc.labels.map(()=>0), backgroundColor:'#ef444455', borderColor:'#ef4444', borderWidth:2, borderRadius:4 },
-        { label:'High',     data: bc.high,                             backgroundColor:'#f9731655', borderColor:'#f97316', borderWidth:2, borderRadius:4 },
-        { label:'Medium',   data: bc.medium,                           backgroundColor:'#eab30855', borderColor:'#eab308', borderWidth:2, borderRadius:4 },
-        { label:'Low',      data: bc.low,                              backgroundColor:'#22c55e55', borderColor:'#22c55e', borderWidth:2, borderRadius:4 },
-        { label:'Info',     data: bc.info || bc.labels.map(()=>0),    backgroundColor:'#2563eb55', borderColor:'#2563eb', borderWidth:2, borderRadius:4 },
+    // Labels: #1 oldest → #N newest (left → right)
+    const labels = bc.labels.map((lbl, i) => '#' + (i + 1) + ' ' + lbl);
+
+    const datasets = [
+        { label:'Critical', data: bc.critical || bc.labels.map(()=>0), backgroundColor:'rgba(239,68,68,.6)',  borderColor:'#ef4444', borderWidth:2, borderRadius:4 },
+        { label:'High',     data: bc.high     || bc.labels.map(()=>0), backgroundColor:'rgba(249,115,22,.6)', borderColor:'#f97316', borderWidth:2, borderRadius:4 },
+        { label:'Medium',   data: bc.medium   || bc.labels.map(()=>0), backgroundColor:'rgba(234,179,8,.6)',  borderColor:'#eab308', borderWidth:2, borderRadius:4 },
+        { label:'Low',      data: bc.low      || bc.labels.map(()=>0), backgroundColor:'rgba(34,197,94,.6)',  borderColor:'#22c55e', borderWidth:2, borderRadius:4 },
+        { label:'Info',     data: bc.info     || bc.labels.map(()=>0), backgroundColor:'rgba(37,99,235,.6)',  borderColor:'#2563eb', borderWidth:2, borderRadius:4 },
     ];
+
     if (barChart) {
-        barChart.data.labels = labels;
-        barChart.data.datasets.forEach((d,i)=>{ d.data=ds[i].data; });
-        barChart.update();
-    } else {
-        barChart = new Chart(document.getElementById('barC'), {
-            type:'bar', data:{ labels, datasets:ds },
-            options:{
-                responsive:true,
-                plugins:{ legend:{ position:'bottom', labels:{ font:{size:11}, boxWidth:12 }}},
-                scales:{
-                    x:{ stacked:false, grid:{display:false}, ticks:{font:{size:10}, maxRotation:30} },
-                    y:{ beginAtZero:true, ticks:{stepSize:1,font:{size:11}}, grid:{color:'#f1f5f9'} }
-                }
-            }
-        });
+        // Destroy and recreate so new bars appear correctly (handles count change)
+        barChart.destroy();
+        barChart = null;
     }
+
+    barChart = new Chart(document.getElementById('barC'), {
+        type: 'bar',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            animation: { duration: 500 },
+            plugins: {
+                legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } },
+                tooltip: {
+                    callbacks: {
+                        title: (items) => items[0].label,
+                        label: (item) => ' ' + item.dataset.label + ': ' + item.raw
+                    }
+                }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 35 } },
+                y: { beginAtZero: true, ticks: { precision: 0, font: { size: 11 } }, grid: { color: '#f1f5f9' } }
+            }
+        }
+    });
+
+    // Update live timestamp in chart header
+    const tsEl = document.getElementById('barChartTs');
+    if (tsEl) tsEl.textContent = 'Updated ' + new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
 }
 
 // ── Per-scan history table ──────────────────────────────────────
@@ -412,6 +434,6 @@ async function loadDashboard() {
 }
 
 loadDashboard();
-setInterval(loadDashboard, 8000);
+setInterval(loadDashboard, 5000); // 5s live refresh
 </script>
 {% endblock %}
