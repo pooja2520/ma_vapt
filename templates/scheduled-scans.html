@@ -525,6 +525,8 @@ function updatePopupPhases(phase) {
         var el = document.getElementById('ppPh'+i);
         if (!el) continue;
         el.classList.remove('active','done');
+        // phase 5 = all complete: mark all as done (green)
+        if (phase >= 5) { el.classList.add('done'); continue; }
         if (i < phase)  el.classList.add('done');
         if (i === phase) el.classList.add('active');
     }
@@ -593,7 +595,7 @@ async function pollLiveScan() {
 
                 // Show completion in popup
                 document.getElementById('popupBar').style.width='100%'; document.getElementById('popupPct').textContent='100%';
-                document.getElementById('popupPhase').textContent='\u2705 Scan Complete'; updatePopupPhases(4);
+                document.getElementById('popupPhase').textContent='\u2705 Scan Complete'; updatePopupPhases(5);
                 document.getElementById('popupResult').style.display='block';
                 var vc2={critical:0,high:0,medium:0,low:0};
                 if (scanResults) { scanResults.forEach(function(f){ var sv=(f.Severity||'').toLowerCase(); if(vc2[sv]!==undefined) vc2[sv]++; }); document.getElementById('popupResultCounts').innerHTML='<span style="color:#ef4444;">\u25cf '+vc2.critical+' Critical</span> &nbsp;<span style="color:#f97316;">\u25cf '+vc2.high+' High</span> &nbsp;<span style="color:#eab308;">\u25cf '+vc2.medium+' Medium</span> &nbsp;<span style="color:#22c55e;">\u25cf '+vc2.low+' Low</span>'; }
