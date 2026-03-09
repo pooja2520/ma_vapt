@@ -403,9 +403,24 @@ async function initPage() {
     renderAll();
     startLivePolling();
     setInterval(updateStats, 30000);
-    // Check scheduled runs every 60 seconds
+
+    // ── Live countdown: update every second ──
+    setInterval(function() {
+        schedules.forEach(function(s) {
+            if (s.status !== 'active' || !s.nextRun) return;
+            var el = document.querySelector('.sched-item[data-sched-id="'+s.id+'"] .next-run-badge strong');
+            if (el) el.textContent = fmtNextRun(s.nextRun);
+        });
+        // Update header stats bar next-run
+        var nxt = schedules.filter(function(s){ return s.status==='active' && s.nextRun; })
+                           .sort(function(a,b){ return new Date(a.nextRun)-new Date(b.nextRun); })[0];
+        var el2 = document.getElementById('statNextRun');
+        if (el2 && nxt) el2.textContent = fmtNextRun(nxt.nextRun);
+    }, 1000);
+
+    // ── Check for due scheduled scans every 5 seconds (was 60s) ──
     checkScheduledRuns();
-    setInterval(checkScheduledRuns, 60000);
+    setInterval(checkScheduledRuns, 5000);
     // If a scan was already running when page loaded, open popup immediately
     fetch('/api/scan-logs').then(function(r){return r.json();}).then(function(d){
         if (d.running) {
@@ -776,7 +791,7 @@ async function saveSchedule(){
 }
 
 function calcNextRun(time,freq){var now=new Date(),p=(time||'02:00').split(':').map(Number),next=new Date(now);next.setHours(p[0],p[1],0,0);if(next<=now){if(freq==='6h')next.setHours(next.getHours()+6);else if(freq==='12h')next.setHours(next.getHours()+12);else if(freq==='247')next.setMinutes(next.getMinutes()+5);else next.setDate(next.getDate()+1);}return next.toISOString();}
-function fmtNextRun(iso){if(!iso)return'\u2014';var d=new Date(iso),diff=d-Date.now();if(isNaN(d)||diff<0)return'Overdue';var hrs=Math.floor(diff/3600000),mins=Math.floor((diff%3600000)/60000);if(hrs===0)return'in '+mins+'m';if(hrs<24)return'in '+hrs+'h '+mins+'m';return'in '+Math.floor(hrs/24)+'d '+(hrs%24)+'h';}
+function fmtNextRun(iso){if(!iso)return'\u2014';var d=new Date(iso),diff=Math.floor((d-Date.now())/1000);if(isNaN(d.getTime())||diff<0)return'Overdue';var days=Math.floor(diff/86400),hrs=Math.floor((diff%86400)/3600),mins=Math.floor((diff%3600)/60),secs=diff%60;if(days>0)return'in '+days+'d '+hrs+'h '+mins+'m';if(hrs>0)return'in '+hrs+'h '+mins+'m '+String(secs).padStart(2,'0')+'s';if(mins>0)return'in '+mins+'m '+String(secs).padStart(2,'0')+'s';return'in '+secs+'s';}
 function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
 async function toggleSched(id){
     var s=schedules.find(function(x){return x.id===id;});
@@ -856,7 +871,7 @@ function renderSchedules(){
             actionBtns='<button class="btn btn-p btn-s" onclick="runNow('+s.id+')" title="Run Now"><i class="fa-solid fa-play"></i></button>'+
                        '<button class="btn '+(isA?'btn-o':'btn-p')+' btn-s" onclick="toggleSched('+s.id+')"><i class="fa-solid '+(isA?'fa-pause':'fa-play')+'"></i></button>';
         }
-        return '<div class="sched-item'+(isC?' completed':isA||isR?'':' paused')+'">'+
+        return '<div class="sched-item'+(isC?' completed':isA||isR?'':' paused')+'" data-sched-id="'+s.id+'">'+
           '<div class="sched-left"><div class="sched-icon '+iconCls+'"><i class="fa-solid '+iconI+'"></i></div>'+
           '<div><div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;"><strong style="font-size:.9rem;">'+s.name+'</strong><span class="bx '+sc+'" style="font-size:.65rem;"><i class="fa-solid '+si+'"></i> '+sl+'</span>'+authBadge+'</div>'+
           '<div class="sched-meta"><span><i class="fa-solid fa-crosshairs"></i> '+s.target+'</span><span><i class="fa-solid fa-clock"></i> '+ts+'</span><span><i class="fa-solid '+(fi[s.freq]||'fa-clock')+'"></i> '+(fl[s.freq]||s.freq)+'</span><span><i class="fa-solid fa-hourglass-half"></i> '+(s.timeout||30)+'min</span>'+(s.runCount?'<span><i class="fa-solid fa-rotate"></i> '+s.runCount+' runs</span>':'')+lastRunMeta+'</div></div></div>'+
