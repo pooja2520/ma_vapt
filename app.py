@@ -2303,7 +2303,7 @@ def _background_scheduler():
         except Exception as _loop_err:
             print(f"[scheduler] Loop error: {_loop_err}")
 
-        _time.sleep(30)
+        _time.sleep(5)  # check every 5s for on-time scan firing
 
 
 def _start_background_scheduler():
