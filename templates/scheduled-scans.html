@@ -814,9 +814,19 @@ function fmtNextRun(iso){if(!iso)return'\u2014';var d=new Date(iso),diff=Math.fl
 // Without this, JS treats "2026-03-09 12:41:00" as UTC → shows wrong hour
 function parseLocalDT(str) {
     if (!str) return null;
+    // Has explicit timezone — parse as-is
     if (str.indexOf('Z') !== -1 || str.indexOf('+') !== -1) return new Date(str);
-    var d = new Date(str.replace(' ', 'T')); // no Z = local time
-    return isNaN(d.getTime()) ? null : d;
+    // Normalise: "2026-03-09 12:43:00" or "2026-03-09T12:43:00"
+    var s = str.replace('T', ' ').trim();
+    // Use explicit Date constructor with individual parts — forces LOCAL time, never UTC
+    var p = s.split(/[\s\-:]/);
+    if (p.length >= 5) {
+        var d = new Date(+p[0], +p[1]-1, +p[2], +p[3], +p[4], +(p[5]||0));
+        if (!isNaN(d.getTime())) return d;
+    }
+    // Fallback: append a dummy local offset trick
+    var d2 = new Date(s);
+    return isNaN(d2.getTime()) ? null : d2;
 }
 function fmtLocalDT(str) {
     var d = parseLocalDT(str);
