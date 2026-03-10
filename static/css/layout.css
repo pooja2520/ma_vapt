@@ -195,7 +195,6 @@ a.ni i { font-size: .9rem; width: 18px; text-align: center; flex-shrink: 0; }
     padding-top: var(--hh);
     flex: 1;
     min-height: 100vh;
-    transition: margin-left .25s ease;
     width: calc(100% - var(--ml));
     max-width: 100%;
     overflow-x: hidden;
