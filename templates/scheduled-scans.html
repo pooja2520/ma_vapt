@@ -3,6 +3,12 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/scheduled.css') }}">
 <style>
+/* Skeleton loader */
+@keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+.skel{border-radius:6px;background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:800px 100%;animation:shimmer 1.4s infinite linear;}
+.skel-stat{height:1.6rem;width:2.5rem;display:inline-block;}
+.skel-text{height:.75rem;width:60%;display:block;margin:.3rem 0;}
+.skel-row{height:2.8rem;width:100%;display:block;margin-bottom:.5rem;border-radius:9px;}
 .vf-btn{font-size:.72rem;font-weight:700;padding:.3rem .75rem;border-radius:6px;cursor:pointer;border:none;color:#fff;letter-spacing:.02em;transition:opacity .15s,transform .15s,box-shadow .15s;opacity:.55;}
 .vf-btn:hover{opacity:.8;}
 .vf-btn.active{opacity:1;transform:scale(1.07);box-shadow:0 0 0 3px rgba(255,255,255,.3);}
@@ -38,11 +44,11 @@
 
   <!-- Stats -->
   <div class="sched-stats">
-    <div class="ss-card"><div class="ss-icon" style="background:#eff6ff;color:#2563eb;"><i class="fa-solid fa-calendar-check"></i></div><div><strong id="statActive">0</strong><small>Active Schedules</small></div></div>
-    <div class="ss-card"><div class="ss-icon" style="background:#f0fdf4;color:#16a34a;"><i class="fa-solid fa-circle-check"></i></div><div><strong id="statCompleted">0</strong><small>Runs Completed</small></div></div>
-    <div class="ss-card"><div class="ss-icon" style="background:#fff7ed;color:#c2410c;"><i class="fa-solid fa-triangle-exclamation"></i></div><div><strong id="statFixed">0</strong><small>Vulns Fixed</small></div></div>
-    <div class="ss-card"><div class="ss-icon" style="background:#fef2f2;color:#b91c1c;"><i class="fa-solid fa-bug"></i></div><div><strong id="statPriority">0</strong><small>Priority Vulns</small></div></div>
-    <div class="ss-card"><div class="ss-icon" style="background:#faf5ff;color:#7c3aed;"><i class="fa-solid fa-clock-rotate-left"></i></div><div><strong id="statNextRun">&#8212;</strong><small>Next Run</small></div></div>
+    <div class="ss-card"><div class="ss-icon" style="background:#eff6ff;color:#2563eb;"><i class="fa-solid fa-calendar-check"></i></div><div><strong id="statActive"><span class="skel skel-stat"></span></strong><small>Active Schedules</small></div></div>
+    <div class="ss-card"><div class="ss-icon" style="background:#f0fdf4;color:#16a34a;"><i class="fa-solid fa-circle-check"></i></div><div><strong id="statCompleted"><span class="skel skel-stat"></span></strong><small>Runs Completed</small></div></div>
+    <div class="ss-card"><div class="ss-icon" style="background:#fff7ed;color:#c2410c;"><i class="fa-solid fa-triangle-exclamation"></i></div><div><strong id="statFixed"><span class="skel skel-stat"></span></strong><small>Vulns Fixed</small></div></div>
+    <div class="ss-card"><div class="ss-icon" style="background:#fef2f2;color:#b91c1c;"><i class="fa-solid fa-bug"></i></div><div><strong id="statPriority"><span class="skel skel-stat"></span></strong><small>Priority Vulns</small></div></div>
+    <div class="ss-card"><div class="ss-icon" style="background:#faf5ff;color:#7c3aed;"><i class="fa-solid fa-clock-rotate-left"></i></div><div><strong id="statNextRun"><span class="skel skel-stat"></span></strong><small>Next Run</small></div></div>
   </div>
 
   <!-- Presets -->
@@ -75,7 +81,11 @@
         </select>
       </div>
       <div class="cb" style="padding:0;" id="scheduleList">
-        <div class="empty-state"><i class="fa-solid fa-calendar-xmark"></i><p>No schedules yet.</p><small>Create a schedule to automate your security scans.</small><button class="btn btn-p" onclick="openModal()" style="margin-top:.75rem;"><i class="fa-solid fa-plus"></i> Create First Schedule</button></div>
+        <div id="schedSkeleton" style="padding:1rem;">
+          <span class="skel skel-row"></span>
+          <span class="skel skel-row"></span>
+          <span class="skel skel-row"></span>
+        </div>
       </div>
     </div>
   </div>
@@ -84,7 +94,7 @@
     <div class="card"><div class="ch"><i class="fa-solid fa-clock-rotate-left"></i> Run History</div>
       <div class="cb" style="padding:0;overflow-x:auto;">
         <table class="dt"><thead><tr><th>#</th><th>Schedule</th><th>Target</th><th>Started</th><th>Duration</th><th>Findings</th><th>Crit</th><th>High</th><th>Med</th><th>Low</th><th>Result</th><th>Action</th></tr></thead>
-        <tbody id="historyBody"><tr><td colspan="12" class="empty-td"><i class="fa-solid fa-clock-rotate-left"></i> No run history yet.</td></tr></tbody></table>
+        <tbody id="historyBody"><tr><td colspan="12" style="padding:.75rem 1rem;"><span class="skel skel-row" style="margin:0;"></span></td></tr></tbody></table>
       </div>
     </div>
   </div>
@@ -339,9 +349,14 @@ var editingId = null, livePoller = null, wasRunning = false, popupOpen = false, 
 // Load all data from APIs
 async function loadAllDataFromAPI() {
     try {
-        // Load schedules
-        var res1 = await fetch('/api/scheduled-scans');
-        var data1 = await res1.json();
+        // Fetch all 3 endpoints in parallel — much faster
+        var [res1, res2, res3] = await Promise.all([
+            fetch('/api/scheduled-scans'),
+            fetch('/api/scheduled-scan-runs'),
+            fetch('/api/tracked-vulnerabilities')
+        ]);
+        var [data1, data2, data3] = await Promise.all([res1.json(), res2.json(), res3.json()]);
+
         if (data1.status === 'ok' && Array.isArray(data1.schedules)) {
             schedules = data1.schedules.map(function(s) {
                 return {
@@ -375,9 +390,6 @@ async function loadAllDataFromAPI() {
             });
         }
         
-        // Load run history
-        var res2 = await fetch('/api/scheduled-scan-runs');
-        var data2 = await res2.json();
         if (data2.status === 'ok' && Array.isArray(data2.runs)) {
             runHistory = data2.runs.map(function(r) {
                 return {
@@ -397,16 +409,21 @@ async function loadAllDataFromAPI() {
             });
         }
         
-        // Load tracked vulnerabilities
-        var res3 = await fetch('/api/tracked-vulnerabilities');
-        var data3 = await res3.json();
         if (data3.status === 'ok' && Array.isArray(data3.vulnerabilities)) {
             trackedVulns = data3.vulnerabilities;
         }
+
+        // Remove skeleton loaders on first real data load
+        var sk = document.getElementById('schedSkeleton');
+        if (sk) sk.remove();
         
         renderAll();
     } catch (e) {
         console.error('Failed to load data from API:', e);
+        // On error, remove skeleton and show empty state
+        var sk = document.getElementById('schedSkeleton');
+        if (sk) sk.remove();
+        renderAll();
     }
 }
 
