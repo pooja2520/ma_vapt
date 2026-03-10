@@ -118,7 +118,10 @@
   <!-- Bar Chart -->
   <div class="card" id="barChartCard" style="display:none;">
     <div class="ch" style="display:flex;align-items:center;justify-content:space-between;"><span><i class="fa-solid fa-chart-bar"></i> Scan History — Vulnerability Trends</span><span id="barChartTs" style="font-size:.68rem;color:rgba(255,255,255,.65);font-weight:400;"></span></div>
-    <div class="cb"><canvas id="barC" style="max-height:220px;"></canvas></div>
+    <div class="cb">
+      <canvas id="barC" style="max-height:220px;"></canvas>
+      <div id="barChartNav" style="display:flex;align-items:center;justify-content:center;gap:.5rem;margin-top:.625rem;"></div>
+    </div>
   </div>
 
   <!-- Per-Scan History Table -->
@@ -239,41 +242,57 @@ function renderDonut(s) {
         </span>`).join('');
 }
 
-// ── Bar chart — live-updating, shows all recent scans ────────────────────────
-let _barFP = '';  // fingerprint — skip redraw if data unchanged
+// ── Bar chart — paginated, shows all scans in windows of 15 ──────
+let _barFP   = '';
+let _barData = null;
+let _barPage = 0;          // 0 = most recent window (rightmost)
+const BAR_WINDOW = 15;
 
 function renderBarChart(bc) {
     if (!bc || !bc.labels || !bc.labels.length) return;
     document.getElementById('barChartCard').style.display = 'block';
 
-    // Build fingerprint — if nothing changed, skip
-    const fp = bc.labels.join(',') + '|' + (bc.critical||[]).join(',') + '|' + (bc.high||[]).join(',') + '|' + (bc.info||[]).join(',');
-    if (barChart && fp === _barFP) return;
+    // Fingerprint — only update _barData if data changed; keep page position
+    const fp = bc.labels.length + '|' + (bc.info||[]).slice(-1).join('');
+    const isNew = !_barData || fp !== _barFP;
     _barFP = fp;
+    if (isNew) {
+        _barData = bc;
+        // On new data: jump to last (most recent) page
+        const total = bc.labels.length;
+        const pages = Math.ceil(total / BAR_WINDOW);
+        _barPage = pages - 1;
+    }
+    _drawBarPage();
+}
 
-    // Labels: #1 oldest → #N newest (left → right)
-    const labels = bc.labels.map((lbl, i) => '#' + (i + 1) + ' ' + lbl);
+function _drawBarPage() {
+    const bc    = _barData;
+    const total = bc.labels.length;
+    const pages = Math.ceil(total / BAR_WINDOW);
+    _barPage    = Math.max(0, Math.min(_barPage, pages - 1));
+
+    const start  = _barPage * BAR_WINDOW;
+    const end    = Math.min(start + BAR_WINDOW, total);
+    const slice  = (arr) => (arr || bc.labels.map(()=>0)).slice(start, end);
+    const labels = bc.labels.slice(start, end).map((lbl, i) => '#' + (start + i + 1) + ' ' + lbl);
 
     const datasets = [
-        { label:'Critical', data: bc.critical || bc.labels.map(()=>0), backgroundColor:'rgba(239,68,68,.6)',  borderColor:'#ef4444', borderWidth:2, borderRadius:4 },
-        { label:'High',     data: bc.high     || bc.labels.map(()=>0), backgroundColor:'rgba(249,115,22,.6)', borderColor:'#f97316', borderWidth:2, borderRadius:4 },
-        { label:'Medium',   data: bc.medium   || bc.labels.map(()=>0), backgroundColor:'rgba(234,179,8,.6)',  borderColor:'#eab308', borderWidth:2, borderRadius:4 },
-        { label:'Low',      data: bc.low      || bc.labels.map(()=>0), backgroundColor:'rgba(34,197,94,.6)',  borderColor:'#22c55e', borderWidth:2, borderRadius:4 },
-        { label:'Info',     data: bc.info     || bc.labels.map(()=>0), backgroundColor:'rgba(37,99,235,.6)',  borderColor:'#2563eb', borderWidth:2, borderRadius:4 },
+        { label:'Critical', data: slice(bc.critical), backgroundColor:'rgba(239,68,68,.6)',  borderColor:'#ef4444', borderWidth:2, borderRadius:4 },
+        { label:'High',     data: slice(bc.high),     backgroundColor:'rgba(249,115,22,.6)', borderColor:'#f97316', borderWidth:2, borderRadius:4 },
+        { label:'Medium',   data: slice(bc.medium),   backgroundColor:'rgba(234,179,8,.6)',  borderColor:'#eab308', borderWidth:2, borderRadius:4 },
+        { label:'Low',      data: slice(bc.low),      backgroundColor:'rgba(34,197,94,.6)',  borderColor:'#22c55e', borderWidth:2, borderRadius:4 },
+        { label:'Info',     data: slice(bc.info),     backgroundColor:'rgba(37,99,235,.6)',  borderColor:'#2563eb', borderWidth:2, borderRadius:4 },
     ];
 
-    if (barChart) {
-        // Destroy and recreate so new bars appear correctly (handles count change)
-        barChart.destroy();
-        barChart = null;
-    }
+    if (barChart) { barChart.destroy(); barChart = null; }
 
     barChart = new Chart(document.getElementById('barC'), {
         type: 'bar',
         data: { labels, datasets },
         options: {
             responsive: true,
-            animation: { duration: 500 },
+            animation: { duration: 400 },
             plugins: {
                 legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } },
                 tooltip: {
@@ -290,9 +309,34 @@ function renderBarChart(bc) {
         }
     });
 
-    // Update live timestamp in chart header
+    // Update nav controls
+    const navEl = document.getElementById('barChartNav');
+    if (navEl) {
+        const btnStyle = (disabled) =>
+            `style="padding:.25rem .6rem;border:1.5px solid ${disabled?'#e2e8f0':'var(--border)'};border-radius:7px;background:${disabled?'#f8fafc':'#fff'};color:${disabled?'#cbd5e1':'var(--text-muted)'};font-size:.72rem;cursor:${disabled?'default':'pointer'};font-family:'DM Sans',sans-serif;" ${disabled?'disabled':''}`;
+        navEl.innerHTML = `
+            <button onclick="goBarPage(${_barPage-1})" ${btnStyle(_barPage===0)} title="Older scans">
+                <i class="fa-solid fa-chevron-left"></i> Older
+            </button>
+            <span style="font-size:.72rem;color:var(--text-muted);padding:0 .4rem;">
+                Scans ${start+1}–${end} of ${total}
+            </span>
+            <button onclick="goBarPage(${_barPage+1})" ${btnStyle(_barPage>=pages-1)} title="Newer scans">
+                Newer <i class="fa-solid fa-chevron-right"></i>
+            </button>`;
+    }
+
+    // Update live timestamp
     const tsEl = document.getElementById('barChartTs');
     if (tsEl) tsEl.textContent = 'Updated ' + new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+
+function goBarPage(p) {
+    if (!_barData) return;
+    const pages = Math.ceil(_barData.labels.length / BAR_WINDOW);
+    if (p < 0 || p >= pages) return;
+    _barPage = p;
+    _drawBarPage();
 }
 
 // ── Per-scan history table with pagination ──────────────────────
