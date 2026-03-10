@@ -251,10 +251,10 @@
 
       <div class="fg"><label>Time of Day</label>
         <div class="time-presets">
-          <button type="button" class="tp-btn" onclick="selTimePreset(this,'02:00')">&#127769; Night<br><small>02:00 AM</small></button>
-          <button type="button" class="tp-btn" onclick="selTimePreset(this,'06:00')">&#127749; Morning<br><small>06:00 AM</small></button>
-          <button type="button" class="tp-btn" onclick="selTimePreset(this,'14:00')">&#9728; Afternoon<br><small>02:00 PM</small></button>
-          <button type="button" class="tp-btn" onclick="selTimePreset(this,'22:00')">&#127747; Evening<br><small>10:00 PM</small></button>
+          <button type="button" class="tp-btn" onclick="selTimePreset(this,'02:00')">&#127769; Night<br><small>02:00</small></button>
+          <button type="button" class="tp-btn" onclick="selTimePreset(this,'06:00')">&#127749; Morning<br><small>06:00</small></button>
+          <button type="button" class="tp-btn" onclick="selTimePreset(this,'14:00')">&#9728; Afternoon<br><small>14:00</small></button>
+          <button type="button" class="tp-btn" onclick="selTimePreset(this,'22:00')">&#127747; Evening<br><small>22:00</small></button>
         </div>
       </div>
       <div class="fg"><label>Custom Time</label><input type="time" id="mTime" value="02:00"></div>
@@ -412,7 +412,6 @@ async function loadAllDataFromAPI() {
 
 // Initialize by loading from API
 async function initPage() {
-    initLayout('/scheduled');
     await loadAllDataFromAPI();
     document.querySelectorAll('.day-btn').forEach(function(b){ b.addEventListener('click',function(){ b.classList.toggle('active'); updatePreview(); }); });
     document.getElementById('mTime').addEventListener('change', updatePreview);
@@ -1233,6 +1232,10 @@ async function checkScheduledRuns() {
 }
 
 {% endraw %}
+</script>
+<script>
+// layout.js is already loaded by base.html — call initLayout immediately
+initLayout('/scheduled');
 </script>
 
 <!-- ══ Run History Modal ══ -->
