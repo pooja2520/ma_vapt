@@ -123,7 +123,10 @@
 
   <!-- Per-Scan History Table -->
   <div class="card" id="scanHistoryCard" style="display:none;">
-    <div class="ch"><i class="fa-solid fa-clock-rotate-left"></i> Per-Scan Results</div>
+    <div class="ch" style="display:flex;align-items:center;justify-content:space-between;">
+      <span><i class="fa-solid fa-clock-rotate-left"></i> Per-Scan Results</span>
+      <span id="scanHistoryCount" style="font-size:.72rem;font-weight:400;opacity:.75;"></span>
+    </div>
     <div class="cb" style="padding:0;overflow-x:auto;">
       <table class="dt" id="scanHistoryTable">
         <thead>
@@ -135,6 +138,11 @@
         </thead>
         <tbody id="scanHistoryBody"></tbody>
       </table>
+    </div>
+    <!-- Pagination -->
+    <div id="scanHistoryPagination" style="display:flex;align-items:center;justify-content:space-between;padding:.625rem 1rem;border-top:1px solid var(--border);flex-wrap:wrap;gap:.5rem;">
+      <span id="scanHistoryPageInfo" style="font-size:.75rem;color:var(--text-muted);"></span>
+      <div style="display:flex;gap:.3rem;" id="scanHistoryPageBtns"></div>
     </div>
   </div>
 
@@ -287,11 +295,37 @@ function renderBarChart(bc) {
     if (tsEl) tsEl.textContent = 'Updated ' + new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
 }
 
-// ── Per-scan history table ──────────────────────────────────────
+// ── Per-scan history table with pagination ──────────────────────
+let _scanHistory  = [];
+let _scanPage     = 1;
+const SCAN_PER_PAGE = 10;
+
 function renderScanHistory(history) {
     if (!history||!history.length) return;
+    // Only reset to page 1 if the scan list has changed (new scan added/removed)
+    const prevLen     = _scanHistory.length;
+    const prevFirstId = _scanHistory[0]?.id;
+    _scanHistory = history;
+    if (history.length !== prevLen || history[0]?.id !== prevFirstId) {
+        _scanPage = 1;
+    }
     document.getElementById('scanHistoryCard').style.display = 'block';
-    document.getElementById('scanHistoryBody').innerHTML = history.map((h,i)=>{
+    renderScanPage();
+}
+
+function renderScanPage() {
+    const history = _scanHistory;
+    const total   = history.length;
+    const pages   = Math.ceil(total / SCAN_PER_PAGE);
+    _scanPage     = Math.max(1, Math.min(_scanPage, pages));
+    const start   = (_scanPage - 1) * SCAN_PER_PAGE;
+    const slice   = history.slice(start, start + SCAN_PER_PAGE);
+
+    // Count label in header
+    const countEl = document.getElementById('scanHistoryCount');
+    if (countEl) countEl.textContent = total + ' total scan' + (total !== 1 ? 's' : '');
+
+    document.getElementById('scanHistoryBody').innerHTML = slice.map((h,i)=>{
         const sp   = h.success_pct ?? 0;
         const vp   = h.vuln_pct   ?? 0;
         const sc   = sp>=80 ? '#22c55e' : sp>=50 ? '#eab308' : '#ef4444';
@@ -330,6 +364,45 @@ function renderScanHistory(history) {
           <td><span class="bx ${h.status==='Completed'?'bac':'bc'}">${h.status}</span></td>
         </tr>`;
     }).join('');
+
+    // Page info text
+    const pageInfoEl = document.getElementById('scanHistoryPageInfo');
+    if (pageInfoEl) pageInfoEl.textContent = `Showing ${start + 1}–${Math.min(start + SCAN_PER_PAGE, total)} of ${total} scans`;
+
+    // Pagination buttons
+    const btnsEl = document.getElementById('scanHistoryPageBtns');
+    if (btnsEl) {
+        const btnStyle = (active) =>
+            `style="padding:.3rem .65rem;border:1.5px solid ${active?'var(--blue)':'var(--border)'};border-radius:7px;background:${active?'var(--blue)':'#fff'};color:${active?'#fff':'var(--text-muted)'};font-size:.75rem;font-weight:600;cursor:${active?'default':'pointer'};font-family:'DM Sans',sans-serif;"`;
+
+        let html = `<button onclick="goScanPage(${_scanPage-1})" ${_scanPage===1?'disabled':''}
+            style="padding:.3rem .6rem;border:1.5px solid var(--border);border-radius:7px;background:#fff;color:var(--text-muted);font-size:.75rem;cursor:pointer;"
+            title="Previous"><i class="fa-solid fa-chevron-left"></i></button>`;
+
+        // Smart page range: always show first, last, current ±1, with ellipsis
+        const pageNums = new Set([1, pages, _scanPage, _scanPage-1, _scanPage+1].filter(n => n>=1 && n<=pages));
+        const sorted   = [...pageNums].sort((a,b)=>a-b);
+        let prev = 0;
+        for (const n of sorted) {
+            if (prev && n - prev > 1) html += `<span style="padding:.3rem .4rem;font-size:.75rem;color:var(--text-muted);">…</span>`;
+            const isActive = n === _scanPage;
+            html += `<button onclick="goScanPage(${n})" ${isActive?'disabled':''} ${btnStyle(isActive)}>${n}</button>`;
+            prev = n;
+        }
+
+        html += `<button onclick="goScanPage(${_scanPage+1})" ${_scanPage===pages?'disabled':''}
+            style="padding:.3rem .6rem;border:1.5px solid var(--border);border-radius:7px;background:#fff;color:var(--text-muted);font-size:.75rem;cursor:pointer;"
+            title="Next"><i class="fa-solid fa-chevron-right"></i></button>`;
+        btnsEl.innerHTML = html;
+    }
+}
+
+function goScanPage(n) {
+    const pages = Math.ceil(_scanHistory.length / SCAN_PER_PAGE);
+    if (n < 1 || n > pages) return;
+    _scanPage = n;
+    renderScanPage();
+    document.getElementById('scanHistoryCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // ── Main load ───────────────────────────────────────────────────
