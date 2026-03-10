@@ -701,7 +701,7 @@ def api_dashboard_stats():
     }
 
     bar_labels, bar_crit, bar_high, bar_med, bar_low, bar_info = [], [], [], [], [], []
-    for entry in list(reversed(scan_history))[-12:]:  # latest 12, oldest→newest left→right
+    for entry in list(reversed(scan_history)):  # all scans, oldest→newest left→right
         bar_labels.append(entry['target'][:12] or entry['date'])
         bar_crit.append(entry.get('critical', 0))
         bar_high.append(entry.get('high', 0))
