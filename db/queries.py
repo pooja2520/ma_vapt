@@ -901,7 +901,26 @@ def get_run_history(user_id, schedule_id=None, limit=50):
                 WHERE r.user_id = %s
                 ORDER BY r.id DESC LIMIT %s
             """, (user_id, limit))
-        return cur.fetchall()
+        rows = cur.fetchall()
+        # Convert datetime fields: old records stored UTC, new ones store local.
+        # We detect by comparing to local now — if > 1h ahead it's likely UTC, shift it.
+        from datetime import datetime as _dt, timedelta as _td
+        import time as _t
+        _offset_sec = -(_t.timezone if _t.localtime().tm_isdst == 0 else _t.altzone)
+        _offset = _td(seconds=_offset_sec)
+        _now_local = _dt.now()
+        for row in (rows or []):
+            for col in ('started_at', 'finished_at', 'created_at'):
+                val = row.get(col)
+                if isinstance(val, _dt):
+                    # If the stored time is more than 1h behind local now AND
+                    # adding local offset makes it closer to now → it was stored as UTC
+                    shifted = val + _offset
+                    diff_orig    = abs((_now_local - val).total_seconds())
+                    diff_shifted = abs((_now_local - shifted).total_seconds())
+                    use = shifted if diff_shifted < diff_orig else val
+                    row[col] = use.strftime('%Y-%m-%d %H:%M:%S')
+        return rows
 
 
 # ── Scheduled Scan Vulnerabilities ────────────────────────────────────────────
