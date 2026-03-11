@@ -662,7 +662,14 @@ def scan_completion_transaction(target, raw_results, filename, scan_time, severi
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _decode_schedule(r):
-    """Decode auth_config_json and serialize datetime fields as local strings."""
+    """Decode auth_config_json and serialize datetime fields as local (IST) strings.
+
+    MySQL DATETIME columns have no timezone info. Historically some rows were
+    written with UTC values (via datetime.utcnow()), while newer rows use
+    local time (datetime.now()). We detect old UTC rows by checking whether
+    adding the local UTC offset brings the value closer to now — if so it was
+    stored as UTC and we shift it to local time before returning.
+    """
     if not r:
         return None
     if r.get('auth_config_json'):
@@ -672,11 +679,27 @@ def _decode_schedule(r):
             r['auth_config'] = {'type': 'none'}
     else:
         r['auth_config'] = {'type': 'none'}
-    # Convert datetime objects → local string so JS never misinterprets as UTC
-    from datetime import datetime as _dt
+
+    from datetime import datetime as _dt, timedelta as _td
+    import time as _t
+
+    # Local UTC offset in seconds (handles DST automatically)
+    _offset_sec = -(_t.timezone if _t.localtime().tm_isdst == 0 else _t.altzone)
+    _offset     = _td(seconds=_offset_sec)
+    _now_local  = _dt.now()
+
     for _col in ('last_run_at', 'next_run_at', 'created_at', 'updated_at'):
-        if isinstance(r.get(_col), _dt):
-            r[_col] = r[_col].strftime('%Y-%m-%d %H:%M:%S')
+        val = r.get(_col)
+        if not isinstance(val, _dt):
+            continue
+        # If stored value is UTC, shifting it by the local offset brings it
+        # closer to local-now than the raw value does → it was stored as UTC.
+        shifted      = val + _offset
+        diff_raw     = abs((_now_local - val).total_seconds())
+        diff_shifted = abs((_now_local - shifted).total_seconds())
+        use          = shifted if diff_shifted < diff_raw else val
+        r[_col]      = use.strftime('%Y-%m-%d %H:%M:%S')
+
     return r
 
 
@@ -1050,6 +1073,20 @@ def get_scheduled_scan_stats(user_id):
             WHERE user_id = %s AND status = 'active' AND next_run_at IS NOT NULL
         """, (user_id,))
         nxt = (cur.fetchone() or {}).get('nxt')
+    # Convert next_run_at from UTC to local if needed (same heuristic as _decode_schedule)
+    if nxt is not None:
+        from datetime import datetime as _dt, timedelta as _td
+        import time as _t
+        _offset_sec = -(_t.timezone if _t.localtime().tm_isdst == 0 else _t.altzone)
+        _offset     = _td(seconds=_offset_sec)
+        _now_local  = _dt.now()
+        if isinstance(nxt, _dt):
+            shifted      = nxt + _offset
+            diff_raw     = abs((_now_local - nxt).total_seconds())
+            diff_shifted = abs((_now_local - shifted).total_seconds())
+            nxt = shifted if diff_shifted < diff_raw else nxt
+        nxt = nxt.strftime('%Y-%m-%d %H:%M:%S') if hasattr(nxt, 'strftime') else str(nxt)
+
     return {
         'active_schedules': active or 0,
         'runs_completed':   runs_done or 0,
