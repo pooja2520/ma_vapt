@@ -2,12 +2,49 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1e293b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>{% block title %}VAPT Scanner Pro{% endblock %}</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/layout.css') }}">
 {% block extra_css %}{% endblock %}
+<style>
+/* ── Base responsive resets (shared across all pages) ── */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+img, video, iframe { max-width: 100%; }
+/* Smooth sidebar transition */
+.main, #main {
+    transition: margin-left .25s ease;
+    min-height: 100vh;
+}
+/* Grid helpers — override for mobile */
+@media (max-width: 900px) {
+    .g2 { grid-template-columns: 1fr !important; gap: .75rem !important; }
+    .feat-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (max-width: 600px) {
+    .g2 { grid-template-columns: 1fr !important; gap: .625rem !important; }
+    .feat-grid { grid-template-columns: 1fr 1fr !important; }
+    .phase-grid { grid-template-columns: repeat(2,1fr) !important; }
+    .card { border-radius: 10px; }
+    .ch  { font-size: .82rem; padding: .625rem .875rem; }
+    .cb  { padding: .75rem .875rem; }
+    .btn { font-size: .78rem; padding: .45rem .875rem; }
+    .content { padding: .625rem .625rem 4rem; }
+}
+@media (max-width: 440px) {
+    .feat-grid { grid-template-columns: 1fr !important; }
+    .scan-stats-row { grid-template-columns: repeat(2, 1fr) !important; }
+    .pt h1 { font-size: 1.05rem; }
+    .pt p  { font-size: .72rem; }
+    .btn { font-size: .75rem; }
+}
+</style>
 </head>
 <body>
 <script>window.__user = {{ (current_user | tojson) if current_user else 'null' }};</script>
