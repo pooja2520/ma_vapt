@@ -844,10 +844,22 @@ def get_due_scheduled_scans(now=None):
 
 
 def mark_scheduled_scan_running(schedule_id):
-    """Set scheduled scan status to 'running'. Called just before the scan fires."""
+    """Atomically claim a schedule for execution (compare-and-swap).
+
+    Only updates the row when status is still 'active', preventing duplicate
+    fires when the scheduler loop ticks again before the thread starts.
+
+    Returns True if this caller successfully claimed the schedule, False if
+    another thread/process already claimed it (status was not 'active').
+    """
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("UPDATE scheduled_scans SET status = 'running' WHERE id = %s", (schedule_id,))
+        cur.execute(
+            "UPDATE scheduled_scans SET status = 'running' "
+            "WHERE id = %s AND status = 'active'",
+            (schedule_id,)
+        )
+        return cur.rowcount > 0
 
 
 # ── Scheduled Scan Runs ───────────────────────────────────────────────────────
