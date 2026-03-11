@@ -307,6 +307,92 @@
     transition: transform 0.2s cubic-bezier(.34,1.5,.64,1);
 }
 .nb-bx.bump { transform: scale(1.35); }
+
+/* ── Sidebar NEW badge ─────────────────────────────────── */
+.sb-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    border-radius: 5px;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, #2563eb, #06b6d4);
+    color: #fff;
+    margin-left: auto;
+    flex-shrink: 0;
+    line-height: 1.6;
+    box-shadow: 0 1px 4px rgba(37,99,235,.35);
+    pointer-events: none;
+}
+.sb.col .sb-badge { display: none; }
+
+/* ── Responsive: tablet (≤ 900px) ─────────────────────── */
+@media (max-width: 900px) {
+    .sb { width: 56px !important; }
+    .sb .sb-logo-text,
+    .sb .ni span,
+    .sb .col-btn span { display: none !important; }
+    .sb .sb-logo { justify-content: center; padding: .75rem 0; }
+    .sb .ni { justify-content: center; padding: .55rem 0; }
+    .sb-badge { display: none !important; }
+    .sb .col-btn { justify-content: center; }
+    :root { --ml: 56px !important; }
+}
+
+/* ── Responsive: mobile (≤ 600px) ─────────────────────── */
+@media (max-width: 600px) {
+    .sb { transform: translateX(-100%); position: fixed; z-index: 1100; width: 220px !important; transition: transform .25s ease; }
+    .sb.mob-open { transform: translateX(0); }
+    .sb .sb-logo-text,
+    .sb .ni span,
+    .sb .col-btn span { display: block !important; }
+    .sb .sb-logo { justify-content: flex-start; padding: 1rem 1.125rem; }
+    .sb .ni { justify-content: flex-start; padding: .55rem 1rem; }
+    .sb-badge { display: inline-flex !important; }
+    .sb .col-btn { justify-content: flex-start; }
+    :root { --ml: 0px !important; }
+    .main, #main { margin-left: 0 !important; }
+    .hdr { left: 0 !important; }
+    .sb-overlay { display: block !important; }
+}
+
+/* ── Responsive: small mobile (≤ 440px) ───────────────── */
+@media (max-width: 440px) {
+    .hdr .srch { display: none; }
+    .hdr { padding: 0 .75rem; }
+    .content { padding: .625rem .625rem 1rem; }
+    .g2 { grid-template-columns: 1fr !important; gap: .625rem !important; }
+    .pt h1 { font-size: 1.1rem; }
+    .pt p  { font-size: .75rem; }
+}
+
+/* ── Mobile sidebar overlay ────────────────────────────── */
+.sb-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.45);
+    z-index: 1099;
+    backdrop-filter: blur(2px);
+}
+
+/* ── Mobile hamburger btn (injected on small screens) ─── */
+.mob-menu-btn {
+    display: none;
+    background: none;
+    border: none;
+    font-size: 1.1rem;
+    color: var(--text, #111827);
+    cursor: pointer;
+    padding: .4rem .5rem;
+    border-radius: 8px;
+    transition: background .15s;
+    margin-right: .25rem;
+}
+.mob-menu-btn:hover { background: var(--border, #e5e7eb); }
+@media (max-width: 600px) { .mob-menu-btn { display: flex; align-items: center; } }
 `;
         document.head.appendChild(s);
     }
@@ -320,16 +406,17 @@
     // ── Sidebar ───────────────────────────────────────────────────────────
     function renderSidebar(active) {
         const items = [
-            ['/dashboard',      'fa-solid fa-table-cells-large',  'Dashboard'],
-            ['/targets',        'fa-solid fa-crosshairs',          'Targets'],
-            ['/scanning',       'fa-solid fa-magnifying-glass',    'Scanning'],
-            ['/vulnerabilities','fa-solid fa-bug',                 'Vulnerabilities'],
-            ['/reports',        'fa-regular fa-file-lines',        'Reports'],
-            ['/scheduled',      'fa-solid fa-calendar-check',      'Scheduled'],
-            ['/features',       'fa-solid fa-bolt',                'Features'],
-            ['/documentation',  'fa-solid fa-book-open',           'Documentation'],
-            ['/about',          'fa-solid fa-circle-info',         'About'],
-            ['/settings',       'fa-solid fa-gear',                'Settings'],
+            ['/dashboard',          'fa-solid fa-table-cells-large',  'Dashboard',       null],
+            ['/targets',            'fa-solid fa-crosshairs',          'Targets',         null],
+            ['/scanning',           'fa-solid fa-magnifying-glass',    'Scanning',        null],
+            ['/bulk-ip-scanning',   'fa-solid fa-network-wired',       'Bulk IP Scanner', 'NEW'],
+            ['/vulnerabilities',    'fa-solid fa-bug',                 'Vulnerabilities', null],
+            ['/reports',            'fa-regular fa-file-lines',        'Reports',         null],
+            ['/scheduled',          'fa-solid fa-calendar-check',      'Scheduled',       null],
+            ['/features',           'fa-solid fa-bolt',                'Features',        null],
+            ['/documentation',      'fa-solid fa-book-open',           'Documentation',   null],
+            ['/about',              'fa-solid fa-circle-info',         'About',           null],
+            ['/settings',           'fa-solid fa-gear',                'Settings',        null],
         ];
         return `<aside class="sb" id="sb">
             <div class="sb-logo">
@@ -337,7 +424,7 @@
                 <div class="sb-logo-text"><strong>VAPT Scanner</strong><small>Enterprise Security</small></div>
             </div>
             <nav class="sb-nav">
-                ${items.map(([h, ic, l]) => `<a href="${h}" class="ni${active === h ? ' on' : ''}" title="${l}"><i class="${ic}"></i><span>${l}</span></a>`).join('')}
+                ${items.map(([h, ic, l, badge]) => `<a href="${h}" class="ni${active === h ? ' on' : ''}" title="${l}"><i class="${ic}"></i><span>${l}</span>${badge ? `<span class="sb-badge">${badge}</span>` : ''}</a>`).join('')}
             </nav>
             <div class="sb-foot">
                 <button class="col-btn" onclick="toggleSB()"><i class="fa-solid fa-chevron-left" id="cbI"></i><span>Collapse</span></button>
@@ -348,6 +435,7 @@
     // ── Header ────────────────────────────────────────────────────────────
     function renderHeader() {
         return `<header class="hdr" id="hdr">
+            <button class="mob-menu-btn" id="mobMenuBtn" onclick="toggleMobileSB()" title="Menu"><i class="fa-solid fa-bars"></i></button>
             <div class="srch"><i class="fa-solid fa-magnifying-glass"></i><input placeholder="Search targets, scans, vulnerabilities..."></div>
             <div class="hr">
                 <div class="nb" style="position:relative">
@@ -567,6 +655,14 @@
         _injectStyles();
         document.body.insertAdjacentHTML('afterbegin', renderSidebar(active));
         document.body.insertAdjacentHTML('afterbegin', renderHeader());
+        // Inject mobile overlay
+        if (!document.getElementById('sb-overlay')) {
+            var ov = document.createElement('div');
+            ov.className = 'sb-overlay';
+            ov.id        = 'sb-overlay';
+            ov.onclick   = function() { closeMobileSB(); };
+            document.body.appendChild(ov);
+        }
         const mEl = document.getElementById('_main');
         if (mEl) {
             mEl.classList.add('main');
@@ -600,5 +696,38 @@
         var el = document.getElementById(id);
         if (el) el.classList.toggle('open');
     };
+
+    // ── Mobile sidebar toggle ─────────────────────────────────────────────
+    window.toggleMobileSB = function () {
+        var sb = document.getElementById('sb');
+        var ov = document.getElementById('sb-overlay');
+        if (!sb) return;
+        var isOpen = sb.classList.contains('mob-open');
+        if (isOpen) { closeMobileSB(); } else { openMobileSB(); }
+    };
+
+    window.openMobileSB = function () {
+        var sb = document.getElementById('sb');
+        var ov = document.getElementById('sb-overlay');
+        if (sb) sb.classList.add('mob-open');
+        if (ov) ov.style.display = 'block';
+        document.body.style.overflow = 'hidden';
+    };
+
+    window.closeMobileSB = function () {
+        var sb = document.getElementById('sb');
+        var ov = document.getElementById('sb-overlay');
+        if (sb) sb.classList.remove('mob-open');
+        if (ov) ov.style.display = 'none';
+        document.body.style.overflow = '';
+    };
+
+    // Close sidebar on nav link click (mobile)
+    document.addEventListener('click', function(e) {
+        var link = e.target.closest('.ni');
+        if (link && window.innerWidth <= 600) {
+            closeMobileSB();
+        }
+    });
 
 })();
