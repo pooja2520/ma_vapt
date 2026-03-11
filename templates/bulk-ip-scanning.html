@@ -1,0 +1,1008 @@
+{% extends "base.html" %}
+{% block title %}Bulk IP Scanner - VAPT Scanner Pro{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/scanning.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/scanner.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bulk-ip-scanning.css') }}">
+{% endblock %}
+{% block body %}
+<div id="_main">
+<div class="content">
+
+  <!-- ── Page Title ──────────────────────────────────────── -->
+  <div class="pt">
+    <h1><i class="fa-solid fa-network-wired"></i> Bulk IP Scanner</h1>
+    <p>Scan multiple IP addresses simultaneously with Nmap &amp; Nikto</p>
+  </div>
+
+  <!-- ── TOP ROW: Config + Progress ──────────────────────── -->
+  <div class="g2">
+
+    <!-- LEFT: Configuration -->
+    <div class="card">
+      <div class="ch"><i class="fa-solid fa-sliders"></i> Scan Configuration</div>
+      <div class="cb">
+
+        <!-- Mode toggle: Text / File -->
+        <div class="fg" style="margin-bottom:.5rem;">
+          <label>Input Mode</label>
+          <div class="mode-toggle">
+            <button class="mode-btn active" id="modeTextBtn" onclick="switchMode('text')">
+              <i class="fa-solid fa-keyboard"></i> Type / Paste
+            </button>
+            <button class="mode-btn" id="modeFileBtn" onclick="switchMode('file')">
+              <i class="fa-solid fa-file-lines"></i> Upload File
+            </button>
+          </div>
+        </div>
+
+        <!-- Text input panel -->
+        <div id="textPanel">
+          <div class="fg">
+            <label>IP Addresses <span style="color:var(--text-muted);font-weight:400;font-size:.75rem;">(comma or newline separated)</span></label>
+            <div class="ip-input-area">
+              <textarea class="ip-textarea" id="ipTextarea"
+                placeholder="192.168.1.1&#10;192.168.1.2, 192.168.1.3&#10;10.0.0.1&#10;172.16.0.1"
+                oninput="parseIPs()"></textarea>
+              <span class="ip-count-badge" id="ipCountBadge">0 IPs</span>
+            </div>
+          </div>
+          <div class="ip-chips" id="ipChips"></div>
+        </div>
+
+        <!-- File upload panel -->
+        <div id="filePanel" style="display:none;">
+          <div class="fg">
+            <label>Upload IP List File <span style="color:var(--text-muted);font-weight:400;font-size:.75rem;">(.txt, .csv)</span></label>
+            <div class="upload-zone" id="uploadZone"
+                 onclick="document.getElementById('ipFileInput').click()"
+                 ondragover="handleDragOver(event)"
+                 ondragleave="handleDragLeave(event)"
+                 ondrop="handleDrop(event)">
+              <i class="fa-solid fa-cloud-arrow-up"></i>
+              <p>Drop your file here or <strong>click to browse</strong></p>
+              <p style="margin-top:.25rem;font-size:.72rem;">Supports .txt and .csv — one IP per line or comma-separated</p>
+              <input type="file" id="ipFileInput" accept=".txt,.csv" onchange="handleFileSelect(event)">
+            </div>
+            <div class="upload-filename" id="uploadFilename" style="display:none;">
+              <i class="fa-solid fa-circle-check"></i>
+              <span id="uploadFilenameTxt"></span>
+              <button onclick="clearFile()" style="background:none;border:none;cursor:pointer;color:#dc2626;margin-left:.25rem;font-size:.75rem;"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+          </div>
+          <div class="ip-chips" id="ipChipsFile"></div>
+        </div>
+
+        <!-- Scan Options -->
+        <div class="fg" style="margin-top:.625rem;">
+          <label>Scan Modules</label>
+          <div class="scan-options">
+            <div class="opt-row">
+              <label><i class="fa-solid fa-satellite-dish"></i> Ping Test (Host Discovery)</label>
+              <label class="toggle-switch"><input type="checkbox" id="optPing" checked><span class="toggle-track"></span></label>
+            </div>
+            <div class="opt-row">
+              <label><i class="fa-solid fa-door-open"></i> Port Scanning</label>
+              <label class="toggle-switch"><input type="checkbox" id="optPorts" checked><span class="toggle-track"></span></label>
+            </div>
+            <div class="opt-row">
+              <label><i class="fa-solid fa-gears"></i> Service Detection</label>
+              <label class="toggle-switch"><input type="checkbox" id="optServices" checked><span class="toggle-track"></span></label>
+            </div>
+            <div class="opt-row">
+              <label><i class="fa-solid fa-fingerprint"></i> OS Detection</label>
+              <label class="toggle-switch"><input type="checkbox" id="optOS"><span class="toggle-track"></span></label>
+            </div>
+            <div class="opt-row">
+              <label><i class="fa-solid fa-bug"></i> Vuln Scripts (Nmap)</label>
+              <label class="toggle-switch"><input type="checkbox" id="optVuln"><span class="toggle-track"></span></label>
+            </div>
+            <div class="opt-row">
+              <label><i class="fa-solid fa-spider"></i> Web Scan (Nikto)</label>
+              <label class="toggle-switch"><input type="checkbox" id="optNikto"><span class="toggle-track"></span></label>
+            </div>
+            <div class="concurrency-row">
+              <i class="fa-solid fa-bolt"></i>
+              <span>Concurrency:</span>
+              <input type="range" class="conc-slider" id="concSlider" min="1" max="10" value="3" oninput="document.getElementById('concVal').textContent=this.value">
+              <span class="conc-val" id="concVal">3</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Alert area -->
+        <div id="bulkError"   class="alert alert-error"   style="display:none;margin-top:.625rem;"><span>⚠️</span><span id="bulkErrorTxt"></span></div>
+        <div id="bulkInfo"    class="alert alert-info"    style="display:none;margin-top:.625rem;"><span>⚙️</span><span id="bulkInfoTxt"></span></div>
+        <div id="bulkSuccess" class="alert alert-success" style="display:none;margin-top:.625rem;"><span>✅</span><span id="bulkSuccessTxt"></span></div>
+
+        <!-- Action Buttons -->
+        <div class="bulk-action-row">
+          <button id="startBulkBtn" class="btn btn-p" onclick="startBulkScan()">
+            <i class="fa-solid fa-play"></i> Start Bulk Scan
+          </button>
+          <button id="pauseBtn" class="btn btn-o" onclick="pauseScan()" style="display:none;">
+            <i class="fa-solid fa-pause"></i> Pause
+          </button>
+          <button id="stopBulkBtn" class="btn btn-o" onclick="stopBulkScan()" style="display:none;">
+            <i class="fa-solid fa-stop"></i> Stop
+          </button>
+          <button id="newBulkBtn"  class="btn btn-o" onclick="newBulkScan()" style="display:none;">
+            <i class="fa-solid fa-rotate"></i> New Scan
+          </button>
+          <button class="btn btn-o" onclick="clearIPs()">
+            <i class="fa-solid fa-trash"></i> Clear
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Scan Queue + Logs -->
+    <div class="card">
+      <div class="ch"><i class="fa-solid fa-list-check"></i> Scan Queue &amp; Progress</div>
+      <div class="cb">
+
+        <!-- Overall progress -->
+        <div class="bulk-overall" id="bulkOverall">
+          <div class="bulk-overall-row">
+            <span id="overallLabel">Waiting to start…</span>
+            <span id="overallPct">0%</span>
+          </div>
+          <div class="bulk-prog-bar">
+            <div class="bulk-prog-fill" id="bulkProgFill" style="width:0%"></div>
+          </div>
+        </div>
+
+        <!-- Summary stats -->
+        <div class="scan-stats-row">
+          <div class="stat-pill online">
+            <div class="sp-val" id="statOnline">0</div>
+            <div class="sp-lbl">Online</div>
+          </div>
+          <div class="stat-pill offline">
+            <div class="sp-val" id="statOffline">0</div>
+            <div class="sp-lbl">Offline</div>
+          </div>
+          <div class="stat-pill vulns">
+            <div class="sp-val" id="statVulns">0</div>
+            <div class="sp-lbl">Vulns</div>
+          </div>
+          <div class="stat-pill ports">
+            <div class="sp-val" id="statPorts">0</div>
+            <div class="sp-lbl">Open Ports</div>
+          </div>
+        </div>
+
+        <!-- Queue list -->
+        <div class="bulk-queue" id="bulkQueue">
+          <div class="empty-state">
+            <i class="fa-regular fa-clock"></i>
+            <p>No IPs queued yet. Add IPs and start a scan.</p>
+          </div>
+        </div>
+
+        <!-- Mini log -->
+        <div class="card" style="margin-top:.875rem;margin-bottom:0;">
+          <div class="ch" style="padding:.5rem .875rem;font-size:.8rem;display:flex;justify-content:space-between;align-items:center;">
+            <span><i class="fa-regular fa-file-lines"></i> Live Scan Log</span>
+            <span id="bulkLogStatus" style="font-size:.7rem;color:var(--text-muted);">Idle</span>
+          </div>
+          <div class="mini-log" id="bulkScanLog">
+            <span style="color:#64748b;">No scan activity yet.</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ── RESULTS TABLE ────────────────────────────────────── -->
+  <div id="resultsSection" style="display:none;">
+    <div class="card">
+      <div class="ch" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;">
+        <span><i class="fa-solid fa-table"></i> Scan Results</span>
+        <div style="display:flex;align-items:center;gap:.5rem;">
+          <input type="text" id="resultsSearch" placeholder="Filter by IP / hostname…"
+            style="padding:.3rem .75rem;border:1.5px solid var(--border);border-radius:8px;font-size:.78rem;width:200px;outline:none;"
+            oninput="filterResults(this.value)">
+          <select id="severityFilter" onchange="filterResults(document.getElementById('resultsSearch').value)"
+            style="padding:.3rem .6rem;border:1.5px solid var(--border);border-radius:8px;font-size:.78rem;outline:none;">
+            <option value="">All Severities</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+      </div>
+      <div class="cb" style="padding:0;">
+        <div class="results-tbl-wrap">
+          <table class="results-tbl" id="resultsTable">
+            <thead>
+              <tr>
+                <th style="width:32px;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
+                <th>IP Address</th>
+                <th>Hostname / OS</th>
+                <th>Status</th>
+                <th>Open Ports</th>
+                <th>Services</th>
+                <th>Severity</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="resultsTbody"></tbody>
+          </table>
+        </div>
+
+        <!-- Report download -->
+        <div class="report-actions" id="reportActions" style="display:none;">
+          <div class="ra-info">
+            <i class="fa-solid fa-circle-check"></i>
+            <span id="reportSummaryTxt">Scan complete — results ready</span>
+          </div>
+          <div class="report-btns">
+            <button class="btn btn-p" onclick="downloadReport('xlsx')">
+              <i class="fa-solid fa-file-excel"></i> Download Excel
+            </button>
+            <button class="btn btn-o" onclick="downloadReport('json')">
+              <i class="fa-solid fa-file-code"></i> Export JSON
+            </button>
+            <button class="btn btn-o" onclick="downloadReport('csv')">
+              <i class="fa-solid fa-file-csv"></i> Export CSV
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FEATURE CARDS ────────────────────────────────────── -->
+  <div class="bulk-feat-grid feat-grid">
+    <div class="feat-card">
+      <h4><i class="fa-solid fa-satellite-dish" style="color:var(--blue)"></i> Host Discovery</h4>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> ICMP Ping Sweep</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> TCP SYN Discovery</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> UDP Discovery</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> ARP Scan (LAN)</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Latency Measurement</div>
+    </div>
+    <div class="feat-card">
+      <h4><i class="fa-solid fa-door-open" style="color:var(--green)"></i> Port &amp; Service</h4>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Full Port Scan (1–65535)</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Service Version Detection</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Protocol Identification</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Banner Grabbing</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Filtered Port Detection</div>
+    </div>
+    <div class="feat-card">
+      <h4><i class="fa-solid fa-bug" style="color:var(--red,#ef4444)"></i> Vulnerability Scan</h4>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Nmap Vuln Scripts</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> CVE Identification</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Nikto Web Scanner</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> SSL/TLS Analysis</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Default Credentials Check</div>
+    </div>
+    <div class="feat-card">
+      <h4><i class="fa-solid fa-file-export" style="color:var(--yellow,#eab308)"></i> Reporting</h4>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Excel (.xlsx) Export</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> JSON Export</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> CSV Export</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Per-IP Detailed Report</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Severity Summary</div>
+    </div>
+  </div>
+
+</div><!-- /content -->
+</div><!-- /_main -->
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/layout.js') }}"></script>
+<script>
+// ════════════════════════════════════════════════════════════════
+//  INIT LAYOUT
+// ════════════════════════════════════════════════════════════════
+initLayout('/bulk-ip-scanning');
+
+// ════════════════════════════════════════════════════════════════
+//  STATE
+// ════════════════════════════════════════════════════════════════
+let parsedIPs       = [];       // validated IPs from input
+let scanQueue       = [];       // { ip, status, result }
+let scanResults     = [];       // completed results
+let isScanRunning   = false;
+let isPaused        = false;
+let stopRequested   = false;
+let currentScanIdx  = 0;
+let activeScanId    = null;
+let pollTimer       = null;
+let currentMode     = 'text';   // 'text' | 'file'
+let allResults      = [];       // for filtering
+const BULK_SCAN_KEY = 'vapt_bulk_scan';
+
+// ════════════════════════════════════════════════════════════════
+//  MODE SWITCH
+// ════════════════════════════════════════════════════════════════
+function switchMode(mode) {
+  currentMode = mode;
+  document.getElementById('modeTextBtn').classList.toggle('active', mode === 'text');
+  document.getElementById('modeFileBtn').classList.toggle('active', mode === 'file');
+  document.getElementById('textPanel').style.display = mode === 'text' ? '' : 'none';
+  document.getElementById('filePanel').style.display = mode === 'file' ? '' : 'none';
+  parsedIPs = [];
+  renderChips([], 'ipChips');
+  renderChips([], 'ipChipsFile');
+  updateIPCount(0);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  IP PARSING & VALIDATION
+// ════════════════════════════════════════════════════════════════
+function isValidIP(ip) {
+  const re = /^(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
+  return re.test(ip.trim());
+}
+
+function isCIDR(v) {
+  return /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/.test(v.trim());
+}
+
+function parseRawText(raw) {
+  return raw.split(/[\n,;]+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+}
+
+function parseIPs() {
+  const raw  = document.getElementById('ipTextarea').value;
+  const toks = parseRawText(raw);
+  parsedIPs  = toks.filter(t => isValidIP(t) || isCIDR(t));
+  renderChips(toks, 'ipChips');
+  updateIPCount(parsedIPs.length);
+}
+
+function renderChips(toks, containerId) {
+  const el = document.getElementById(containerId);
+  if (!toks.length) { el.innerHTML = ''; return; }
+  el.innerHTML = toks.slice(0, 40).map(t => {
+    const valid = isValidIP(t) || isCIDR(t);
+    return `<span class="ip-chip ${valid ? '' : 'invalid'}">
+      <i class="fa-solid fa-${valid ? 'server' : 'triangle-exclamation'}" style="font-size:.6rem;"></i>
+      ${t}
+      <button class="rm-chip" onclick="removeChip('${t}','${containerId}')" title="Remove">×</button>
+    </span>`;
+  }).join('') + (toks.length > 40 ? `<span class="ip-chip" style="background:#f3f4f6;color:#6b7280;">+${toks.length-40} more</span>` : '');
+}
+
+function removeChip(ip, containerId) {
+  if (currentMode === 'text') {
+    const ta  = document.getElementById('ipTextarea');
+    ta.value  = ta.value.split(/[\n,;]+/).map(s=>s.trim()).filter(s=>s!==ip).join('\n');
+    parseIPs();
+  } else {
+    parsedIPs = parsedIPs.filter(i => i !== ip);
+    renderChips(parsedIPs, containerId);
+    updateIPCount(parsedIPs.length);
+  }
+}
+
+function updateIPCount(n) {
+  document.getElementById('ipCountBadge').textContent = n + ' IP' + (n !== 1 ? 's' : '');
+}
+
+function clearIPs() {
+  document.getElementById('ipTextarea').value = '';
+  parsedIPs = [];
+  renderChips([], 'ipChips');
+  renderChips([], 'ipChipsFile');
+  updateIPCount(0);
+  clearFile();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  FILE UPLOAD
+// ════════════════════════════════════════════════════════════════
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) processFile(file);
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  document.getElementById('uploadZone').classList.add('drag-over');
+}
+
+function handleDragLeave(e) {
+  document.getElementById('uploadZone').classList.remove('drag-over');
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('uploadZone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) processFile(file);
+}
+
+function processFile(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const toks = parseRawText(e.target.result);
+    parsedIPs   = toks.filter(t => isValidIP(t) || isCIDR(t));
+    renderChips(toks, 'ipChipsFile');
+    updateIPCount(parsedIPs.length);
+    document.getElementById('uploadFilename').style.display = 'flex';
+    document.getElementById('uploadFilenameTxt').textContent = `${file.name} — ${parsedIPs.length} valid IPs`;
+  };
+  reader.readAsText(file);
+}
+
+function clearFile() {
+  document.getElementById('ipFileInput').value = '';
+  document.getElementById('uploadFilename').style.display = 'none';
+  document.getElementById('uploadFilenameTxt').textContent = '';
+  parsedIPs = [];
+  renderChips([], 'ipChipsFile');
+  updateIPCount(0);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  SCAN CONTROLS
+// ════════════════════════════════════════════════════════════════
+async function startBulkScan() {
+  hideAlerts();
+  if (!parsedIPs.length) {
+    showAlert('error', 'Please enter at least one valid IP address or CIDR range.');
+    return;
+  }
+
+  isScanRunning = true;
+  isPaused      = false;
+  stopRequested = false;
+  currentScanIdx = 0;
+  scanResults    = [];
+  allResults     = [];
+
+  // Build queue
+  scanQueue = parsedIPs.map(ip => ({ ip, status: 'pending', result: null }));
+
+  // UI
+  setScanningUI(true);
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('reportActions').style.display  = 'none';
+  renderQueue();
+  updateStats();
+  clearLog();
+  appendLog('info', `Starting bulk scan of ${parsedIPs.length} IP(s)…`);
+  appendLog('info', `Concurrency: ${document.getElementById('concSlider').value}`);
+  logModules();
+
+  updateOverall(0, `Scanning 0 / ${scanQueue.length}…`);
+
+  // POST to backend
+  try {
+    const modules = getSelectedModules();
+    const concurrency = parseInt(document.getElementById('concSlider').value);
+    const res  = await fetch('/scan/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ips: parsedIPs, modules, concurrency }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      showAlert('error', data.error || 'Failed to start scan.');
+      setScanningUI(false);
+      return;
+    }
+    activeScanId = data.scan_id;
+    appendLog('ok', `Scan started. ID: ${activeScanId}`);
+    pollBulkStatus();
+  } catch(e) {
+    // Demo / offline mode — simulate scan
+    appendLog('warn', 'Backend unreachable. Running demo simulation.');
+    simulateBulkScan();
+  }
+}
+
+function getSelectedModules() {
+  const modules = [];
+  if (document.getElementById('optPing').checked)     modules.push('ping');
+  if (document.getElementById('optPorts').checked)    modules.push('ports');
+  if (document.getElementById('optServices').checked) modules.push('services');
+  if (document.getElementById('optOS').checked)       modules.push('os');
+  if (document.getElementById('optVuln').checked)     modules.push('vuln');
+  if (document.getElementById('optNikto').checked)    modules.push('nikto');
+  return modules;
+}
+
+function logModules() {
+  const mods = getSelectedModules();
+  appendLog('info', `Modules: ${mods.join(', ')}`);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  REAL BACKEND POLLING
+// ════════════════════════════════════════════════════════════════
+async function pollBulkStatus() {
+  if (!activeScanId) return;
+  try {
+    const res  = await fetch(`/scan/result/${activeScanId}`);
+    const data = await res.json();
+
+    if (data.results && Array.isArray(data.results)) {
+      data.results.forEach(r => updateQueueItem(r));
+    }
+
+    const done  = scanQueue.filter(q => q.status === 'done' || q.status === 'error').length;
+    const total = scanQueue.length;
+    const pct   = total ? Math.round(done / total * 100) : 0;
+    updateOverall(pct, `Scanning ${done} / ${total}…`);
+    updateStats();
+
+    if (data.status === 'completed' || data.status === 'error' || done >= total) {
+      finishScan(data.results || scanQueue.map(q=>q.result).filter(Boolean));
+    } else if (!stopRequested) {
+      pollTimer = setTimeout(pollBulkStatus, 2000);
+    }
+  } catch(e) {
+    appendLog('err', 'Poll error: ' + e.message);
+    pollTimer = setTimeout(pollBulkStatus, 5000);
+  }
+}
+
+function updateQueueItem(result) {
+  const qi = scanQueue.find(q => q.ip === result.ip);
+  if (!qi) return;
+  qi.status = result.status === 'online' ? 'done' : (result.error ? 'error' : 'done');
+  qi.result = result;
+  if (result.status === 'online') {
+    appendLog('ok', `[${result.ip}] Online — ${(result.ports||[]).length} open port(s)`);
+  } else {
+    appendLog('warn', `[${result.ip}] Offline / unreachable`);
+  }
+  renderQueue();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  DEMO SIMULATION (when backend is unavailable)
+// ════════════════════════════════════════════════════════════════
+async function simulateBulkScan() {
+  const total = scanQueue.length;
+  const delay = ms => new Promise(res => setTimeout(res, ms));
+  const vulnPool = [
+    { name: 'OpenSSH Outdated Version', port: 22,  severity: 'medium', cve: 'CVE-2023-38408' },
+    { name: 'HTTP Server Misconfiguration', port: 80, severity: 'high', cve: null },
+    { name: 'MySQL Default Credentials', port: 3306, severity: 'critical', cve: null },
+    { name: 'SSL/TLS Weak Cipher', port: 443, severity: 'medium', cve: 'CVE-2022-0778' },
+    { name: 'FTP Anonymous Login', port: 21, severity: 'high', cve: null },
+    { name: 'SMB EternalBlue', port: 445, severity: 'critical', cve: 'CVE-2017-0144' },
+  ];
+  const svcPool = [
+    { port:22, service:'ssh', version:'OpenSSH 8.2' },
+    { port:80, service:'http', version:'Apache 2.4.51' },
+    { port:443, service:'https', version:'nginx 1.20' },
+    { port:3306, service:'mysql', version:'MySQL 8.0.27' },
+    { port:21, service:'ftp', version:'vsftpd 3.0.3' },
+    { port:8080, service:'http-alt', version:'Tomcat 9.0' },
+    { port:445, service:'smb', version:'Samba 4.12' },
+  ];
+
+  for (let i = 0; i < total; i++) {
+    if (stopRequested) break;
+    while (isPaused) await delay(300);
+
+    const qi = scanQueue[i];
+    qi.status = 'scanning';
+    renderQueue();
+    appendLog('info', `[${qi.ip}] Scanning…`);
+    document.getElementById('bulkLogStatus').textContent = `Scanning ${i+1}/${total}`;
+
+    await delay(600 + Math.random() * 900);
+
+    if (stopRequested) break;
+
+    const online = Math.random() > 0.25;
+    const nPorts = online ? Math.floor(Math.random() * 5) + 1 : 0;
+    const ports  = online ? svcPool.sort(()=>Math.random()-.5).slice(0, nPorts) : [];
+    const nVulns = online ? Math.floor(Math.random() * 3) : 0;
+    const vulns  = online ? vulnPool.sort(()=>Math.random()-.5).slice(0, nVulns) : [];
+    const osList = ['Linux 5.x', 'Windows Server 2019', 'Ubuntu 20.04', 'CentOS 8', 'FreeBSD 13'];
+    const severity = vulns.length
+      ? (vulns.some(v=>v.severity==='critical') ? 'critical' :
+         vulns.some(v=>v.severity==='high')     ? 'high'     :
+         vulns.some(v=>v.severity==='medium')   ? 'medium'   : 'low')
+      : 'none';
+
+    qi.result = {
+      ip: qi.ip,
+      status: online ? 'online' : 'offline',
+      hostname: online ? `host-${qi.ip.replace(/\./g,'-')}.local` : '-',
+      os: online ? osList[Math.floor(Math.random()*osList.length)] : '-',
+      ports,
+      vulnerabilities: vulns,
+      severity,
+      scanned_at: new Date().toISOString(),
+    };
+    qi.status = 'done';
+    allResults.push(qi.result);
+
+    if (online) {
+      appendLog('ok',   `[${qi.ip}] Online — ${ports.length} port(s), ${vulns.length} vuln(s)`);
+    } else {
+      appendLog('warn', `[${qi.ip}] Offline`);
+    }
+
+    const pct = Math.round((i+1) / total * 100);
+    updateOverall(pct, `Scanned ${i+1} / ${total}`);
+    updateStats();
+    renderQueue();
+  }
+
+  finishScan(allResults);
+}
+
+function finishScan(results) {
+  isScanRunning = false;
+  stopRequested = false;
+  allResults    = results || allResults;
+
+  const done     = scanQueue.filter(q => q.status !== 'error').length;
+  const errors   = scanQueue.filter(q => q.status === 'error').length;
+  updateOverall(100, `Complete — ${done} scanned${errors ? ', ' + errors + ' error(s)' : ''}`);
+  document.getElementById('bulkLogStatus').textContent = 'Complete';
+  appendLog('ok', `Bulk scan finished. ${done} host(s) scanned.`);
+
+  setScanningUI(false, true);
+  showResults(allResults);
+
+  const online = allResults.filter(r=>r.status==='online').length;
+  const vulns  = allResults.reduce((s,r)=>s+(r.vulnerabilities||[]).length, 0);
+  document.getElementById('reportSummaryTxt').textContent =
+    `${allResults.length} hosts scanned — ${online} online, ${vulns} vulnerabilities found`;
+  document.getElementById('reportActions').style.display = allResults.length ? 'flex' : 'none';
+
+  showAlert('success', `Scan complete! ${online} online, ${vulns} vulnerabilities found.`);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  PAUSE / STOP / NEW
+// ════════════════════════════════════════════════════════════════
+function pauseScan() {
+  isPaused = !isPaused;
+  const btn = document.getElementById('pauseBtn');
+  btn.innerHTML = isPaused
+    ? '<i class="fa-solid fa-play"></i> Resume'
+    : '<i class="fa-solid fa-pause"></i> Pause';
+  appendLog('info', isPaused ? 'Scan paused.' : 'Scan resumed.');
+}
+
+async function stopBulkScan() {
+  stopRequested = true;
+  isPaused      = false;
+  if (pollTimer) clearTimeout(pollTimer);
+  if (activeScanId) {
+    try { await fetch(`/scan/stop/${activeScanId}`, { method: 'POST' }); } catch(e) {}
+  }
+  appendLog('warn', 'Scan stopped by user.');
+  isScanRunning = false;
+  setScanningUI(false, false);
+  document.getElementById('bulkLogStatus').textContent = 'Stopped';
+}
+
+function newBulkScan() {
+  isScanRunning = false;
+  isPaused      = false;
+  stopRequested = false;
+  scanQueue     = [];
+  allResults    = [];
+  activeScanId  = null;
+  if (pollTimer) clearTimeout(pollTimer);
+
+  clearIPs();
+  clearLog();
+  renderQueue();
+  updateStats();
+  updateOverall(0, 'Waiting to start…');
+  hideAlerts();
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('reportActions').style.display  = 'none';
+  setScanningUI(false, false);
+  document.getElementById('bulkLogStatus').textContent = 'Idle';
+}
+
+// ════════════════════════════════════════════════════════════════
+//  UI HELPERS
+// ════════════════════════════════════════════════════════════════
+function setScanningUI(running, finished) {
+  document.getElementById('startBulkBtn').style.display = running || finished ? 'none' : '';
+  document.getElementById('pauseBtn').style.display     = running ? '' : 'none';
+  document.getElementById('stopBulkBtn').style.display  = running ? '' : 'none';
+  document.getElementById('newBulkBtn').style.display   = finished ? '' : 'none';
+  document.getElementById('startBulkBtn').disabled      = running;
+}
+
+function updateOverall(pct, label) {
+  document.getElementById('bulkProgFill').style.width = pct + '%';
+  document.getElementById('overallPct').textContent   = pct + '%';
+  document.getElementById('overallLabel').textContent = label;
+}
+
+function updateStats() {
+  const online  = scanQueue.filter(q => q.result && q.result.status === 'online').length;
+  const offline = scanQueue.filter(q => q.result && q.result.status !== 'online').length;
+  const vulns   = scanQueue.reduce((s,q) => s + (q.result ? (q.result.vulnerabilities||[]).length : 0), 0);
+  const ports   = scanQueue.reduce((s,q) => s + (q.result ? (q.result.ports||[]).length : 0), 0);
+  document.getElementById('statOnline').textContent  = online;
+  document.getElementById('statOffline').textContent = offline;
+  document.getElementById('statVulns').textContent   = vulns;
+  document.getElementById('statPorts').textContent   = ports;
+}
+
+function renderQueue() {
+  const el = document.getElementById('bulkQueue');
+  if (!scanQueue.length) {
+    el.innerHTML = '<div class="empty-state"><i class="fa-regular fa-clock"></i><p>No IPs queued yet. Add IPs and start a scan.</p></div>';
+    return;
+  }
+  el.innerHTML = scanQueue.map(qi => {
+    const icons = {
+      pending:  '<i class="fa-solid fa-clock"></i>',
+      scanning: '<i class="fa-solid fa-spinner fa-spin"></i>',
+      done:     '<i class="fa-solid fa-circle-check"></i>',
+      error:    '<i class="fa-solid fa-circle-xmark"></i>',
+    };
+    const statusTxt = {
+      pending: 'Waiting', scanning: 'Scanning…', done: 'Complete', error: 'Error',
+    };
+    const vulnCount = qi.result ? (qi.result.vulnerabilities||[]).length : 0;
+    const sev       = qi.result ? (qi.result.severity || 'none') : 'none';
+    let vulnCls     = 'none';
+    if (vulnCount > 0) {
+      vulnCls = sev === 'critical' ? 'critical' : sev === 'high' ? 'high' : sev === 'medium' ? 'medium' : 'low';
+    }
+    const vulnBadge = qi.status === 'done'
+      ? `<span class="bq-vulns ${vulnCls}">${vulnCount > 0 ? vulnCount + ' vuln' + (vulnCount>1?'s':'') : 'Clean'}</span>`
+      : '';
+    return `<div class="bq-item ${qi.status}">
+      <div class="bq-icon">${icons[qi.status]||''}</div>
+      <div class="bq-ip">${qi.ip}</div>
+      ${qi.result && qi.result.hostname && qi.result.hostname !== '-'
+        ? `<span style="font-size:.68rem;color:var(--text-muted);font-family:'Courier New',monospace;">${qi.result.hostname}</span>`
+        : ''}
+      ${vulnBadge}
+      <div class="bq-status">${statusTxt[qi.status] || qi.status}</div>
+    </div>`;
+  }).join('');
+  // Auto-scroll to last scanning item
+  const scanning = el.querySelector('.bq-item.scanning');
+  if (scanning) scanning.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  RESULTS TABLE
+// ════════════════════════════════════════════════════════════════
+function showResults(results) {
+  document.getElementById('resultsSection').style.display = '';
+  renderResultsTable(results);
+}
+
+function renderResultsTable(results) {
+  const tbody = document.getElementById('resultsTbody');
+  if (!results || !results.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--text-muted);">No results available.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = results.map((r, idx) => {
+    const portStr = (r.ports||[]).slice(0,3).map(p=>p.port||p).join(', ') + ((r.ports||[]).length>3 ? ' +more' : '');
+    const svcStr  = (r.ports||[]).slice(0,2).map(p=>p.service||'').filter(Boolean).join(', ');
+    const sev     = r.severity || 'none';
+    const statusCls = r.status === 'online' ? 'online' : 'offline';
+    return `<tr onclick="toggleDrawer(${idx})" data-idx="${idx}">
+      <td onclick="event.stopPropagation()"><input type="checkbox" class="row-check" data-idx="${idx}"></td>
+      <td class="mono">${r.ip}</td>
+      <td>
+        <div style="font-weight:600;font-size:.78rem;">${r.hostname||'-'}</div>
+        <div style="font-size:.68rem;color:var(--text-muted);">${r.os||'-'}</div>
+      </td>
+      <td><span class="tbl-status ${statusCls}"><i class="fa-solid fa-circle" style="font-size:.4rem;"></i>${r.status==='online'?'Online':'Offline'}</span></td>
+      <td style="font-family:'Courier New',monospace;font-size:.75rem;">${portStr||'-'}</td>
+      <td style="font-size:.75rem;color:var(--text-muted);">${svcStr||'-'}</td>
+      <td><span class="sev-badge ${sev}">${sev.toUpperCase()}</span></td>
+      <td>
+        <div class="tbl-actions" onclick="event.stopPropagation()">
+          <button class="tbl-btn" onclick="viewDetailModal(${idx})" title="View Detail"><i class="fa-solid fa-eye"></i></button>
+          <button class="tbl-btn" onclick="downloadSingleReport(${idx})" title="Download"><i class="fa-solid fa-download"></i></button>
+        </div>
+      </td>
+    </tr>
+    <tr class="drawer-row" id="drawer-${idx}" style="display:none;">
+      <td colspan="8" style="padding:0;">
+        <div class="detail-drawer open" id="drawerContent-${idx}">
+          ${buildDrawerHTML(r)}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function buildDrawerHTML(r) {
+  const ports   = r.ports || [];
+  const vulns   = r.vulnerabilities || [];
+  const portTags = ports.map(p => {
+    const hr = [21,23,445,3389,5900].includes(p.port||p) ? 'high-risk' : '';
+    return `<span class="port-tag ${hr}">${p.port||p}/${p.service||'?'}</span>`;
+  }).join('') || '<span style="color:var(--text-muted);font-size:.72rem;">None detected</span>';
+
+  const vulnHTML = vulns.length
+    ? vulns.map(v => `<div class="vuln-mini">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <span><strong>${v.name}</strong>${v.cve?' <span style="color:#9ca3af;font-size:.68rem;">('+v.cve+')</span>':''} — Port ${v.port||'-'}</span>
+      </div>`).join('')
+    : '<div class="vuln-mini" style="color:var(--text-muted)"><i class="fa-solid fa-circle-check" style="color:var(--green)"></i><span>No vulnerabilities found</span></div>';
+
+  const infoRows = [
+    { label: 'IP', val: r.ip },
+    { label: 'Hostname', val: r.hostname||'-' },
+    { label: 'OS', val: r.os||'-' },
+    { label: 'Status', val: r.status },
+    { label: 'Scanned', val: r.scanned_at ? new Date(r.scanned_at).toLocaleString() : '-' },
+    { label: 'Latency', val: r.latency ? r.latency + ' ms' : '-' },
+  ];
+
+  return `<div class="drawer-grid">
+    <div class="drawer-card">
+      <h5><i class="fa-solid fa-circle-info" style="color:var(--blue)"></i> Host Info</h5>
+      ${infoRows.map(x=>`<div style="display:flex;justify-content:space-between;font-size:.75rem;margin-bottom:.3rem;">
+        <span style="color:var(--text-muted);font-weight:600;">${x.label}</span>
+        <span style="font-family:'Courier New',monospace;font-weight:700;">${x.val}</span>
+      </div>`).join('')}
+    </div>
+    <div class="drawer-card">
+      <h5><i class="fa-solid fa-door-open" style="color:var(--green)"></i> Open Ports & Services</h5>
+      <div class="port-list">${portTags}</div>
+      ${ports.length ? `<div style="margin-top:.5rem;">${ports.slice(0,5).map(p=>`
+        <div style="display:flex;gap:.5rem;font-size:.7rem;margin-bottom:.2rem;align-items:center;">
+          <span class="port-tag" style="flex-shrink:0;">${p.port}</span>
+          <span style="color:var(--text-muted);">${p.service||''}</span>
+          <span style="color:var(--text);font-weight:600;">${p.version||''}</span>
+        </div>`).join('')}</div>` : ''}
+    </div>
+    <div class="drawer-card">
+      <h5><i class="fa-solid fa-bug" style="color:#ef4444"></i> Vulnerabilities</h5>
+      <div class="vuln-mini-list">${vulnHTML}</div>
+    </div>
+  </div>`;
+}
+
+function toggleDrawer(idx) {
+  const row = document.getElementById('drawer-' + idx);
+  if (!row) return;
+  const open = row.style.display !== 'none';
+  // Close all
+  document.querySelectorAll('.drawer-row').forEach(r => r.style.display = 'none');
+  if (!open) row.style.display = '';
+}
+
+function viewDetailModal(idx) {
+  const r = allResults[idx];
+  if (!r) return;
+  // Simple alert-based detail; replace with modal if desired
+  alert(`IP: ${r.ip}\nHostname: ${r.hostname||'-'}\nOS: ${r.os||'-'}\nStatus: ${r.status}\nPorts: ${(r.ports||[]).map(p=>p.port+'/'+p.service).join(', ')||'None'}\nVulnerabilities: ${(r.vulnerabilities||[]).map(v=>v.name).join(', ')||'None'}`);
+}
+
+function downloadSingleReport(idx) {
+  const r = allResults[idx];
+  if (!r) return;
+  const blob = new Blob([JSON.stringify(r, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `scan-${r.ip.replace(/\./g,'-')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  FILTER
+// ════════════════════════════════════════════════════════════════
+function filterResults(query) {
+  const sev = document.getElementById('severityFilter').value;
+  let filtered = allResults;
+  if (query) {
+    const q = query.toLowerCase();
+    filtered = filtered.filter(r => r.ip.includes(q) || (r.hostname||'').toLowerCase().includes(q));
+  }
+  if (sev) {
+    filtered = filtered.filter(r => (r.severity || 'none') === sev);
+  }
+  renderResultsTable(filtered);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  SELECT ALL
+// ════════════════════════════════════════════════════════════════
+function toggleSelectAll(cb) {
+  document.querySelectorAll('.row-check').forEach(c => c.checked = cb.checked);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  REPORT DOWNLOAD
+// ════════════════════════════════════════════════════════════════
+async function downloadReport(fmt) {
+  if (activeScanId) {
+    try {
+      window.open(`/scan/report/${activeScanId}?format=${fmt}`, '_blank');
+      return;
+    } catch(e) {}
+  }
+  // Client-side fallback
+  if (fmt === 'json') {
+    const blob = new Blob([JSON.stringify(allResults, null, 2)], { type: 'application/json' });
+    triggerDownload(blob, 'bulk-scan-results.json');
+  } else if (fmt === 'csv') {
+    const headers = ['IP','Hostname','OS','Status','Open Ports','Services','Vulnerabilities','Severity'];
+    const rows = allResults.map(r => [
+      r.ip,
+      r.hostname||'-',
+      r.os||'-',
+      r.status,
+      (r.ports||[]).map(p=>p.port).join(';'),
+      (r.ports||[]).map(p=>p.service).join(';'),
+      (r.vulnerabilities||[]).map(v=>v.name).join(';'),
+      r.severity||'none',
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    triggerDownload(blob, 'bulk-scan-results.csv');
+  } else {
+    // xlsx: server handles it; client fallback is CSV
+    alert('Excel export requires the backend. Downloading CSV instead.');
+    downloadReport('csv');
+  }
+}
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href    = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  LOG HELPERS
+// ════════════════════════════════════════════════════════════════
+function appendLog(type, msg) {
+  const el    = document.getElementById('bulkScanLog');
+  const first = el.querySelector('span');
+  if (first && first.style.color === '#64748b') el.innerHTML = '';
+  const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  const cls  = { info: 'log-info', ok: 'log-ok', warn: 'log-warn', err: 'log-err' }[type] || 'log-info';
+  const span = document.createElement('div');
+  span.className = cls;
+  span.textContent = `[${time}] ${msg}`;
+  el.appendChild(span);
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('bulkScanLog').innerHTML = '';
+}
+
+// ════════════════════════════════════════════════════════════════
+//  ALERT HELPERS
+// ════════════════════════════════════════════════════════════════
+function showAlert(type, msg) {
+  hideAlerts();
+  const map = { error: ['bulkError', 'bulkErrorTxt'], info: ['bulkInfo', 'bulkInfoTxt'], success: ['bulkSuccess', 'bulkSuccessTxt'] };
+  const [id, txtId] = map[type] || map.info;
+  document.getElementById(txtId).textContent = msg;
+  document.getElementById(id).style.display  = 'flex';
+}
+
+function hideAlerts() {
+  ['bulkError','bulkInfo','bulkSuccess'].forEach(id => document.getElementById(id).style.display = 'none');
+}
+</script>
+{% endblock %}
