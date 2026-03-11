@@ -445,7 +445,7 @@ async function initPage() {
         });
         // Update header stats bar next-run
         var nxt = schedules.filter(function(s){ return s.status==='active' && s.nextRun; })
-                           .sort(function(a,b){ return new Date(a.nextRun)-new Date(b.nextRun); })[0];
+                           .sort(function(a,b){ return parseLocalDT(a.nextRun)-parseLocalDT(b.nextRun); })[0];
         var el2 = document.getElementById('statNextRun');
         if (el2 && nxt) el2.textContent = fmtNextRun(nxt.nextRun);
     }, 1000);
@@ -781,7 +781,7 @@ async function saveSchedule(){
     var name=document.getElementById('mName').value.trim(),target=document.getElementById('mTarget').value.trim();
     if(!name||!target){alert('Please fill in Schedule Name and Target URL.');return;}
     var time=document.getElementById('mTime').value,fBtn=document.querySelector('.freq-btn.active'),freq=fBtn?fBtn.dataset.freq:'once';
-    var timeout=parseInt(document.getElementById('mTimeout').value),notify=document.getElementById('mNotify').checked,authData=readModalAuth(),nextRun=calcNextRun(time,freq);
+    var timeout=parseInt(document.getElementById('mTimeout').value),notify=document.getElementById('mNotify').checked,authData=readModalAuth(),nextRun=calcNextRun(time,freq,!editingId);
     
     var payload={
         name:name,
@@ -824,8 +824,61 @@ async function saveSchedule(){
     }
 }
 
-function calcNextRun(time,freq){var now=new Date(),p=(time||'02:00').split(':').map(Number),next=new Date(now);next.setHours(p[0],p[1],0,0);if(next<=now){if(freq==='6h')next.setHours(next.getHours()+6);else if(freq==='12h')next.setHours(next.getHours()+12);else if(freq==='247')next.setMinutes(next.getMinutes()+5);else next.setDate(next.getDate()+1);}return next.toISOString();}
-function fmtNextRun(iso){if(!iso)return'\u2014';var d=new Date(iso),diff=Math.floor((d-Date.now())/1000);if(isNaN(d.getTime()))return'\u2014';if(diff<0)return'Starting…';var days=Math.floor(diff/86400),hrs=Math.floor((diff%86400)/3600),mins=Math.floor((diff%3600)/60),secs=diff%60;if(days>0)return'in '+days+'d '+hrs+'h '+mins+'m';if(hrs>0)return'in '+hrs+'h '+mins+'m '+String(secs).padStart(2,'0')+'s';if(mins>0)return'in '+mins+'m '+String(secs).padStart(2,'0')+'s';return'in '+secs+'s';}
+function calcNextRun(time, freq, isNew) {
+    var now  = new Date();
+    var p    = (time || '02:00').split(':').map(Number);
+    var next = new Date(now);
+
+    if (freq === '247') {
+        // Always start in 1 min for continuous scans
+        next = new Date(now.getTime() + 1 * 60000);
+    } else if (freq === '6h') {
+        // First run: start in 1 min; repeat interval handled by backend after each run
+        next = new Date(now.getTime() + (isNew ? 1 : 6 * 60) * 60000);
+    } else if (freq === '12h') {
+        // First run: start in 1 min; repeat interval handled by backend after each run
+        next = new Date(now.getTime() + (isNew ? 1 : 12 * 60) * 60000);
+    } else {
+        next.setHours(p[0], p[1], 0, 0);
+        if (next <= now) next.setDate(next.getDate() + 1);
+        if (freq === 'weekly') {
+            var targetDow = 0;
+            var activeDayBtns = document.querySelectorAll('.day-btn.active');
+            if (activeDayBtns.length > 0) {
+                var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                targetDow = days.indexOf(activeDayBtns[0].textContent.trim());
+                if (targetDow < 0) targetDow = 0;
+            }
+            while (next.getDay() !== targetDow) next.setDate(next.getDate() + 1);
+        }
+        if (freq === 'monthly') {
+            next.setDate(1);
+            if (next <= now) { next.setMonth(next.getMonth() + 1); next.setDate(1); }
+            next.setHours(p[0], p[1], 0, 0);
+        }
+    }
+    // Send as local datetime string (no Z/UTC) so backend stores correct local time
+    var pad = function(n) { return String(n).padStart(2,'0'); };
+    return next.getFullYear()+'-'+pad(next.getMonth()+1)+'-'+pad(next.getDate())
+        +' '+pad(next.getHours())+':'+pad(next.getMinutes())+':00';
+}
+
+function fmtNextRun(iso) {
+    if (!iso) return '\u2014';
+    var d = parseLocalDT(iso);   // always treat as local — DB stores local time, not UTC
+    if (!d) return '\u2014';
+    var diff = Math.floor((d - Date.now()) / 1000);
+    if (isNaN(diff)) return '\u2014';
+    if (diff <= 0) return 'Starting\u2026';
+    var days = Math.floor(diff / 86400);
+    var hrs  = Math.floor((diff % 86400) / 3600);
+    var mins = Math.floor((diff % 3600) / 60);
+    var secs = diff % 60;
+    if (days > 0)  return 'in ' + days + 'd ' + hrs + 'h ' + mins + 'm';
+    if (hrs  > 0)  return 'in ' + hrs  + 'h ' + mins + 'm ' + String(secs).padStart(2,'0') + 's';
+    if (mins > 0)  return 'in ' + mins + 'm ' + String(secs).padStart(2,'0') + 's';
+    return 'in ' + secs + 's';
+}
 // Parse DB datetime string as LOCAL time — DB stores local, not UTC
 // Without this, JS treats "2026-03-09 12:41:00" as UTC → shows wrong hour
 function parseLocalDT(str) {
@@ -868,7 +921,7 @@ async function rerunSched(id){
     var s=schedules.find(function(x){return x.id===id;});
     if(!s)return;
     try {
-        var nextRun=calcNextRun(s.time,s.freq);
+        var nextRun=calcNextRun(s.time,s.freq,true);
         var res=await fetch('/api/scheduled-scans/'+id,{
             method:'PUT',
             headers:{'Content-Type':'application/json'},
@@ -1153,7 +1206,7 @@ function renderPriority(){
 
 function updateStats(){
     var realVulns=trackedVulns.filter(isRealVuln);
-    var active=schedules.filter(function(s){return s.status==='active'||s.status==='running';}).length,fixed=realVulns.filter(function(v){return v.status==='fixed';}).length,priority=realVulns.filter(function(v){return v.severity==='critical'&&v.status==='open';}).length,nxt=schedules.filter(function(s){return s.status==='active'&&s.nextRun;}).sort(function(a,b){return new Date(a.nextRun)-new Date(b.nextRun);})[0];
+    var active=schedules.filter(function(s){return s.status==='active'||s.status==='running';}).length,fixed=realVulns.filter(function(v){return v.status==='fixed';}).length,priority=realVulns.filter(function(v){return v.severity==='critical'&&v.status==='open';}).length,nxt=schedules.filter(function(s){return s.status==='active'&&s.nextRun;}).sort(function(a,b){return parseLocalDT(a.nextRun)-parseLocalDT(b.nextRun);})[0];
     document.getElementById('statActive').textContent=active; document.getElementById('statCompleted').textContent=runHistory.length;
     document.getElementById('statFixed').textContent=fixed; document.getElementById('statPriority').textContent=priority;
     document.getElementById('statNextRun').textContent=nxt?fmtNextRun(nxt.nextRun):'—';
@@ -1171,7 +1224,7 @@ async function checkScheduledRuns() {
         var s = schedules[i];
         // Only fire 'active' schedules whose time is due
         if (s.status !== 'active' || !s.nextRun) continue;
-        var due = new Date(s.nextRun).getTime();
+        var due = (parseLocalDT(s.nextRun) || new Date(0)).getTime();
         if (due > now) continue; // not time yet
 
         // Check no scan already running on the server
