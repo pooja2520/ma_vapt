@@ -2274,11 +2274,16 @@ def _background_scheduler():
                 if not sched_id or not target_url:
                     continue
 
-                # Immediately mark as 'running' so it won't be picked up again
+                # Atomically claim the schedule — if another loop tick or process
+                # already flipped it to 'running', rowcount == 0 → skip.
                 try:
-                    _db_sched.mark_scheduled_scan_running(sched_id)
+                    claimed = _db_sched.mark_scheduled_scan_running(sched_id)
                 except Exception as _me:
                     print(f"[scheduler] Could not mark running sched {sched_id}: {_me}")
+                    continue
+
+                if not claimed:
+                    print(f"[scheduler] Schedule {sched_id} already claimed by another tick — skipping.")
                     continue
 
                 print(f"[scheduler] Firing schedule id={sched_id} target={target_url} freq={freq}")
