@@ -14,18 +14,56 @@ load_dotenv()
 
 
 def _parse_mysql_datetime(value):
-    """Convert an ISO 8601 datetime string (e.g. '2026-03-06T10:45:00.000Z') to a
-    MySQL-compatible 'YYYY-MM-DD HH:MM:SS' string.  Returns the original value
-    unchanged if it is already in the correct format, None, or a datetime object."""
+    """Convert a datetime string to MySQL-compatible 'YYYY-MM-DD HH:MM:SS' in LOCAL time.
+
+    Handles:
+      - Already local MySQL format: '2026-03-11 12:29:00'  → returned as-is
+      - UTC ISO 8601 with Z:        '2026-03-11T06:59:00Z' → converted to IST
+      - UTC ISO 8601 with offset:   '2026-03-11T12:29:00+05:30' → converted to local
+      - datetime objects            → returned as-is (Flask/SQLAlchemy already local)
+    """
     if not value or isinstance(value, datetime):
         return value
     s = str(value).strip()
-    # Already MySQL format
-    if len(s) == 19 and 'T' not in s:
+    # Already MySQL local format (no T, no Z, no +offset)
+    if len(s) == 19 and 'T' not in s and 'Z' not in s:
         return s
-    # ISO 8601 – strip trailing Z then try common formats
-    clean = s.rstrip('Z').split('+')[0]
-    for fmt in ('%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S'):
+    # Has explicit UTC marker (Z) — convert UTC → local
+    if s.endswith('Z') or ('+' not in s.split('T')[-1] and 'Z' in s):
+        import time as _t
+        from datetime import timedelta as _td
+        clean = s.rstrip('Z').split('+')[0]
+        for fmt in ('%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S'):
+            try:
+                utc_dt = datetime.strptime(clean, fmt)
+                offset_sec = -(_t.timezone if _t.localtime().tm_isdst == 0 else _t.altzone)
+                local_dt = utc_dt + _td(seconds=offset_sec)
+                return local_dt.strftime('%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                continue
+    # Has explicit +HH:MM offset — parse and convert to local
+    if 'T' in s and '+' in s.split('T')[-1]:
+        try:
+            from datetime import timezone as _tz, timedelta as _td
+            import re, time as _t
+            m = re.match(r'(.+)\+(\d{2}):(\d{2})$', s)
+            if m:
+                base = m.group(1).replace('T', ' ')
+                off_h, off_m = int(m.group(2)), int(m.group(3))
+                for fmt in ('%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S'):
+                    try:
+                        aware_dt = datetime.strptime(base, fmt).replace(
+                            tzinfo=_tz(offset=_td(hours=off_h, minutes=off_m)))
+                        offset_sec = -(_t.timezone if _t.localtime().tm_isdst == 0 else _t.altzone)
+                        local_dt = aware_dt.astimezone(_tz(offset=_td(seconds=offset_sec)))
+                        return local_dt.strftime('%Y-%m-%d %H:%M:%S')
+                    except ValueError:
+                        continue
+        except Exception:
+            pass
+    # Plain ISO without timezone — treat as local, just reformat
+    clean = s.replace('T', ' ').split('+')[0].rstrip('Z')
+    for fmt in ('%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S'):
         try:
             return datetime.strptime(clean, fmt).strftime('%Y-%m-%d %H:%M:%S')
         except ValueError:
@@ -481,6 +519,12 @@ def report_view(report_id):
 @login_required
 def scheduled():
     return render_template('scheduled-scans.html')
+
+
+@app.route('/bulk-ip-scanning')
+@login_required
+def bulk_ip_scanning():
+    return render_template('bulk-ip-scanning.html')
 
 
 @app.route('/features')
@@ -1971,6 +2015,120 @@ def scan_status():
         return jsonify({'status': 'error', 'message': res['last_error']})
     else:
         return jsonify({'status': 'idle'})
+
+
+# ─────────────────────────────────────────────
+#  BULK IP SCAN ENDPOINTS
+# ─────────────────────────────────────────────
+
+import uuid as _uuid_mod
+
+# In-memory store: { scan_id: { results: [], done: False, total: N } }
+_bulk_scans = {}
+
+@app.route('/scan/bulk', methods=['POST'])
+@login_required
+def bulk_scan_start():
+    """Start a bulk IP scan job and return a scan_id."""
+    import threading
+    data        = request.get_json(force=True) or {}
+    ips         = data.get('ips', [])
+    modules     = data.get('modules', ['ping', 'ports'])
+    concurrency = int(data.get('concurrency', 5))
+
+    if not ips:
+        return jsonify({'error': 'No IPs provided.'}), 400
+
+    scan_id = str(_uuid_mod.uuid4())[:8]
+    _bulk_scans[scan_id] = {'results': [], 'done': False, 'total': len(ips)}
+
+    def _run():
+        import subprocess, socket
+        store = _bulk_scans[scan_id]
+        sem   = threading.Semaphore(concurrency)
+
+        def scan_one(ip):
+            with sem:
+                result = {'ip': ip, 'status': 'scanning', 'open_ports': [], 'services': [], 'os': '', 'risk': 'Unknown'}
+                try:
+                    ping_ok = subprocess.run(
+                        ['ping', '-c', '1', '-W', '1', ip],
+                        capture_output=True, timeout=5
+                    ).returncode == 0
+                    result['ping'] = ping_ok
+
+                    if 'ports' in modules or 'services' in modules:
+                        try:
+                            nmap_args = ['nmap', '-T4', '--open', '-p', '21,22,23,25,53,80,110,143,443,445,3306,3389,8080,8443', ip]
+                            if 'services' in modules:
+                                nmap_args.insert(1, '-sV')
+                            nm = subprocess.run(nmap_args, capture_output=True, text=True, timeout=30)
+                            for line in nm.stdout.splitlines():
+                                if '/tcp' in line and 'open' in line:
+                                    parts = line.split()
+                                    port  = parts[0].split('/')[0]
+                                    svc   = parts[2] if len(parts) > 2 else ''
+                                    result['open_ports'].append(port)
+                                    if svc:
+                                        result['services'].append(f'{port}/{svc}')
+                        except (FileNotFoundError, subprocess.TimeoutExpired):
+                            for port in [22, 80, 443, 3389, 8080]:
+                                try:
+                                    s = socket.create_connection((ip, port), timeout=1)
+                                    s.close()
+                                    result['open_ports'].append(str(port))
+                                except Exception:
+                                    pass
+
+                    risky = {'21', '23', '3389', '445', '3306'}
+                    if any(p in risky for p in result['open_ports']):
+                        result['risk'] = 'High'
+                    elif result['open_ports']:
+                        result['risk'] = 'Medium'
+                    elif ping_ok:
+                        result['risk'] = 'Low'
+                    else:
+                        result['risk'] = 'None'
+
+                    result['status'] = 'done'
+                except Exception as e:
+                    result['status'] = 'error'
+                    result['error']  = str(e)
+
+                store['results'].append(result)
+
+        threads = [threading.Thread(target=scan_one, args=(ip,)) for ip in ips]
+        for t in threads: t.start()
+        for t in threads: t.join()
+        store['done'] = True
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'scan_id': scan_id, 'total': len(ips)})
+
+
+@app.route('/scan/result/<scan_id>')
+@login_required
+def bulk_scan_result(scan_id):
+    """Poll results for a running bulk scan."""
+    store = _bulk_scans.get(scan_id)
+    if not store:
+        return jsonify({'error': 'Scan not found.'}), 404
+    return jsonify({
+        'scan_id': scan_id,
+        'done':    store['done'],
+        'total':   store['total'],
+        'results': store['results'],
+    })
+
+
+@app.route('/scan/stop/<scan_id>', methods=['POST'])
+@login_required
+def bulk_scan_stop(scan_id):
+    """Mark a bulk scan as stopped."""
+    store = _bulk_scans.get(scan_id)
+    if store:
+        store['done'] = True
+    return jsonify({'status': 'stopped'})
 
 
 @app.route('/download')
