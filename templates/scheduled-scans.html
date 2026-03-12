@@ -450,9 +450,7 @@ async function initPage() {
         if (el2 && nxt) el2.textContent = fmtNextRun(nxt.nextRun);
     }, 1000);
 
-    // ── Check for due scheduled scans every 5 seconds (was 60s) ──
-    checkScheduledRuns();
-    setInterval(checkScheduledRuns, 5000);
+    // Live backend daemon manages scheduled run execution on the server reliably 24/7.
     // If a scan was already running when page loaded, open popup immediately
     fetch('/api/scan-logs').then(function(r){return r.json();}).then(function(d){
         if (d.running) {
@@ -661,7 +659,7 @@ async function runNow(id) {
     else if (authType==='form') { adPayload={login_url:authData.formLoginUrl||'',username:authData.formUsername||'',password:authData.formPassword||'',username_field:authData.formUsernameField||'username',password_field:authData.formPasswordField||'password',success_indicator:authData.formSuccessIndicator||''}; }
 
     try {
-        var res  = await fetch('/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({target:s.target,auth_type:authType,auth_data:adPayload,owasp_enabled:true}) });
+        var res  = await fetch('/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({target:s.target,auth_type:authType,auth_data:adPayload,owasp_enabled:true, scheduled_scan_id: s.id}) });
         var data = await res.json();
         if (data.status==='started') {
             s.status='running'; renderSchedules(); updateStats();
@@ -1219,92 +1217,6 @@ function updateStats(){
 }
 
 function renderAll(){renderSchedules();renderHistory();updateStats();if(document.getElementById('tab-vulns').classList.contains('active'))renderVulnTracker();if(document.getElementById('tab-priority').classList.contains('active'))renderPriority();}
-
-// ── Auto-run: fire scans when nextRun time is reached ────────────────
-// NOTE: The server-side background scheduler (app.py) is the primary trigger.
-// This client-side check is a secondary backup for when the page is open.
-async function checkScheduledRuns() {
-    var now = Date.now();
-    for (var i = 0; i < schedules.length; i++) {
-        var s = schedules[i];
-        // Only fire 'active' schedules whose time is due
-        if (s.status !== 'active' || !s.nextRun) continue;
-        var due = (parseLocalDT(s.nextRun) || new Date(0)).getTime();
-        if (due > now) continue; // not time yet
-
-        // Check no scan already running on the server
-        try {
-            var chk = await fetch('/api/scan-logs');
-            var cd  = await chk.json();
-            if (cd.running) continue; // another scan in progress, skip
-        } catch(e) { continue; }
-
-        // ── Lock the schedule in DB as 'running' BEFORE firing ──
-        // This prevents duplicate triggers on refresh or the next poll tick.
-        try {
-            await fetch('/api/scheduled-scans/' + s.id, {
-                method: 'PUT',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ status: 'running' })
-            });
-            s.status = 'running'; // mirror locally so loop won't re-pick
-        } catch(e) { continue; }
-
-        // Build auth payload
-        var authType = s.authType || 'none', authData = s.authData || {}, adPayload = {};
-        if (authType==='basic') { adPayload={username:authData.basicUsername||'',password:authData.basicPassword||''}; }
-        else if (authType==='form') { adPayload={login_url:authData.formLoginUrl||'',username:authData.formUsername||'',password:authData.formPassword||'',username_field:authData.formUsernameField||'username',password_field:authData.formPasswordField||'password',success_indicator:authData.formSuccessIndicator||''}; }
-
-        try {
-            // Pass scheduled_scan_id so server handles run records & status updates
-            var res  = await fetch('/scan', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    target:            s.target,
-                    auth_type:         authType,
-                    auth_data:         adPayload,
-                    owasp_enabled:     true,
-                    scheduled_scan_id: s.id   // ← critical: links scan to schedule
-                })
-            });
-            var data = await res.json();
-            if (data.status === 'started') {
-                renderSchedules(); updateStats();
-                wasRunning = true; popupLogLen = 0;
-                document.getElementById('popupSchedName').textContent = s.name + ' \u2014 Auto Running';
-                document.getElementById('popupTarget').textContent    = s.target;
-                document.getElementById('popupBar').style.width       = '0%';
-                document.getElementById('popupPct').textContent       = '0%';
-                document.getElementById('popupPhase').textContent     = 'Initializing\u2026';
-                document.getElementById('popupLog').innerHTML         = '<span style="color:#475569;">Scheduled scan started at ' + new Date().toLocaleTimeString() + '\u2026</span>';
-                document.getElementById('popupResult').style.display  = 'none';
-                updatePopupPhases(0);
-                openLivePopup();
-            } else {
-                // Scan failed to start — reset back to active so it retries next tick
-                await fetch('/api/scheduled-scans/' + s.id, {
-                    method: 'PUT',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ status: 'active' })
-                });
-                s.status = 'active';
-                renderSchedules(); updateStats();
-            }
-        } catch(e) {
-            // On network error, reset so it can retry
-            try {
-                await fetch('/api/scheduled-scans/' + s.id, {
-                    method: 'PUT',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ status: 'active' })
-                });
-                s.status = 'active';
-            } catch(e2) {}
-        }
-        break; // only start one scan per tick
-    }
-}
 
 {% endraw %}
 </script>
