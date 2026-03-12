@@ -832,12 +832,17 @@ function calcNextRun(time, freq, isNew) {
     if (freq === '247') {
         // Always start in 1 min for continuous scans
         next = new Date(now.getTime() + 1 * 60000);
-    } else if (freq === '6h') {
-        // First run: start in 1 min; repeat interval handled by backend after each run
-        next = new Date(now.getTime() + (isNew ? 1 : 6 * 60) * 60000);
-    } else if (freq === '12h') {
-        // First run: start in 1 min; repeat interval handled by backend after each run
-        next = new Date(now.getTime() + (isNew ? 1 : 12 * 60) * 60000);
+    } else if (freq === '6h' || freq === '12h') {
+        var interval = freq === '6h' ? 6 : 12;
+        next.setHours(p[0], p[1], 0, 0);
+        // Step back by intervals until next <= now
+        while (next > now) {
+            next.setHours(next.getHours() - interval);
+        }
+        // Step forward until next > now to find the exactly next aligned future run
+        while (next <= now) {
+            next.setHours(next.getHours() + interval);
+        }
     } else {
         next.setHours(p[0], p[1], 0, 0);
         if (next <= now) next.setDate(next.getDate() + 1);
@@ -1327,4 +1332,4 @@ initLayout('/scheduled');
     <div id="rhBody" style="padding:1.25rem;max-height:72vh;overflow-y:auto;"></div>
   </div>
 </div>
-{% endblock %}
+{% endblock %}  
