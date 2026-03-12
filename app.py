@@ -1955,10 +1955,14 @@ def scan():
                                 _next2, _nst = None, 'completed'
                             elif _freq == '247':
                                 _next2, _nst = _now2 + timedelta(minutes=5), 'active'
-                            elif _freq == '6h':
-                                _next2, _nst = _now2 + timedelta(hours=6), 'active'
-                            elif _freq == '12h':
-                                _next2, _nst = _now2 + timedelta(hours=12), 'active'
+                            elif _freq in ('6h', '12h'):
+                                _interval = 6 if _freq == '6h' else 12
+                                _cand2 = _now2.replace(hour=_h2, minute=_m2, second=0, microsecond=0)
+                                while _cand2 > _now2:
+                                    _cand2 -= timedelta(hours=_interval)
+                                while _cand2 <= _now2:
+                                    _cand2 += timedelta(hours=_interval)
+                                _next2, _nst = _cand2, 'active'
                             else:
                                 _cand2 = _now2.replace(hour=_h2, minute=_m2, second=0, microsecond=0)
                                 if _cand2 <= _now2:
