@@ -28,6 +28,16 @@ def _check_tool(name):
     return shutil.which(name) is not None
 
 
+def _has_root_for_nmap():
+    """OS detection (-O) requires root on Linux. Returns True if we can use it."""
+    if _is_windows():
+        return True  # Windows nmap doesn't use raw sockets for -O the same way
+    try:
+        return os.geteuid() == 0
+    except (AttributeError, OSError):
+        return False
+
+
 def _ping_cmd(ip):
     """Return ping command args for current OS."""
     if _is_windows():
@@ -39,6 +49,97 @@ def log_output(message):
     """Log output to console only."""
     print(message)
     sys.stdout.flush()
+
+
+def run_masscan_scan(ip, port_range='1-65535'):
+    """Run masscan for fast port discovery. Requires root. Returns list of open port strings or []."""
+    if not _check_tool('masscan') or not _has_root_for_nmap():
+        return []
+    try:
+        # masscan: -p1-65535, --rate=1000, output: open tcp PORT IP timestamp
+        proc = subprocess.run(
+            ['masscan', ip, '-p' + port_range, '--rate', '1000'],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        ports = []
+        for line in (proc.stdout or '').splitlines():
+            # Format: "open tcp 3389 192.168.1.1 1234567890"
+            m = re.match(r'open\s+tcp\s+(\d+)\s+', line)
+            if m:
+                ports.append(m.group(1))
+        return list(dict.fromkeys(ports))  # dedupe, preserve order
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+        log_output(f"[MASSCAN] Skipped: {e}")
+        return []
+
+
+def run_nuclei_scan(ip, web_ports=None):
+    """Run nuclei template-based vuln scan on web URLs. Returns parsed vulnerabilities."""
+    if not _check_tool('nuclei'):
+        return []
+    web_ports = web_ports or ['80', '443']
+    urls = []
+    if '80' in web_ports:
+        urls.append(f'http://{ip}')
+    if '443' in web_ports:
+        urls.append(f'https://{ip}')
+    if '8080' in web_ports:
+        urls.append(f'http://{ip}:8080')
+    if '8443' in web_ports:
+        urls.append(f'https://{ip}:8443')
+    if not urls:
+        return []
+    try:
+        args = ['nuclei', '-silent', '-jsonl', '-no-color']
+        for u in urls:
+            args.extend(['-u', u])
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=120)
+        return parse_nuclei_output(proc.stdout or '')
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+        log_output(f"[NUCLEI] Skipped: {e}")
+        return []
+
+
+def parse_nuclei_output(jsonl_output):
+    """Parse nuclei JSONL output into vulnerability dicts."""
+    import json
+    vulns = []
+    for line in (jsonl_output or '').strip().splitlines():
+        if not line.strip():
+            continue
+        try:
+            j = json.loads(line)
+            info = j.get('info', {})
+            name = info.get('name', 'Nuclei Finding')
+            severity = (info.get('severity') or 'info').lower()
+            severity = {'critical': 'Critical', 'high': 'High', 'medium': 'Medium', 'low': 'Low'}.get(severity, 'Low')
+            desc = info.get('description', name) or name
+            cve = None
+            ref = info.get('reference')
+            if isinstance(ref, list) and ref:
+                for r in ref:
+                    s = str(r) if isinstance(r, str) else str(r.get('url', r))
+                    m = re.search(r'(CVE-\d{4}-\d{4,})', s, re.I)
+                    if m:
+                        cve = m.group(1).upper()
+                        break
+            if not cve:
+                m = re.search(r'(CVE-\d{4}-\d{4,})', str(j), re.I)
+                if m:
+                    cve = m.group(1).upper()
+            vulns.append({
+                'name': name[:100],
+                'description': (desc or name)[:200],
+                'severity': severity,
+                'source': 'Nuclei',
+                'cve': cve,
+                'port': None
+            })
+        except (json.JSONDecodeError, KeyError, TypeError):
+            continue
+    return vulns
 
 
 def run_nmap_scan(ip, modules=None, port_depth='full', stopped_callback=None):
@@ -69,20 +170,26 @@ def run_nmap_scan(ip, modules=None, port_depth='full', stopped_callback=None):
             return stopped_callback() if callable(stopped_callback) else False
 
         if is_full_scan:
-            # PHASE 1: Port discovery ONLY - no service/OS/vuln (makes full scan feasible)
-            # Service detection on 65535 ports would take hours; we do it in phase 2 on found ports only
-            log_output(f"[NMAP] Phase 1: Discovering ALL open ports on {ip} (1-65535)...")
-            discovery_args = ['nmap', '-T5', '-Pn', '--open', '-sT', '--min-rate', '500',
-                             '-p', '1-65535', ip]
-            timeout = 2400  # 40 min for full port discovery
-            proc = subprocess.run(discovery_args, capture_output=True, text=True, timeout=timeout)
-            result = proc.stdout or ''
-            if not result.strip():
-                return generate_mock_nmap_output(ip)
-
-            # Parse open ports from phase 1
-            phase1_data = parse_nmap_output(result)
-            open_ports = [p['port'] for p in phase1_data['ports']]
+            # PHASE 1: Fast port discovery - use Masscan if available (10x faster), else Nmap
+            open_ports = run_masscan_scan(ip, '1-65535')
+            if open_ports:
+                log_output(f"[MASSCAN] Found {len(open_ports)} open port(s) on {ip}")
+            elif _check_tool('masscan') and not _has_root_for_nmap():
+                log_output("[MASSCAN] Skipped (requires root). Using Nmap - full scan may take 15-40 min.")
+            if not open_ports:
+                log_output(f"[NMAP] Phase 1: Discovering ALL open ports on {ip} (1-65535)...")
+                discovery_args = ['nmap', '-T5', '-Pn', '--open', '-sT', '--min-rate', '500',
+                                 '-p', '1-65535', ip]
+                timeout = 2400  # 40 min for full port discovery
+                proc = subprocess.run(discovery_args, capture_output=True, text=True, timeout=timeout)
+                result = proc.stdout or ''
+                if not result.strip():
+                    return generate_mock_nmap_output(ip)
+                phase1_data = parse_nmap_output(result)
+                open_ports = [p['port'] for p in phase1_data['ports']]
+                result = result  # keep for phase 2 merge
+            else:
+                result = f"Nmap scan report for {ip}\nHost is up.\n"  # placeholder for merge
             if not open_ports:
                 log_output(f"[NMAP] No open ports found on {ip}")
                 return result
@@ -96,8 +203,10 @@ def run_nmap_scan(ip, modules=None, port_depth='full', stopped_callback=None):
                 port_list = ','.join(open_ports)
                 svc_args = ['nmap', '-T4', '-Pn', '-sV', '--version-intensity', '5',
                             '-p', port_list, ip]
-                if 'os' in modules:
+                if 'os' in modules and _has_root_for_nmap():
                     svc_args.extend(['-O', '--osscan-guess'])
+                elif 'os' in modules:
+                    log_output("[NMAP] Skipping OS fingerprint (-O) - requires root. OS inferred from service banners.")
                 if 'vuln' in modules:
                     svc_args.extend(['--script', 'vuln'])
                 proc2 = subprocess.run(svc_args, capture_output=True, text=True, timeout=600)
@@ -107,8 +216,10 @@ def run_nmap_scan(ip, modules=None, port_depth='full', stopped_callback=None):
                 if ('os' in modules or 'vuln' in modules) and open_ports:
                     port_list = ','.join(open_ports)
                     extra_args = ['nmap', '-T4', '-Pn', '-p', port_list, ip]
-                    if 'os' in modules:
+                    if 'os' in modules and _has_root_for_nmap():
                         extra_args.extend(['-O', '--osscan-guess'])
+                    elif 'os' in modules:
+                        log_output("[NMAP] Skipping OS fingerprint (-O) - requires root.")
                     if 'vuln' in modules:
                         extra_args.extend(['--script', 'vuln'])
                     proc2 = subprocess.run(extra_args, capture_output=True, text=True, timeout=300)
@@ -121,14 +232,16 @@ def run_nmap_scan(ip, modules=None, port_depth='full', stopped_callback=None):
         nmap_args = ['nmap', '-T4', '-Pn', '--open', '-sT'] + port_args
         if 'services' in modules:
             nmap_args.extend(['-sV', '--version-intensity', '5'])
-        if 'os' in modules:
+        if 'os' in modules and _has_root_for_nmap():
             nmap_args.extend(['-O', '--osscan-guess'])
+        elif 'os' in modules:
+            log_output("[NMAP] Skipping OS fingerprint (-O) - requires root. OS inferred from service banners.")
         if 'vuln' in modules:
             nmap_args.extend(['--script', 'vuln'])
 
         log_output(f"[NMAP] Scanning {ip} (modules: {', '.join(modules)}, ports: {port_depth})")
-        timeouts = {'quick': 60, 'standard': 90, 'deep': 180}
-        timeout = timeouts.get(port_depth, 180)
+        timeouts = {'quick': 120, 'standard': 300, 'deep': 600}  # 2/5/10 min
+        timeout = timeouts.get(port_depth, 600)
         proc = subprocess.run(
             nmap_args + [ip],
             capture_output=True,
@@ -152,21 +265,43 @@ def run_nmap_scan(ip, modules=None, port_depth='full', stopped_callback=None):
         return generate_mock_nmap_output(ip)
 
 
-def run_nikto_scan(ip):
-    """Run nikto scan on the target IP (web vulnerability scan)."""
+def run_nikto_scan(ip, web_ports=None):
+    """Run nikto scan on the target IP. Scans both HTTP and HTTPS when ports 80/443 open.
+    web_ports: list of open web ports e.g. ['80','443','8080','8443'] - if None, scans http only."""
     try:
         if not _check_tool('nikto'):
             log_output(f"[NIKTO] WARNING: Nikto not found! Using mock data for {ip}")
             return generate_mock_nikto_output(ip)
 
-        log_output(f"[NIKTO] Scanning http://{ip}")
-        proc = subprocess.run(
-            ['nikto', '-h', f'http://{ip}', '-output', '-'],
-            capture_output=True,
-            text=True,
-            timeout=90,
-        )
-        result = proc.stdout or ''
+        web_ports = web_ports or ['80']
+        urls = []
+        if '80' in web_ports:
+            urls.append(f'http://{ip}')
+        if '443' in web_ports:
+            urls.append(f'https://{ip}')
+        if '8080' in web_ports:
+            urls.append(f'http://{ip}:8080')
+        if '8443' in web_ports:
+            urls.append(f'https://{ip}:8443')
+        if not urls:
+            urls = [f'http://{ip}']
+
+        all_output = []
+        for url in urls:
+            log_output(f"[NIKTO] Scanning {url}")
+            args = ['nikto', '-h', url, '-output', '-']
+            if url.startswith('https'):
+                args.append('-nossl')  # Skip SSL cert verification for self-signed
+            proc = subprocess.run(
+                args,
+                capture_output=True,
+                text=True,
+                timeout=90,
+            )
+            out = proc.stdout or ''
+            if out.strip():
+                all_output.append(out)
+        result = '\n---\n'.join(all_output) if all_output else ''
         if not result.strip():
             return generate_mock_nikto_output(ip)
         return result
@@ -525,18 +660,19 @@ def scan_single_ip(ip, modules=None, stopped_callback=None, port_depth='full'):
         result['vulnerabilities'] = list(nmap_data['vulnerabilities'])
 
         # Nikto (only if web ports open)
-        if 'nikto' in modules:
-            has_web = any(
-                p['port'] in ['80', '443', '8080', '8443']
-                for p in nmap_data['ports']
-            )
-            if has_web:
-                if stopped_callback and stopped_callback():
-                    pass
-                else:
-                    nikto_output = run_nikto_scan(ip)
-                    nikto_vulns = parse_nikto_output(nikto_output)
-                    result['vulnerabilities'].extend(nikto_vulns)
+        web_ports = [p['port'] for p in nmap_data['ports'] if p['port'] in ['80', '443', '8080', '8443']]
+        if 'nikto' in modules and web_ports:
+            if not (stopped_callback and stopped_callback()):
+                nikto_output = run_nikto_scan(ip, web_ports=web_ports)
+                nikto_vulns = parse_nikto_output(nikto_output)
+                result['vulnerabilities'].extend(nikto_vulns)
+
+        # Nuclei (template-based vuln scan, only if web ports open)
+        if 'nuclei' in modules and web_ports:
+            if not (stopped_callback and stopped_callback()):
+                log_output(f"[NUCLEI] Scanning {ip} (web ports: {web_ports})")
+                nuclei_vulns = run_nuclei_scan(ip, web_ports=web_ports)
+                result['vulnerabilities'].extend(nuclei_vulns)
 
         # Severity / Risk
         vulns = result['vulnerabilities']

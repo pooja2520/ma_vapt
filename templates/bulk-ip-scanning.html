@@ -12,7 +12,7 @@
   <!-- ── Page Title ──────────────────────────────────────── -->
   <div class="pt">
     <h1><i class="fa-solid fa-network-wired"></i> Bulk IP Scanner</h1>
-    <p>Scan multiple IP addresses simultaneously with Nmap &amp; Nikto</p>
+    <p>Scan multiple IP addresses with Nmap, Masscan, Nikto &amp; Nuclei</p>
   </div>
 
   <!-- ── TOP ROW: Config + Progress ──────────────────────── -->
@@ -100,6 +100,10 @@
             <div class="opt-row">
               <label><i class="fa-solid fa-spider"></i> Web Scan (Nikto)</label>
               <label class="toggle-switch"><input type="checkbox" id="optNikto"><span class="toggle-track"></span></label>
+            </div>
+            <div class="opt-row">
+              <label><i class="fa-solid fa-vial"></i> Nuclei (Template Vulns)</label>
+              <label class="toggle-switch"><input type="checkbox" id="optNuclei"><span class="toggle-track"></span></label>
             </div>
             <div class="concurrency-row">
               <i class="fa-solid fa-bolt"></i>
@@ -530,6 +534,7 @@ function getSelectedModules() {
   if (document.getElementById('optOS').checked)       modules.push('os');
   if (document.getElementById('optVuln').checked)     modules.push('vuln');
   if (document.getElementById('optNikto').checked)    modules.push('nikto');
+  if (document.getElementById('optNuclei').checked)   modules.push('nuclei');
   return modules;
 }
 
