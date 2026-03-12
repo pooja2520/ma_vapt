@@ -2022,8 +2022,9 @@ def scan_status():
 # ─────────────────────────────────────────────
 
 import uuid as _uuid_mod
+from bulk_scan_engine import scan_single_ip, create_bulk_excel_report, REPORTS_DIR
 
-# In-memory store: { scan_id: { results: [], done: False, total: N } }
+# In-memory store: { scan_id: { results: [], done: False, total: N, stopped: False } }
 _bulk_scans = {}
 
 @app.route('/scan/bulk', methods=['POST'])
@@ -2035,71 +2036,34 @@ def bulk_scan_start():
     ips         = data.get('ips', [])
     modules     = data.get('modules', ['ping', 'ports'])
     concurrency = int(data.get('concurrency', 5))
+    port_depth  = data.get('port_depth', 'full')  # quick|standard|deep|full
 
     if not ips:
         return jsonify({'error': 'No IPs provided.'}), 400
 
     scan_id = str(_uuid_mod.uuid4())[:8]
-    _bulk_scans[scan_id] = {'results': [], 'done': False, 'total': len(ips)}
+    _bulk_scans[scan_id] = {'results': [], 'done': False, 'total': len(ips), 'stopped': False}
 
     def _run():
-        import subprocess, socket
         store = _bulk_scans[scan_id]
         sem   = threading.Semaphore(concurrency)
 
+        def stopped():
+            return store.get('stopped', False)
+
         def scan_one(ip):
             with sem:
-                result = {'ip': ip, 'status': 'scanning', 'open_ports': [], 'services': [], 'os': '', 'risk': 'Unknown'}
-                try:
-                    ping_ok = subprocess.run(
-                        ['ping', '-c', '1', '-W', '1', ip],
-                        capture_output=True, timeout=5
-                    ).returncode == 0
-                    result['ping'] = ping_ok
-
-                    if 'ports' in modules or 'services' in modules:
-                        try:
-                            nmap_args = ['nmap', '-T4', '--open', '-p', '21,22,23,25,53,80,110,143,443,445,3306,3389,8080,8443', ip]
-                            if 'services' in modules:
-                                nmap_args.insert(1, '-sV')
-                            nm = subprocess.run(nmap_args, capture_output=True, text=True, timeout=30)
-                            for line in nm.stdout.splitlines():
-                                if '/tcp' in line and 'open' in line:
-                                    parts = line.split()
-                                    port  = parts[0].split('/')[0]
-                                    svc   = parts[2] if len(parts) > 2 else ''
-                                    result['open_ports'].append(port)
-                                    if svc:
-                                        result['services'].append(f'{port}/{svc}')
-                        except (FileNotFoundError, subprocess.TimeoutExpired):
-                            for port in [22, 80, 443, 3389, 8080]:
-                                try:
-                                    s = socket.create_connection((ip, port), timeout=1)
-                                    s.close()
-                                    result['open_ports'].append(str(port))
-                                except Exception:
-                                    pass
-
-                    risky = {'21', '23', '3389', '445', '3306'}
-                    if any(p in risky for p in result['open_ports']):
-                        result['risk'] = 'High'
-                    elif result['open_ports']:
-                        result['risk'] = 'Medium'
-                    elif ping_ok:
-                        result['risk'] = 'Low'
-                    else:
-                        result['risk'] = 'None'
-
-                    result['status'] = 'done'
-                except Exception as e:
-                    result['status'] = 'error'
-                    result['error']  = str(e)
-
+                if stopped():
+                    store['results'].append({'ip': ip, 'status': 'error', 'error': 'Scan stopped by user'})
+                    return
+                result = scan_single_ip(ip, modules=modules, stopped_callback=stopped, port_depth=port_depth)
                 store['results'].append(result)
 
         threads = [threading.Thread(target=scan_one, args=(ip,)) for ip in ips]
-        for t in threads: t.start()
-        for t in threads: t.join()
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
         store['done'] = True
 
     threading.Thread(target=_run, daemon=True).start()
@@ -2127,8 +2091,33 @@ def bulk_scan_stop(scan_id):
     """Mark a bulk scan as stopped."""
     store = _bulk_scans.get(scan_id)
     if store:
+        store['stopped'] = True
         store['done'] = True
     return jsonify({'status': 'stopped'})
+
+
+@app.route('/scan/report/<scan_id>')
+@login_required
+def bulk_scan_report(scan_id):
+    """Download bulk scan report as Excel or other format."""
+    store = _bulk_scans.get(scan_id)
+    if not store:
+        return jsonify({'error': 'Scan not found.'}), 404
+    results = store.get('results', [])
+    if not results:
+        return jsonify({'error': 'No results to report.'}), 400
+    fmt = request.args.get('format', 'xlsx').lower()
+    if fmt == 'xlsx':
+        try:
+            filepath = create_bulk_excel_report(results)
+            return send_file(
+                filepath,
+                as_attachment=True,
+                download_name=os.path.basename(filepath)
+            )
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    return jsonify({'error': 'Unsupported format. Use format=xlsx'}), 400
 
 
 @app.route('/download')
@@ -2184,6 +2173,34 @@ def api_vulnerability_fix(vuln_id):
         return jsonify({'status': 'error', 'message': 'Vulnerability not found'}), 404
     new_fixed, new_status = result
     return jsonify({'status': 'success', 'new_status': new_status, 'fixed': new_fixed})
+
+
+# ─────────────────────────────────────────────
+#  NVD (National Vulnerability Database) API
+# ─────────────────────────────────────────────
+
+@app.route('/api/nvd/cve/<cve_id>')
+@login_required
+def api_nvd_cve(cve_id):
+    """Fetch CVE details from NVD for real-time enrichment."""
+    from nvd_service import fetch_cve
+    data = fetch_cve(cve_id)
+    if not data:
+        return jsonify({'status': 'error', 'message': 'CVE not found or NVD unavailable'}), 404
+    return jsonify({'status': 'success', 'cve': data})
+
+
+@app.route('/api/nvd/cves', methods=['POST'])
+@login_required
+def api_nvd_cves_batch():
+    """Fetch multiple CVEs from NVD. Body: { "cve_ids": ["CVE-2024-1234", ...] }"""
+    from nvd_service import fetch_cves_batch
+    data = request.get_json(force=True) or {}
+    cve_ids = data.get('cve_ids', [])
+    if not cve_ids or not isinstance(cve_ids, list):
+        return jsonify({'status': 'error', 'message': 'cve_ids array required'}), 400
+    result = fetch_cves_batch(cve_ids[:20])  # limit 20 per request
+    return jsonify({'status': 'success', 'cves': result})
 
 
 @app.route('/download-report/<int:report_id>')

@@ -107,6 +107,19 @@
               <input type="range" class="conc-slider" id="concSlider" min="1" max="10" value="3" oninput="document.getElementById('concVal').textContent=this.value">
               <span class="conc-val" id="concVal">3</span>
             </div>
+            <div class="concurrency-row" style="margin-top:.5rem;">
+              <i class="fa-solid fa-magnifying-glass-chart"></i>
+              <span>Port Depth:</span>
+              <select id="portDepth" style="padding:.25rem .5rem;border:1.5px solid var(--border);border-radius:6px;font-size:.8rem;" onchange="togglePortDepthNote(this.value)">
+                <option value="quick">Quick (top 100 ports)</option>
+                <option value="standard">Standard (top 500 ports)</option>
+                <option value="deep">Deep (top 1000 ports)</option>
+                <option value="full" selected>Full (all 65535 — every open port)</option>
+              </select>
+            </div>
+            <div id="portDepthNote" class="alert alert-info" style="display:flex;margin-top:.5rem;font-size:.75rem;padding:.4rem .6rem;">
+              <span>Full scan checks all 65,535 ports. May take 15–40 min per host.</span>
+            </div>
           </div>
         </div>
 
@@ -473,7 +486,7 @@ async function startBulkScan() {
   updateStats();
   clearLog();
   appendLog('info', `Starting bulk scan of ${parsedIPs.length} IP(s)…`);
-  appendLog('info', `Concurrency: ${document.getElementById('concSlider').value}`);
+  appendLog('info', `Concurrency: ${document.getElementById('concSlider').value}, Port depth: ${document.getElementById('portDepth').value}`);
   logModules();
 
   updateOverall(0, `Scanning 0 / ${scanQueue.length}…`);
@@ -482,10 +495,11 @@ async function startBulkScan() {
   try {
     const modules = getSelectedModules();
     const concurrency = parseInt(document.getElementById('concSlider').value);
+    const portDepth = document.getElementById('portDepth').value || 'full';
     const res  = await fetch('/scan/bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ips: parsedIPs, modules, concurrency }),
+      body: JSON.stringify({ ips: parsedIPs, modules, concurrency, port_depth: portDepth }),
     });
     const data = await res.json();
     if (!res.ok || data.error) {
@@ -501,6 +515,11 @@ async function startBulkScan() {
     appendLog('warn', 'Backend unreachable. Running demo simulation.');
     simulateBulkScan();
   }
+}
+
+function togglePortDepthNote(val) {
+  const el = document.getElementById('portDepthNote');
+  if (el) el.style.display = (val === 'full') ? 'flex' : 'none';
 }
 
 function getSelectedModules() {
@@ -538,7 +557,7 @@ async function pollBulkStatus() {
     updateOverall(pct, `Scanning ${done} / ${total}…`);
     updateStats();
 
-    if (data.status === 'completed' || data.status === 'error' || done >= total) {
+    if (data.done || data.status === 'completed' || data.status === 'error' || done >= total) {
       finishScan(data.results || scanQueue.map(q=>q.result).filter(Boolean));
     } else if (!stopRequested) {
       pollTimer = setTimeout(pollBulkStatus, 2000);
@@ -552,12 +571,16 @@ async function pollBulkStatus() {
 function updateQueueItem(result) {
   const qi = scanQueue.find(q => q.ip === result.ip);
   if (!qi) return;
-  qi.status = result.status === 'online' ? 'done' : (result.error ? 'error' : 'done');
+  qi.status = (result.status === 'error' ? 'error' : 'done');
   qi.result = result;
   if (result.status === 'online') {
-    appendLog('ok', `[${result.ip}] Online — ${(result.ports||[]).length} open port(s)`);
-  } else {
+    const portCount = (result.ports || result.open_ports || []).length;
+    const vulnCount = (result.vulnerabilities || []).length;
+    appendLog('ok', `[${result.ip}] Online — ${portCount} port(s), ${vulnCount} vuln(s)`);
+  } else if (result.status === 'offline') {
     appendLog('warn', `[${result.ip}] Offline / unreachable`);
+  } else if (result.status === 'error') {
+    appendLog('err', `[${result.ip}] Error: ${result.error || 'Unknown'}`);
   }
   renderQueue();
 }
@@ -834,10 +857,16 @@ function buildDrawerHTML(r) {
   }).join('') || '<span style="color:var(--text-muted);font-size:.72rem;">None detected</span>';
 
   const vulnHTML = vulns.length
-    ? vulns.map(v => `<div class="vuln-mini">
-        <i class="fa-solid fa-triangle-exclamation"></i>
-        <span><strong>${v.name}</strong>${v.cve?' <span style="color:#9ca3af;font-size:.68rem;">('+v.cve+')</span>':''} — Port ${v.port||'-'}</span>
-      </div>`).join('')
+    ? vulns.map((v, vi) => {
+        const cve = v.cve || (v.description && v.description.match(/CVE-\d{4}-\d{4,}/i)?.[0]);
+        const uid = `nvd-${(r.ip||'').replace(/\./g,'-')}-${vi}`;
+        const cvePart = cve ? `<span class="cve-nvd-trigger" data-cve="${cve}" data-target="${uid}" onclick="fetchNvdForCve(this)" title="Fetch NVD details (real-time)">${cve} <i class="fa-solid fa-database" style="font-size:.6rem;color:var(--blue)"></i></span>` : '';
+        return `<div class="vuln-mini" data-vuln-idx="${vi}">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <span><strong>${v.name}</strong>${cve ? ' (' + cvePart + ')' : ''} — Port ${v.port||'-'}</span>
+          <div class="nvd-detail" id="${uid}" style="display:none;margin-top:.4rem;padding:.4rem;background:var(--bg-secondary);border-radius:6px;font-size:.72rem;"></div>
+        </div>`;
+      }).join('')
     : '<div class="vuln-mini" style="color:var(--text-muted)"><i class="fa-solid fa-circle-check" style="color:var(--green)"></i><span>No vulnerabilities found</span></div>';
 
   const infoRows = [
@@ -872,6 +901,35 @@ function buildDrawerHTML(r) {
       <div class="vuln-mini-list">${vulnHTML}</div>
     </div>
   </div>`;
+}
+
+async function fetchNvdForCve(el) {
+  const cve = el?.dataset?.cve;
+  const targetId = el?.dataset?.target;
+  if (!cve || !targetId) return;
+  const target = document.getElementById(targetId);
+  if (!target) return;
+  if (target.dataset.loaded === '1') { target.style.display = target.style.display === 'none' ? '' : 'none'; return; }
+  target.style.display = '';
+  target.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Fetching from NVD...';
+  try {
+    const res = await fetch(`/api/nvd/cve/${encodeURIComponent(cve)}`);
+    const data = await res.json();
+    if (data.status === 'success' && data.cve) {
+      const d = data.cve;
+      target.innerHTML = `
+        <div style="margin-bottom:.3rem;"><strong>${d.description?.slice(0,200) || 'No description'}${(d.description?.length||0)>200?'...':''}</strong></div>
+        ${d.cvss_score != null ? `<div><span style="color:var(--text-muted)">CVSS:</span> ${d.cvss_score} (${d.cvss_severity||'-'})</div>` : ''}
+        ${d.published ? `<div><span style="color:var(--text-muted)">Published:</span> ${d.published.split('T')[0]}</div>` : ''}
+        ${d.references?.length ? `<div style="margin-top:.3rem;"><a href="${d.references[0]}" target="_blank" rel="noopener" style="font-size:.68rem;">View reference</a></div>` : ''}
+      `;
+      target.dataset.loaded = '1';
+    } else {
+      target.innerHTML = '<span style="color:var(--text-muted)">NVD data unavailable</span>';
+    }
+  } catch (e) {
+    target.innerHTML = '<span style="color:var(--red)">Failed to fetch NVD</span>';
+  }
 }
 
 function toggleDrawer(idx) {
