@@ -582,6 +582,15 @@
 .mini-log::-webkit-scrollbar { width: 4px; }
 .mini-log::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
 
+/* ── NVD CVE trigger ─────────────────────────────────────────── */
+.cve-nvd-trigger {
+  cursor: pointer;
+  color: var(--blue, #2563eb);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cve-nvd-trigger:hover { opacity: .85; }
+
 /* ── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 1024px) {
   .drawer-grid { grid-template-columns: 1fr 1fr; }
