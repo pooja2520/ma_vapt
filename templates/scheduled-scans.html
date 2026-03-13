@@ -23,6 +23,7 @@
 .rh-btn{background:rgba(59,130,246,.13)!important;border:1.5px solid rgba(59,130,246,.35)!important;color:#60a5fa!important;display:inline-flex!important;align-items:center;gap:.3rem;font-size:.78rem;}
 .rh-btn:hover{background:rgba(59,130,246,.25)!important;}
 .rh-cnt{font-size:.64rem;font-weight:800;background:#3b82f6;color:#fff;padding:.08rem .38rem;border-radius:10px;line-height:1.5;}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(37,99,235,.5);}50%{box-shadow:0 0 0 6px rgba(37,99,235,0);}}
 </style>
 {% endblock %}
 {% block body %}
@@ -484,6 +485,8 @@ function openLivePopup() {
     popupOpen = true;
     document.getElementById('liveScanPopup').style.display = 'flex';
     document.getElementById('popupResult').style.display   = 'none';
+    // Always make sure polling is running when popup is open
+    startLivePolling();
 }
 function closeLivePopup() {
     popupOpen = false;
@@ -563,6 +566,8 @@ function updatePopupPhases(phase) {
 }
 
 // ── Poll every 2.5s ──────────────────────────────────────────────────
+var _scanStartedAt = 0; // timestamp when runNow opened the popup — grace period guard
+
 async function pollLiveScan() {
     try {
         var res  = await fetch('/api/scan-logs');
@@ -571,7 +576,7 @@ async function pollLiveScan() {
         if (data.running) {
             // Scan started externally (auto-scheduled) — open popup automatically
             if (!wasRunning) {
-                wasRunning = true; popupLogLen = 0;
+                wasRunning = true; popupLogLen = 0; _scanStartedAt = 0;
                 document.getElementById('popupSchedName').textContent = 'Scheduled Scan \u2014 Running';
                 document.getElementById('popupTarget').textContent    = data.target || '';
                 document.getElementById('popupBar').style.width       = '0%';
@@ -592,8 +597,10 @@ async function pollLiveScan() {
             var logs = data.logs || [];
             while (popupLogLen < logs.length) { appendPopupLog(logs[popupLogLen]); popupLogLen++; }
         } else {
+            // Grace period: if runNow just opened the popup, wait up to 6s for backend to register the scan
+            if (wasRunning && _scanStartedAt > 0 && (Date.now() - _scanStartedAt) < 6000) return;
             if (wasRunning) {
-                wasRunning = false; popupLogLen = 0;
+                wasRunning = false; popupLogLen = 0; _scanStartedAt = 0;
                 var rs = schedules.find(function(s){ return s.status==='running'; });
                 var scanResults = null;
                 try { var sr=await fetch('/scan-status'); var sd=await sr.json(); if(sd.status==='success'&&sd.results) scanResults=sd.results; } catch(e){}
@@ -645,11 +652,43 @@ function startLivePolling() {
 
 // ── Run Now — uses correct /scan endpoint ────────────────────────────
 async function runNow(id) {
-    var s = schedules.find(function(x){ return x.id===id; });
-    if (!s) return;
+    // Fix: use == (not ===) to handle number/string type coercion from HTML onclick attrs
+    var numId = parseInt(id, 10);
+    var s = schedules.find(function(x){ return x.id == numId || x.id === id; });
+
+    // Fix: if schedule not in local array yet (e.g. just saved), re-fetch from API then retry
+    if (!s) {
+        try {
+            await loadAllDataFromAPI();
+            s = schedules.find(function(x){ return x.id == numId || x.id === id; });
+        } catch(e) {}
+    }
+    if (!s) { console.error('[runNow] Schedule not found for id:', id); return; }
+
+    // Check if already running — if so, just open popup with live data immediately (no confirm)
     try {
-        var chk=await fetch('/api/scan-logs'); var cd=await chk.json();
-        if (cd.running) { if(confirm('A scan is already running. View it?')) openLivePopup(); return; }
+        var chk = await fetch('/api/scan-logs'); var cd = await chk.json();
+        if (cd.running) {
+            // Populate popup with current live state then open it directly
+            wasRunning = true; popupLogLen = 0; _scanStartedAt = 0;
+            document.getElementById('popupSchedName').textContent = (s.name || 'Scan') + ' \u2014 Running';
+            document.getElementById('popupTarget').textContent    = cd.target || s.target || '';
+            document.getElementById('popupBar').style.width       = (cd.progress || 0) + '%';
+            document.getElementById('popupPct').textContent       = (cd.progress || 0) + '%';
+            document.getElementById('popupPhase').textContent     = cd.phase_name || 'Scanning\u2026';
+            document.getElementById('popupResult').style.display  = 'none';
+            document.getElementById('popupLog').innerHTML         = '<span style="color:#475569;">Connecting to live scan\u2026</span>';
+            updatePopupPhases(cd.phase || 1);
+            // Load any existing logs
+            var existingLogs = cd.logs || [];
+            if (existingLogs.length) {
+                document.getElementById('popupLog').innerHTML = '';
+                existingLogs.forEach(function(l){ appendPopupLog(l); popupLogLen++; });
+            }
+            openLivePopup();
+            startLivePolling();
+            return;
+        }
     } catch(e) {}
 
     var authType = s.authType || 'none';
@@ -658,23 +697,39 @@ async function runNow(id) {
     if (authType==='basic') { adPayload={username:authData.basicUsername||'',password:authData.basicPassword||''}; }
     else if (authType==='form') { adPayload={login_url:authData.formLoginUrl||'',username:authData.formUsername||'',password:authData.formPassword||'',username_field:authData.formUsernameField||'username',password_field:authData.formPasswordField||'password',success_indicator:authData.formSuccessIndicator||''}; }
 
+    // Open the popup immediately so the user sees feedback right away
+    wasRunning = true; popupLogLen = 0; _scanStartedAt = Date.now();
+    document.getElementById('popupSchedName').textContent = (s.name || 'Scan') + ' \u2014 Starting\u2026';
+    document.getElementById('popupTarget').textContent    = s.target || '';
+    document.getElementById('popupBar').style.width       = '0%';
+    document.getElementById('popupPct').textContent       = '0%';
+    document.getElementById('popupPhase').textContent     = 'Connecting\u2026';
+    document.getElementById('popupLog').innerHTML         = '<span style="color:#475569;">Waiting for scan to start\u2026</span>';
+    document.getElementById('popupResult').style.display  = 'none';
+    updatePopupPhases(0);
+    openLivePopup();
+
+    // Ensure the live poller is running so the popup gets log updates
+    startLivePolling();
+
     try {
         var res  = await fetch('/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({target:s.target,auth_type:authType,auth_data:adPayload,owasp_enabled:true, scheduled_scan_id: s.id}) });
         var data = await res.json();
         if (data.status==='started') {
             s.status='running'; renderSchedules(); updateStats();
-            wasRunning=true; popupLogLen=0;
-            document.getElementById('popupSchedName').textContent = s.name+' \u2014 Running';
-            document.getElementById('popupTarget').textContent    = s.target;
-            document.getElementById('popupBar').style.width       = '0%';
-            document.getElementById('popupPct').textContent       = '0%';
+            document.getElementById('popupSchedName').textContent = (s.name || 'Scan') + ' \u2014 Running';
             document.getElementById('popupPhase').textContent     = 'Initializing\u2026';
-            document.getElementById('popupLog').innerHTML         = '<span style="color:#475569;">Waiting for scan to start\u2026</span>';
-            document.getElementById('popupResult').style.display  = 'none';
-            updatePopupPhases(0);
-            openLivePopup();
-        } else { alert('Could not start scan: '+(data.message||'Unknown error')); }
-    } catch(e) { alert('Network error: '+e.message); }
+        } else {
+            // Scan failed to start — close popup and show error
+            wasRunning = false; _scanStartedAt = 0;
+            closeLivePopup();
+            alert('Could not start scan: '+(data.message||'Unknown error'));
+        }
+    } catch(e) {
+        wasRunning = false; _scanStartedAt = 0;
+        closeLivePopup();
+        alert('Network error: '+e.message);
+    }
 }
 
 // ── Presets ──────────────────────────────────────────────────────────
@@ -810,9 +865,18 @@ async function saveSchedule(){
         var data=await res.json();
         
         if(data.status==='success'||data.status==='ok'){
+            var isNew = !editingId;
+            var newSchedId = data.schedule ? data.schedule.id : null;
             await loadAllDataFromAPI();
             closeModal();
             editingId=null;
+
+            // Auto-launch scan immediately for one-time schedules or any newly created schedule
+            // where the user expects it to start now (freq=once always runs immediately)
+            if (isNew && newSchedId && (freq === 'once')) {
+                // Small delay so the modal closes smoothly before popup opens
+                setTimeout(function(){ runNow(newSchedId); }, 300);
+            }
         } else {
             alert('Error saving schedule: '+(data.message||'Unknown error'));
         }
@@ -908,7 +972,8 @@ function fmtLocalDT(str) {
 
 function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
 async function toggleSched(id){
-    var s=schedules.find(function(x){return x.id===id;});
+    var numId = parseInt(id, 10);
+    var s=schedules.find(function(x){return x.id==numId||x.id===id;});
     if(!s||s.status==='running'||s.status==='completed')return;
     try {
         var res=await fetch('/api/scheduled-scans/'+id+'/toggle',{method:'POST'});
@@ -921,7 +986,8 @@ async function toggleSched(id){
     }
 }
 async function rerunSched(id){
-    var s=schedules.find(function(x){return x.id===id;});
+    var numId = parseInt(id, 10);
+    var s=schedules.find(function(x){return x.id==numId||x.id===id;});
     if(!s)return;
     try {
         var nextRun=calcNextRun(s.time,s.freq,true);
@@ -933,7 +999,7 @@ async function rerunSched(id){
         var data=await res.json();
         if(data.status==='ok'){
             await loadAllDataFromAPI();
-            runNow(id);
+            runNow(numId);
         }
     } catch(e){
         console.error('Error rerunning schedule:',e);
@@ -1038,7 +1104,7 @@ function renderSchedules(){
         // Action buttons
         var actionBtns='';
         if(isR){
-            actionBtns='';
+            actionBtns='<button class="btn btn-p btn-s" onclick="runNow('+s.id+')" title="View Live Scan" style="background:#2563eb;border-color:#2563eb;animation:pulse 1.5s infinite;"><i class="fa-solid fa-satellite-dish"></i></button>';
         } else if(isC){
             actionBtns='<button class="btn btn-p btn-s" onclick="rerunSched('+s.id+')" title="Run Again" style="background:#16a34a;border-color:#16a34a;"><i class="fa-solid fa-rotate-right"></i></button>';
         } else {
@@ -1244,4 +1310,4 @@ initLayout('/scheduled');
     <div id="rhBody" style="padding:1.25rem;max-height:72vh;overflow-y:auto;"></div>
   </div>
 </div>
-{% endblock %}  
+{% endblock %}
