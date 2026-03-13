@@ -77,30 +77,60 @@
         <div class="fg" style="margin-top:.625rem;">
           <label>Scan Modules</label>
           <div class="scan-options">
-            <div class="opt-row">
-              <label><i class="fa-solid fa-satellite-dish"></i> Ping Test (Host Discovery)</label>
-              <label class="toggle-switch"><input type="checkbox" id="optPing" checked><span class="toggle-track"></span></label>
-            </div>
-            <div class="opt-row">
-              <label><i class="fa-solid fa-door-open"></i> Port Scanning</label>
-              <label class="toggle-switch"><input type="checkbox" id="optPorts" checked><span class="toggle-track"></span></label>
-            </div>
-            <div class="opt-row">
-              <label><i class="fa-solid fa-gears"></i> Service Detection</label>
-              <label class="toggle-switch"><input type="checkbox" id="optServices" checked><span class="toggle-track"></span></label>
-            </div>
-            <div class="opt-row">
-              <label><i class="fa-solid fa-fingerprint"></i> OS Detection</label>
-              <label class="toggle-switch"><input type="checkbox" id="optOS"><span class="toggle-track"></span></label>
-            </div>
-            <div class="opt-row">
-              <label><i class="fa-solid fa-bug"></i> Vuln Scripts (Nmap)</label>
-              <label class="toggle-switch"><input type="checkbox" id="optVuln"><span class="toggle-track"></span></label>
-            </div>
-            <div class="opt-row">
-              <label><i class="fa-solid fa-spider"></i> Web Scan (Nikto)</label>
-              <label class="toggle-switch"><input type="checkbox" id="optNikto"><span class="toggle-track"></span></label>
-            </div>
+            <label class="mod-card">
+              <input type="checkbox" id="optPing" checked>
+              <div class="mod-inner">
+                <i class="fa-solid fa-satellite-dish mod-icon"></i>
+                <span class="mod-label">Ping Test</span>
+                <span class="mod-sub">Host Discovery</span>
+                <span class="mod-toggle-track"></span>
+              </div>
+            </label>
+            <label class="mod-card">
+              <input type="checkbox" id="optPorts" checked>
+              <div class="mod-inner">
+                <i class="fa-solid fa-door-open mod-icon"></i>
+                <span class="mod-label">Port Scan</span>
+                <span class="mod-sub">Open ports</span>
+                <span class="mod-toggle-track"></span>
+              </div>
+            </label>
+            <label class="mod-card">
+              <input type="checkbox" id="optServices" checked>
+              <div class="mod-inner">
+                <i class="fa-solid fa-gears mod-icon"></i>
+                <span class="mod-label">Services</span>
+                <span class="mod-sub">Detection</span>
+                <span class="mod-toggle-track"></span>
+              </div>
+            </label>
+            <label class="mod-card">
+              <input type="checkbox" id="optOS">
+              <div class="mod-inner">
+                <i class="fa-solid fa-fingerprint mod-icon"></i>
+                <span class="mod-label">OS Detect</span>
+                <span class="mod-sub">Fingerprint</span>
+                <span class="mod-toggle-track"></span>
+              </div>
+            </label>
+            <label class="mod-card">
+              <input type="checkbox" id="optVuln">
+              <div class="mod-inner">
+                <i class="fa-solid fa-bug mod-icon"></i>
+                <span class="mod-label">Vuln Scripts</span>
+                <span class="mod-sub">Nmap NSE</span>
+                <span class="mod-toggle-track"></span>
+              </div>
+            </label>
+            <label class="mod-card">
+              <input type="checkbox" id="optNikto">
+              <div class="mod-inner">
+                <i class="fa-solid fa-spider mod-icon"></i>
+                <span class="mod-label">Web Scan</span>
+                <span class="mod-sub">Nikto</span>
+                <span class="mod-toggle-track"></span>
+              </div>
+            </label>
             <div class="concurrency-row">
               <i class="fa-solid fa-bolt"></i>
               <span>Concurrency:</span>
