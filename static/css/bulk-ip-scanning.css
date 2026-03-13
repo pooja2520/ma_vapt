@@ -432,52 +432,112 @@
 /* ── Scan options panel ──────────────────────────────────────── */
 .scan-options {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: .625rem;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .5rem;
   padding: .75rem;
   background: var(--bg, #f9fafb);
   border-radius: 10px;
   border: 1.5px solid var(--border, #e5e7eb);
   margin-top: .625rem;
 }
-.opt-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: .5rem;
-  font-size: .78rem;
-  font-weight: 600;
-  color: var(--text, #374151);
-}
-.opt-row label { display: flex; align-items: center; gap: .4rem; cursor: pointer; flex: 1; }
-.opt-row i { color: var(--blue, #2563eb); font-size: .8rem; width: 14px; }
-.toggle-switch {
+
+/* ── Module card ───────────────────────────────────────────── */
+.mod-card {
   position: relative;
-  width: 36px;
-  height: 20px;
+  cursor: pointer;
+  user-select: none;
+}
+.mod-card input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.mod-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .2rem;
+  padding: .6rem .4rem .5rem;
+  border-radius: 9px;
+  border: 1.5px solid var(--border, #e5e7eb);
+  background: var(--card, #fff);
+  text-align: center;
+  transition: border-color .15s, background .15s, box-shadow .15s;
+  position: relative;
+  overflow: hidden;
+}
+.mod-inner:hover {
+  border-color: var(--blue, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.08);
+}
+.mod-card input:checked + .mod-inner {
+  border-color: var(--blue, #2563eb);
+  background: rgba(37,99,235,.06);
+}
+.mod-icon {
+  font-size: 1.15rem;
+  color: var(--text-muted, #6b7280);
+  transition: color .15s, transform .15s;
+  line-height: 1;
+}
+.mod-card input:checked + .mod-inner .mod-icon {
+  color: var(--blue, #2563eb);
+  transform: scale(1.1);
+}
+.mod-label {
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--text, #374151);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.mod-sub {
+  font-size: .62rem;
+  color: var(--text-muted, #9ca3af);
+  line-height: 1;
+  white-space: nowrap;
+}
+/* Mini pill toggle in bottom-right corner of card */
+.mod-toggle-track {
+  position: absolute;
+  top: .35rem;
+  right: .35rem;
+  width: 22px;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--border, #d1d5db);
+  transition: background .2s;
   flex-shrink: 0;
 }
-.toggle-switch input { opacity: 0; width: 0; height: 0; }
-.toggle-track {
-  position: absolute;
-  inset: 0;
-  border-radius: 10px;
-  background: var(--border, #d1d5db);
-  cursor: pointer;
-  transition: background .2s;
-}
-.toggle-track::after {
+.mod-toggle-track::after {
   content: '';
   position: absolute;
-  width: 14px;
-  height: 14px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: #fff;
-  top: 3px;
-  left: 3px;
+  top: 2px;
+  left: 2px;
   transition: transform .2s;
-  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  box-shadow: 0 1px 2px rgba(0,0,0,.2);
 }
+.mod-card input:checked + .mod-inner .mod-toggle-track {
+  background: var(--blue, #2563eb);
+}
+.mod-card input:checked + .mod-inner .mod-toggle-track::after {
+  transform: translateX(10px);
+}
+
+/* Keep old toggle-switch for any other usage */
+.opt-row { display: flex; align-items: center; justify-content: space-between; gap: .5rem; font-size: .78rem; font-weight: 600; color: var(--text, #374151); }
+.opt-row label { display: flex; align-items: center; gap: .4rem; cursor: pointer; flex: 1; }
+.opt-row i { color: var(--blue, #2563eb); font-size: .8rem; width: 14px; }
+.toggle-switch { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-track { position: absolute; inset: 0; border-radius: 10px; background: var(--border, #d1d5db); cursor: pointer; transition: background .2s; }
+.toggle-track::after { content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #fff; top: 3px; left: 3px; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
 .toggle-switch input:checked + .toggle-track { background: var(--blue, #2563eb); }
 .toggle-switch input:checked + .toggle-track::after { transform: translateX(16px); }
 
@@ -598,8 +658,8 @@
 }
 @media (max-width: 768px) {
   .scan-stats-row { grid-template-columns: repeat(2, 1fr); }
-  .scan-options { grid-template-columns: 1fr; }
-  .concurrency-row { grid-column: 1; }
+  .scan-options { grid-template-columns: repeat(3, 1fr); }
+  .concurrency-row { grid-column: 1 / -1; }
   .drawer-grid { grid-template-columns: 1fr; }
   .report-actions { flex-direction: column; align-items: flex-start; }
 }
