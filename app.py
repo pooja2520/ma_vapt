@@ -2558,4 +2558,12 @@ if __name__ == '__main__':
     print("=" * 80)
     print("\n⚠️  LEGAL NOTICE: Only scan systems you own or have permission to test!")
     print("=" * 80 + "\n")
-    app.run(debug=True, host='0.0.0.0', port=5005)
+    # Disable reloader when root (sudo) so Masscan gets root in worker threads
+    use_reload = True
+    try:
+        if os.geteuid() == 0:
+            use_reload = False
+            print("[+] Running as root - reloader disabled (Masscan will work)")
+    except (AttributeError, OSError):
+        pass
+    app.run(debug=True, host='0.0.0.0', port=5005, use_reloader=use_reload)

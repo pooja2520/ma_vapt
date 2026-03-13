@@ -53,9 +53,12 @@ def log_output(message):
 
 def run_masscan_scan(ip, port_range='1-65535'):
     """Run masscan for fast port discovery. Requires root. Returns list of open port strings or []."""
-    if not _check_tool('masscan') or not _has_root_for_nmap():
+    if not _check_tool('masscan'):
+        return []
+    if not _has_root_for_nmap():
         return []
     try:
+        log_output(f"[MASSCAN] Phase 1: Scanning {ip} ({port_range})...")
         # masscan: -p1-65535, --rate=1000, output: open tcp PORT IP timestamp
         proc = subprocess.run(
             ['masscan', ip, '-p' + port_range, '--rate', '1000'],
@@ -69,7 +72,11 @@ def run_masscan_scan(ip, port_range='1-65535'):
             m = re.match(r'open\s+tcp\s+(\d+)\s+', line)
             if m:
                 ports.append(m.group(1))
-        return list(dict.fromkeys(ports))  # dedupe, preserve order
+        ports = list(dict.fromkeys(ports))  # dedupe, preserve order
+        if not ports and (proc.stderr or proc.returncode != 0):
+            err = (proc.stderr or '')[:300].strip()
+            log_output(f"[MASSCAN] No ports (rc={proc.returncode}): {err or 'no output'}")
+        return ports
     except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
         log_output(f"[MASSCAN] Skipped: {e}")
         return []
