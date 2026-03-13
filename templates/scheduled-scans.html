@@ -865,18 +865,12 @@ async function saveSchedule(){
         var data=await res.json();
         
         if(data.status==='success'||data.status==='ok'){
-            var isNew = !editingId;
-            var newSchedId = data.schedule ? data.schedule.id : null;
             await loadAllDataFromAPI();
             closeModal();
             editingId=null;
-
-            // Auto-launch scan immediately for one-time schedules or any newly created schedule
-            // where the user expects it to start now (freq=once always runs immediately)
-            if (isNew && newSchedId && (freq === 'once')) {
-                // Small delay so the modal closes smoothly before popup opens
-                setTimeout(function(){ runNow(newSchedId); }, 300);
-            }
+            // NOTE: Do NOT auto-trigger runNow here.
+            // The backend daemon fires the scan at the correct next_run_at time.
+            // User can click the ▶ Run Now button if they want to start immediately.
         } else {
             alert('Error saving schedule: '+(data.message||'Unknown error'));
         }
@@ -894,6 +888,12 @@ function calcNextRun(time, freq, isNew) {
     if (freq === '247') {
         // Always start in 1 min for continuous scans
         next = new Date(now.getTime() + 1 * 60000);
+    } else if (freq === 'once') {
+        // One-time: use exactly the time the user picked today.
+        // If that time is already past, push it to tomorrow so the daemon
+        // doesn't fire it immediately (user should use ▶ Run Now for that).
+        next.setHours(p[0], p[1], 0, 0);
+        if (next <= now) next.setDate(next.getDate() + 1);
     } else if (freq === '6h' || freq === '12h') {
         var interval = freq === '6h' ? 6 : 12;
         next.setHours(p[0], p[1], 0, 0);
