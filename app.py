@@ -1827,13 +1827,24 @@ def scan():
             _run_id = None
 
             # ── Create run record at scan start ──────────────────────────
+            # Only create a run record if the background scheduler has NOT already
+            # claimed this schedule (status == 'running' means it already created one).
+            # This prevents the double-entry bug where both the scheduler thread and
+            # the /scan HTTP route each call create_scheduled_scan_run for the same job.
             if _scheduled_scan_id:
                 try:
                     import db as _db_run
-                    _run_id = _db_run.create_scheduled_scan_run(
-                        _scheduled_scan_id, user_id, target
-                    )
-                    _db_run.mark_scheduled_scan_running(_scheduled_scan_id)
+                    _existing = _db_run.get_scheduled_scan_by_id(_scheduled_scan_id, user_id)
+                    if _existing and _existing.get('status') == 'running':
+                        # Scheduler already owns this run — do NOT create another record.
+                        # _run_id stays None so the finally block skips complete_scheduled_scan_run.
+                        print(f"[scan] Schedule {_scheduled_scan_id} already running "
+                              f"(claimed by scheduler) — skipping duplicate run record.")
+                    else:
+                        _run_id = _db_run.create_scheduled_scan_run(
+                            _scheduled_scan_id, user_id, target
+                        )
+                        _db_run.mark_scheduled_scan_running(_scheduled_scan_id)
                 except Exception as _re:
                     print(f"[scan] Could not create run record: {_re}")
 
@@ -1941,36 +1952,11 @@ def scan():
                                 except Exception as _ve:
                                     print(f"[scan] Could not save scheduled vulns: {_ve}")
 
-                        # Compute next run and reset schedule
-                        _sched = _db_fin.get_scheduled_scan_by_id(_scheduled_scan_id, user_id)
-                        if _sched:
-                            _freq  = _sched.get('frequency', 'daily')
-                            _stime = _sched.get('scan_time', '02:00')
-                            try:
-                                _h2, _m2 = [int(x) for x in _stime.split(':')]
-                            except Exception:
-                                _h2, _m2 = 2, 0
-                            _now2 = datetime.now()
-                            if _freq == 'once':
-                                _next2, _nst = None, 'completed'
-                            elif _freq == '247':
-                                _next2, _nst = _now2 + timedelta(minutes=5), 'active'
-                            elif _freq in ('6h', '12h'):
-                                _interval = 6 if _freq == '6h' else 12
-                                _cand2 = _now2.replace(hour=_h2, minute=_m2, second=0, microsecond=0)
-                                while _cand2 > _now2:
-                                    _cand2 -= timedelta(hours=_interval)
-                                while _cand2 <= _now2:
-                                    _cand2 += timedelta(hours=_interval)
-                                _next2, _nst = _cand2, 'active'
-                            else:
-                                _cand2 = _now2.replace(hour=_h2, minute=_m2, second=0, microsecond=0)
-                                if _cand2 <= _now2:
-                                    _cand2 += timedelta(days=1)
-                                _next2, _nst = _cand2, 'active'
-                            _next_str2 = _next2.strftime('%Y-%m-%d %H:%M:%S') if _next2 else None
-                            _db_fin.finish_scheduled_scan(_scheduled_scan_id, _next_str2, _nst)
-                            print(f"[scan] Schedule {_scheduled_scan_id} → {_nst}, next={_next_str2}")
+                        # NOTE: next_run_at update and finish_scheduled_scan are handled
+                        # exclusively by _sched_scan_thread in the background scheduler.
+                        # This run_scan() path only completes the run record to avoid
+                        # double-incrementing run_count and creating duplicate entries.
+                        print(f"[scan] Run record completed for schedule {_scheduled_scan_id}, run={_run_id}")
                     except Exception as _fe:
                         print(f"[scan] Could not finish scheduled run: {_fe}")
                 else:
@@ -2346,9 +2332,13 @@ def _background_scheduler():
                     # Direct thread approach: replicate scan startup without HTTP
                     asc = _get_active_scan(user_id)
                     if asc.get('running'):
-                        # Another scan is running for this user – re-queue by resetting to active
-                        _db_sched.update_scheduled_scan(sched_id, user_id, status='active')
-                        print(f"[scheduler] Scan already running for user {user_id}, re-queuing sched {sched_id}")
+                        # A manual/other scan is running — re-queue with a 2-min delay
+                        # so it doesn't hammer the DB every 5s tick until the scan finishes.
+                        _requeue_at = (datetime.now() + timedelta(minutes=2)).strftime('%Y-%m-%d %H:%M:%S')
+                        _db_sched.update_scheduled_scan(sched_id, user_id,
+                                                         status='active', next_run_at=_requeue_at)
+                        print(f"[scheduler] Scan already running for user {user_id}, "
+                              f"re-queuing sched {sched_id} to {_requeue_at}")
                         continue
 
                     uq  = _get_update_queue(user_id)
@@ -2384,14 +2374,12 @@ def _background_scheduler():
                     except Exception as _re:
                         print(f"[scheduler] Could not create run record: {_re}")
 
-                    import time as _t2
-                    _scan_start = _t2.time()
-
                     def _sched_scan_thread(_sid=sched_id, _uid2=user_id, _tgt_url=target_url,
                                            _atype=auth_type, _adp=auth_data_payload,
                                            _run=_run_id, _freq=freq, _asc=asc,
                                            _uq=uq, _res=res):
                         import time as _t3
+                        # Timer starts inside thread for accurate runtime (not outer-loop overhead)
                         _s0 = _t3.time()
 
                         # ── Full progress callback — mirrors the main /scan route ──
@@ -2534,7 +2522,15 @@ def _background_scheduler():
 
 
 def _start_background_scheduler():
-    """Start the background scheduler thread (call once at app startup)."""
+    """Start the background scheduler thread (call once at app startup).
+    Guarded against Werkzeug debug reloader which imports the module twice.
+    """
+    import os as _os
+    # In debug mode Flask uses a reloader: the module is imported in the parent
+    # process AND in the child. WERKZEUG_RUN_MAIN is only set in the child.
+    # We only start the scheduler in the child (real serving) process.
+    if app.debug and _os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
+        return
     t = threading.Thread(target=_background_scheduler, name='SchedulerThread')
     t.daemon = True
     t.start()
