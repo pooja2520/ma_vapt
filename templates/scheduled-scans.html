@@ -1146,20 +1146,10 @@ function renderSchedules(){
 function renderHistory(){
     var tbody=document.getElementById('historyBody'); document.getElementById('tcHistory').textContent=runHistory.length;
     if(!runHistory.length){tbody.innerHTML='<tr><td colspan="12" class="empty-td"><i class="fa-solid fa-clock-rotate-left"></i> No run history yet.</td></tr>';return;}
-    // Build a per-schedule run counter so we can show "Run #N" for each entry
-    var schedRunCount = {};
-    // Count total runs per schedule first (iterate in reverse = oldest first = run #1 first)
-    var sorted = runHistory.slice().sort(function(a,b){ return new Date(a.started)-new Date(b.started); });
-    var schedCounter = {};
-    sorted.forEach(function(r){
-        schedCounter[r.scheduleId] = (schedCounter[r.scheduleId]||0) + 1;
-        r._runNum = schedCounter[r.scheduleId];
-    });
-    // Re-sort newest first for display
-    var display = runHistory.slice().sort(function(a,b){ return new Date(b.started)-new Date(a.started); });
-    tbody.innerHTML=display.map(function(r,i){
+    tbody.innerHTML=runHistory.map(function(r,i){
         var d=new Date(r.started),ds=isNaN(d)?'\u2014':d.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true});
         var dur=r.duration?Math.floor(r.duration/60)+'m '+(r.duration%60)+'s':'\u2014';
+        // Result badge: clear labels based on severity found
         var rc,rl,ri;
         if(r.critical>0){
             rc='bc'; rl='Critical Found'; ri='fa-triangle-exclamation';
@@ -1172,17 +1162,12 @@ function renderHistory(){
         } else {
             rc='bac'; rl='Clean'; ri='fa-circle-check';
         }
+        // View report link — links to reports page filtered to this target
         var targetHost=(r.target||'').replace('https://','').replace('http://','');
-        // View button links directly to this run's report when available, else reports page
-        var viewHref = r.reportFilename ? '/view-scheduled-report/'+r.id : '/reports';
-        var viewBtn='<a href="'+viewHref+'" class="btn btn-o btn-s" style="font-size:.7rem;white-space:nowrap;" title="View Report"><i class="fa-regular fa-eye"></i> View</a>';
-        // Schedule name + run badge for uniqueness
-        var runBadge = '<span style="font-size:.63rem;font-weight:700;color:#60a5fa;background:rgba(59,130,246,.12);'
-            +'padding:.1rem .38rem;border-radius:4px;margin-left:.3rem;white-space:nowrap;">'
-            +'Run #'+(r._runNum||'?')+'&nbsp;·&nbsp;ID&nbsp;'+r.id+'</span>';
+        var viewBtn='<a href="/reports" class="btn btn-o btn-s" style="font-size:.7rem;white-space:nowrap;" title="View Report for '+targetHost+'"><i class="fa-regular fa-eye"></i> View</a>';
         return '<tr>'
-            +'<td style="font-size:.72rem;color:var(--text-muted);">'+(i+1)+'</td>'
-            +'<td><div style="display:flex;align-items:center;gap:.3rem;flex-wrap:wrap;"><strong style="font-size:.8rem;">'+r.scheduleName+'</strong>'+runBadge+'</div></td>'
+            +'<td style="font-size:.72rem;color:var(--text-muted);">'+(runHistory.length-i)+'</td>'
+            +'<td><strong style="font-size:.8rem;">'+r.scheduleName+'</strong></td>'
             +'<td style="font-size:.78rem;color:var(--blue);">'+targetHost+'</td>'
             +'<td style="font-size:.72rem;">'+ds+'</td>'
             +'<td style="font-size:.78rem;">'+dur+'</td>'
