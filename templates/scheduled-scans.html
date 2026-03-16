@@ -206,7 +206,7 @@
 <!-- ══════════════════════════════════════════
      CREATE / EDIT SCHEDULE MODAL
 ════════════════════════════════════════════ -->
-<div id="schedModal" class="modal-overlay" onclick="closeModalOutside(event)">
+<div id="schedModal" class="modal-overlay">
   <div class="modal-box">
     <div class="modal-header">
       <h2 id="modalTitle"><i class="fa-solid fa-calendar-plus"></i> Create Schedule</h2>
@@ -215,11 +215,7 @@
     <div class="modal-body">
 
       <div class="fg"><label>Schedule Name <span style="color:var(--red)">*</span></label>
-        <input type="text" id="mName" placeholder="e.g. Nightly Production Scan"
-               oninput="validateScheduleName(this.value)" autocomplete="off">
-        <div id="mNameError" style="display:none;margin-top:.3rem;font-size:.72rem;color:#ef4444;font-weight:600;">
-          <i class="fa-solid fa-circle-exclamation"></i> <span id="mNameErrorText"></span>
-        </div>
+        <input type="text" id="mName" placeholder="e.g. Nightly Production Scan">
       </div>
 
       <div class="fg"><label>Target URL <span style="color:var(--red)">*</span></label>
@@ -748,14 +744,8 @@ function applyPreset(type) {
 }
 
 // ── Modal ────────────────────────────────────────────────────────────
-function _clearNameError() {
-    var e = document.getElementById('mNameError');
-    if (e) e.style.display = 'none';
-    var i = document.getElementById('mName');
-    if (i) i.style.borderColor = '';
-}
 function openModal(id) {
-    id=id||null; editingId=id; loadTargetsIntoModalSelect(); _clearNameError();
+    id=id||null; editingId=id; loadTargetsIntoModalSelect();
     document.getElementById('schedModal').classList.add('open');
     document.getElementById('modalTitle').innerHTML=id?'<i class="fa-solid fa-pen-to-square"></i> Edit Schedule':'<i class="fa-solid fa-calendar-plus"></i> Create Schedule';
     if (id) {
@@ -782,7 +772,7 @@ function openModal(id) {
     updatePreview();
 }
 function closeModal()         { document.getElementById('schedModal').classList.remove('open'); }
-function closeModalOutside(e) { if(e.target.id==='schedModal') closeModal(); }
+function closeModalOutside(e) { /* backdrop click disabled — use × button to close */ }
 
 function showModalAuth() {
     var v=document.getElementById('mAuth').value;
@@ -841,43 +831,9 @@ function updatePreview() {
 
 function readModalAuth(){var t=document.getElementById('mAuth').value,a={type:t};if(t==='basic'){a.basicUsername=document.getElementById('mBasicUser').value.trim();a.basicPassword=document.getElementById('mBasicPass').value;}else if(t==='form'){a.formLoginUrl=document.getElementById('mFormLoginUrl').value.trim();a.formUsername=document.getElementById('mFormUser').value.trim();a.formPassword=document.getElementById('mFormPass').value;a.formUsernameField=document.getElementById('mFormUserField').value.trim()||'username';a.formPasswordField=document.getElementById('mFormPassField').value.trim()||'password';a.formSuccessIndicator=document.getElementById('mFormSuccess').value.trim();}return a;}
 
-// ── Schedule Name Duplicate Validation ──────────────────────────────────────
-function validateScheduleName(val) {
-    val = (val || '').trim();
-    var errBox  = document.getElementById('mNameError');
-    var errText = document.getElementById('mNameErrorText');
-    var input   = document.getElementById('mName');
-    if (!val) {
-        errBox.style.display = 'none';
-        input.style.borderColor = '';
-        return true;
-    }
-    // Allow the current name when editing (same id = not a conflict)
-    var conflict = schedules.find(function(s) {
-        if (editingId && s.id == editingId) return false;
-        return (s.name || '').trim().toLowerCase() === val.toLowerCase();
-    });
-    if (conflict) {
-        errText.textContent = 'A schedule named "' + conflict.name + '" already exists. Please choose a different name.';
-        errBox.style.display = 'block';
-        input.style.borderColor = '#ef4444';
-        return false;
-    }
-    errBox.style.display = 'none';
-    input.style.borderColor = '#22c55e';
-    return true;
-}
-
 async function saveSchedule(){
     var name=document.getElementById('mName').value.trim(),target=document.getElementById('mTarget').value.trim();
     if(!name||!target){alert('Please fill in Schedule Name and Target URL.');return;}
-
-    // Block save if name is a duplicate
-    if (!validateScheduleName(name)) {
-        document.getElementById('mName').focus();
-        return;
-    }
-
     var time=document.getElementById('mTime').value,fBtn=document.querySelector('.freq-btn.active'),freq=fBtn?fBtn.dataset.freq:'once';
     var timeout=parseInt(document.getElementById('mTimeout').value),notify=document.getElementById('mNotify').checked,authData=readModalAuth(),nextRun=calcNextRun(time,freq,!editingId);
     
@@ -917,18 +873,7 @@ async function saveSchedule(){
             // The backend daemon fires the scan at the correct next_run_at time.
             // User can click the ▶ Run Now button if they want to start immediately.
         } else {
-            // Handle backend duplicate-name error explicitly
-            var msg = data.message || 'Unknown error';
-            if (msg.toLowerCase().includes('duplicate') || msg.toLowerCase().includes('name')) {
-                var errBox  = document.getElementById('mNameError');
-                var errText = document.getElementById('mNameErrorText');
-                errText.textContent = msg;
-                errBox.style.display = 'block';
-                document.getElementById('mName').style.borderColor = '#ef4444';
-                document.getElementById('mName').focus();
-            } else {
-                alert('Error saving schedule: ' + msg);
-            }
+            alert('Error saving schedule: '+(data.message||'Unknown error'));
         }
     } catch(e){
         console.error('Error saving schedule:',e);
@@ -1367,7 +1312,7 @@ initLayout('/scheduled');
 </script>
 
 <!-- ══ Run History Modal ══ -->
-<div id="rhModal" onclick="if(event.target===this)closeRhModal()"
+<div id="rhModal"
      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:flex-start;justify-content:center;padding:2rem 1rem;overflow-y:auto;">
   <div style="width:100%;max-width:780px;background:var(--card);border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.45);margin:auto;">
     <!-- Header -->
