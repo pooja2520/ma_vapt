@@ -662,13 +662,16 @@ def scan_completion_transaction(target, raw_results, filename, scan_time, severi
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _decode_schedule(r):
-    """Decode auth_config_json and serialize datetime fields as local (IST) strings.
+    """Decode auth_config_json and serialize datetime fields as local time strings.
 
-    MySQL DATETIME columns have no timezone info. Historically some rows were
-    written with UTC values (via datetime.utcnow()), while newer rows use
-    local time (datetime.now()). We detect old UTC rows by checking whether
-    adding the local UTC offset brings the value closer to now — if so it was
-    stored as UTC and we shift it to local time before returning.
+    All new rows are written with datetime.now() (local time). We no longer
+    apply a UTC-shift heuristic because it is inherently unreliable — whether
+    the shifted value is 'closer to now' depends on when the query runs, which
+    can silently corrupt next_run_at and cause scans to never fire.
+
+    Legacy UTC rows (written by old code via datetime.utcnow()) are handled by
+    the migration note: they will appear slightly off but will self-correct
+    after their next successful run resets next_run_at via datetime.now().
     """
     if not r:
         return None
@@ -680,25 +683,11 @@ def _decode_schedule(r):
     else:
         r['auth_config'] = {'type': 'none'}
 
-    from datetime import datetime as _dt, timedelta as _td
-    import time as _t
-
-    # Local UTC offset in seconds (handles DST automatically)
-    _offset_sec = -(_t.timezone if _t.localtime().tm_isdst == 0 else _t.altzone)
-    _offset     = _td(seconds=_offset_sec)
-    _now_local  = _dt.now()
-
+    from datetime import datetime as _dt
     for _col in ('last_run_at', 'next_run_at', 'created_at', 'updated_at'):
         val = r.get(_col)
-        if not isinstance(val, _dt):
-            continue
-        # If stored value is UTC, shifting it by the local offset brings it
-        # closer to local-now than the raw value does → it was stored as UTC.
-        shifted      = val + _offset
-        diff_raw     = abs((_now_local - val).total_seconds())
-        diff_shifted = abs((_now_local - shifted).total_seconds())
-        use          = shifted if diff_shifted < diff_raw else val
-        r[_col]      = use.strftime('%Y-%m-%d %H:%M:%S')
+        if isinstance(val, _dt):
+            r[_col] = val.strftime('%Y-%m-%d %H:%M:%S')
 
     return r
 
@@ -846,17 +835,19 @@ def get_due_scheduled_scans(now=None):
 def mark_scheduled_scan_running(schedule_id):
     """Atomically claim a schedule for execution (compare-and-swap).
 
-    Only updates the row when status is still 'active', preventing duplicate
-    fires when the scheduler loop ticks again before the thread starts.
+    Only updates the row when status is still 'active' AND next_run_at is still
+    due, preventing duplicate fires when the scheduler loop ticks again before
+    the thread starts, or when a re-queued scan has been pushed into the future.
 
     Returns True if this caller successfully claimed the schedule, False if
-    another thread/process already claimed it (status was not 'active').
+    another thread/process already claimed it or it is no longer due.
     """
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             "UPDATE scheduled_scans SET status = 'running' "
-            "WHERE id = %s AND status = 'active'",
+            "WHERE id = %s AND status = 'active' "
+            "AND next_run_at IS NOT NULL AND next_run_at <= NOW()",
             (schedule_id,)
         )
         return cur.rowcount > 0
@@ -900,14 +891,22 @@ def complete_scheduled_scan_run(run_id, finished_at, duration_seconds, result,
 
 
 def finish_scheduled_scan(schedule_id, next_run_at, new_status='active'):
-    """After a run completes: reset status, bump run_count, update last/next run timestamps."""
+    """After a run completes: reset status, bump run_count, update last/next run timestamps.
+
+    Both last_run_at and next_run_at are passed from Python (datetime.now()) so
+    they stay on the same clock. Using MySQL NOW() for last_run_at while
+    next_run_at comes from Python can cause timezone skew when the MySQL server
+    timezone differs from the application server timezone.
+    """
+    from datetime import datetime
+    last_run = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
             UPDATE scheduled_scans
-            SET status = %s, last_run_at = NOW(), next_run_at = %s, run_count = run_count + 1
+            SET status = %s, last_run_at = %s, next_run_at = %s, run_count = run_count + 1
             WHERE id = %s
-        """, (new_status, next_run_at, schedule_id))
+        """, (new_status, last_run, next_run_at, schedule_id))
 
 
 def get_run_history(user_id, schedule_id=None, limit=50):
@@ -937,24 +936,13 @@ def get_run_history(user_id, schedule_id=None, limit=50):
                 ORDER BY r.id DESC LIMIT %s
             """, (user_id, limit))
         rows = cur.fetchall()
-        # Convert datetime fields: old records stored UTC, new ones store local.
-        # We detect by comparing to local now — if > 1h ahead it's likely UTC, shift it.
-        from datetime import datetime as _dt, timedelta as _td
-        import time as _t
-        _offset_sec = -(_t.timezone if _t.localtime().tm_isdst == 0 else _t.altzone)
-        _offset = _td(seconds=_offset_sec)
-        _now_local = _dt.now()
+        # Serialize datetime objects to local-time strings.
+        from datetime import datetime as _dt
         for row in (rows or []):
             for col in ('started_at', 'finished_at', 'created_at'):
                 val = row.get(col)
                 if isinstance(val, _dt):
-                    # If the stored time is more than 1h behind local now AND
-                    # adding local offset makes it closer to now → it was stored as UTC
-                    shifted = val + _offset
-                    diff_orig    = abs((_now_local - val).total_seconds())
-                    diff_shifted = abs((_now_local - shifted).total_seconds())
-                    use = shifted if diff_shifted < diff_orig else val
-                    row[col] = use.strftime('%Y-%m-%d %H:%M:%S')
+                    row[col] = val.strftime('%Y-%m-%d %H:%M:%S')
         return rows
 
 
@@ -1085,19 +1073,10 @@ def get_scheduled_scan_stats(user_id):
             WHERE user_id = %s AND status = 'active' AND next_run_at IS NOT NULL
         """, (user_id,))
         nxt = (cur.fetchone() or {}).get('nxt')
-    # Convert next_run_at from UTC to local if needed (same heuristic as _decode_schedule)
+    # Serialize next_run_at datetime to string
     if nxt is not None:
-        from datetime import datetime as _dt, timedelta as _td
-        import time as _t
-        _offset_sec = -(_t.timezone if _t.localtime().tm_isdst == 0 else _t.altzone)
-        _offset     = _td(seconds=_offset_sec)
-        _now_local  = _dt.now()
-        if isinstance(nxt, _dt):
-            shifted      = nxt + _offset
-            diff_raw     = abs((_now_local - nxt).total_seconds())
-            diff_shifted = abs((_now_local - shifted).total_seconds())
-            nxt = shifted if diff_shifted < diff_raw else nxt
-        nxt = nxt.strftime('%Y-%m-%d %H:%M:%S') if hasattr(nxt, 'strftime') else str(nxt)
+        from datetime import datetime as _dt
+        nxt = nxt.strftime('%Y-%m-%d %H:%M:%S') if isinstance(nxt, _dt) else str(nxt)
 
     return {
         'active_schedules': active or 0,
