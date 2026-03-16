@@ -696,10 +696,19 @@ def create_scheduled_scan(user_id, name, target_url, frequency='daily', scan_tim
                            day_of_week=None, day_of_month=None, auth_type='none',
                            auth_config=None, timeout_minutes=30, notify_on_done=True,
                            target_id=None, next_run_at=None):
-    """Insert a new scheduled scan for a user. Returns full schedule dict."""
+    """Insert a new scheduled scan for a user. Returns full schedule dict.
+    Raises ValueError if a schedule with the same name already exists for this user.
+    """
     auth_config_json = json.dumps(auth_config) if auth_config else None
     with get_connection() as conn:
         cur = conn.cursor(dictionary=True)
+        # Enforce unique name per user (case-insensitive)
+        cur.execute(
+            "SELECT id FROM scheduled_scans WHERE user_id = %s AND LOWER(name) = LOWER(%s) LIMIT 1",
+            (user_id, name.strip())
+        )
+        if cur.fetchone():
+            raise ValueError(f'A schedule named "{name.strip()}" already exists. Please choose a different name.')
         cur.execute("""
             INSERT INTO scheduled_scans
                 (user_id, target_id, name, target_url,
@@ -755,11 +764,26 @@ def get_all_scheduled_scans(user_id, status_filter=None):
 def update_scheduled_scan(schedule_id, user_id, **kwargs):
     """Update scheduled scan fields. Valid kwargs: name, target_url, target_id, frequency,
     scan_time, day_of_week, day_of_month, auth_type, auth_config, timeout_minutes,
-    notify_on_done, status, next_run_at, last_run_at, run_count."""
+    notify_on_done, status, next_run_at, last_run_at, run_count.
+    Raises ValueError if the new name conflicts with an existing schedule for this user.
+    """
     allowed = {'name', 'target_url', 'target_id', 'frequency', 'scan_time',
                'day_of_week', 'day_of_month', 'auth_type', 'auth_config',
                'timeout_minutes', 'notify_on_done', 'status',
                'next_run_at', 'last_run_at', 'run_count'}
+    # Check for duplicate name if name is being updated
+    new_name = kwargs.get('name')
+    if new_name:
+        new_name = new_name.strip()
+        with get_connection() as conn:
+            cur = conn.cursor(dictionary=True)
+            cur.execute(
+                "SELECT id FROM scheduled_scans "
+                "WHERE user_id = %s AND LOWER(name) = LOWER(%s) AND id != %s LIMIT 1",
+                (user_id, new_name, schedule_id)
+            )
+            if cur.fetchone():
+                raise ValueError(f'A schedule named "{new_name}" already exists. Please choose a different name.')
     updates, values = [], []
     for k, v in kwargs.items():
         if k not in allowed:
@@ -775,7 +799,7 @@ def update_scheduled_scan(schedule_id, user_id, **kwargs):
             values.append((v or '')[:2048])
         elif k == 'name':
             updates.append("name = %s")
-            values.append((v or '')[:255])
+            values.append((new_name or '')[:255])
         else:
             updates.append(f"{k} = %s")
             values.append(v)
