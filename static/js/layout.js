@@ -371,7 +371,6 @@
 /* ── Mobile sidebar overlay ────────────────────────────── */
 .sb-overlay {
     display: none;
-    position: fixed;
     inset: 0;
     background: rgba(0,0,0,.45);
     z-index: 1099;
