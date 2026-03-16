@@ -1151,6 +1151,9 @@ def api_scheduled_scans_create():
             next_run_at=next_run_at
         )
         return jsonify({'status': 'success', 'schedule': schedule}), 201
+    except ValueError as e:
+        # Duplicate name or other validation error — return 409 so frontend can show inline error
+        return jsonify({'status': 'error', 'message': str(e)}), 409
     except Exception as e:
         app.logger.error(f"Error creating scheduled scan: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -1219,6 +1222,8 @@ def api_scheduled_scans_update(schedule_id):
         db.update_scheduled_scan(schedule_id, uid, **updates)
         updated = db.get_scheduled_scan_by_id(schedule_id, uid)
         return jsonify({'status': 'ok', 'schedule': updated})
+    except ValueError as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 409
     except Exception as e:
         app.logger.error(f"Error updating scheduled scan: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
