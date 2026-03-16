@@ -405,7 +405,8 @@ async function loadAllDataFromAPI() {
                     high: r.high || 0,
                     medium: r.medium || 0,
                     low: r.low || 0,
-                    result: r.result
+                    result: r.result,
+                    reportFilename: r.report_filename || ''
                 };
             });
         }
@@ -664,32 +665,6 @@ async function runNow(id) {
         } catch(e) {}
     }
     if (!s) { console.error('[runNow] Schedule not found for id:', id); return; }
-
-    // If the schedule DB status is already 'running', the background scheduler has
-    // already claimed it and created a run record. Just open the live popup to watch
-    // — do NOT call /scan again or we create a duplicate run entry.
-    if (s.status === 'running') {
-        try {
-            var chk = await fetch('/api/scan-logs'); var cd = await chk.json();
-            wasRunning = true; popupLogLen = 0; _scanStartedAt = 0;
-            document.getElementById('popupSchedName').textContent = (s.name || 'Scan') + ' \u2014 Running';
-            document.getElementById('popupTarget').textContent    = cd.target || s.target || '';
-            document.getElementById('popupBar').style.width       = (cd.progress || 0) + '%';
-            document.getElementById('popupPct').textContent       = (cd.progress || 0) + '%';
-            document.getElementById('popupPhase').textContent     = cd.phase_name || 'Scanning\u2026';
-            document.getElementById('popupResult').style.display  = 'none';
-            document.getElementById('popupLog').innerHTML         = '<span style="color:#475569;">Connecting to live scan\u2026</span>';
-            updatePopupPhases(cd.phase || 1);
-            var existingLogs = cd.logs || [];
-            if (existingLogs.length) {
-                document.getElementById('popupLog').innerHTML = '';
-                existingLogs.forEach(function(l){ appendPopupLog(l); popupLogLen++; });
-            }
-            openLivePopup();
-            startLivePolling();
-        } catch(e) {}
-        return;
-    }
 
     // Check if already running — if so, just open popup with live data immediately (no confirm)
     try {
@@ -1016,10 +991,7 @@ async function rerunSched(id){
     var s=schedules.find(function(x){return x.id==numId||x.id===id;});
     if(!s)return;
     try {
-        // Set next_run_at to now so the background scheduler picks it up within 5s.
-        // Do NOT call runNow() here — that would POST to /scan and create a second
-        // run record while the scheduler is about to create its own.
-        var nextRun = new Date().toISOString().slice(0,19).replace('T',' ');
+        var nextRun=calcNextRun(s.time,s.freq,true);
         var res=await fetch('/api/scheduled-scans/'+id,{
             method:'PUT',
             headers:{'Content-Type':'application/json'},
@@ -1028,8 +1000,7 @@ async function rerunSched(id){
         var data=await res.json();
         if(data.status==='ok'){
             await loadAllDataFromAPI();
-            // Reload after a short delay so the scheduler has time to pick it up
-            setTimeout(function(){ loadAllDataFromAPI(); }, 3000);
+            runNow(numId);
         }
     } catch(e){
         console.error('Error rerunning schedule:',e);
@@ -1076,6 +1047,24 @@ function showRunHist(schedId, schedName) {
             if (r.medium)   pills += '<span style="background:#ca8a04;color:#fff;font-size:.67rem;font-weight:700;padding:.15rem .5rem;border-radius:4px;">' + r.medium   + ' Medium</span>';
             if (r.low)      pills += '<span style="background:#16a34a;color:#fff;font-size:.67rem;font-weight:700;padding:.15rem .5rem;border-radius:4px;">' + r.low      + ' Low</span>';
             if (!tot)       pills  = '<span style="font-size:.72rem;color:var(--text-muted);">No findings</span>';
+            // Report action buttons — shown only when a report file exists
+            var reportBtns = '';
+            if (r.reportFilename && r.result === 'success') {
+                reportBtns = '<div style="display:flex;gap:.4rem;margin-top:.6rem;">'
+                    + '<a href="/view-scheduled-report/' + r.id + '" target="_blank" '
+                    +    'style="display:inline-flex;align-items:center;gap:.3rem;font-size:.7rem;font-weight:700;'
+                    +    'color:#fff;background:#2563eb;padding:.25rem .7rem;border-radius:5px;text-decoration:none;'
+                    +    'transition:background .15s;" '
+                    +    'onmouseover="this.style.background=\'#1d4ed8\'" onmouseout="this.style.background=\'#2563eb\'">'
+                    +    '<i class="fa-regular fa-eye"></i> View Report</a>'
+                    + '<a href="/download-scheduled-report/' + r.id + '" '
+                    +    'style="display:inline-flex;align-items:center;gap:.3rem;font-size:.7rem;font-weight:700;'
+                    +    'color:#fff;background:#0f766e;padding:.25rem .7rem;border-radius:5px;text-decoration:none;'
+                    +    'transition:background .15s;" '
+                    +    'onmouseover="this.style.background=\'#0d9488\'" onmouseout="this.style.background=\'#0f766e\'">'
+                    +    '<i class="fa-solid fa-download"></i> Download</a>'
+                    + '</div>';
+            }
             return '<div style="background:var(--bg);border:1.5px solid var(--border);border-radius:10px;padding:1rem 1.15rem;margin-bottom:.65rem;">'
                 + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;flex-wrap:wrap;margin-bottom:.55rem;">'
                 +   '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">'
@@ -1089,6 +1078,7 @@ function showRunHist(schedId, schedName) {
                 + '</div>'
                 + '<div style="font-size:.71rem;color:var(--text-muted);margin-bottom:.45rem;word-break:break-all;"><i class="fa-solid fa-crosshairs" style="opacity:.4;margin-right:.25rem;"></i>' + r.target + '</div>'
                 + '<div style="display:flex;gap:.35rem;flex-wrap:wrap;">' + pills + '</div>'
+                + reportBtns
                 + '</div>';
         }).join('');
     }
