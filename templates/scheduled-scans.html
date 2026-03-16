@@ -665,6 +665,32 @@ async function runNow(id) {
     }
     if (!s) { console.error('[runNow] Schedule not found for id:', id); return; }
 
+    // If the schedule DB status is already 'running', the background scheduler has
+    // already claimed it and created a run record. Just open the live popup to watch
+    // — do NOT call /scan again or we create a duplicate run entry.
+    if (s.status === 'running') {
+        try {
+            var chk = await fetch('/api/scan-logs'); var cd = await chk.json();
+            wasRunning = true; popupLogLen = 0; _scanStartedAt = 0;
+            document.getElementById('popupSchedName').textContent = (s.name || 'Scan') + ' \u2014 Running';
+            document.getElementById('popupTarget').textContent    = cd.target || s.target || '';
+            document.getElementById('popupBar').style.width       = (cd.progress || 0) + '%';
+            document.getElementById('popupPct').textContent       = (cd.progress || 0) + '%';
+            document.getElementById('popupPhase').textContent     = cd.phase_name || 'Scanning\u2026';
+            document.getElementById('popupResult').style.display  = 'none';
+            document.getElementById('popupLog').innerHTML         = '<span style="color:#475569;">Connecting to live scan\u2026</span>';
+            updatePopupPhases(cd.phase || 1);
+            var existingLogs = cd.logs || [];
+            if (existingLogs.length) {
+                document.getElementById('popupLog').innerHTML = '';
+                existingLogs.forEach(function(l){ appendPopupLog(l); popupLogLen++; });
+            }
+            openLivePopup();
+            startLivePolling();
+        } catch(e) {}
+        return;
+    }
+
     // Check if already running — if so, just open popup with live data immediately (no confirm)
     try {
         var chk = await fetch('/api/scan-logs'); var cd = await chk.json();
@@ -990,7 +1016,10 @@ async function rerunSched(id){
     var s=schedules.find(function(x){return x.id==numId||x.id===id;});
     if(!s)return;
     try {
-        var nextRun=calcNextRun(s.time,s.freq,true);
+        // Set next_run_at to now so the background scheduler picks it up within 5s.
+        // Do NOT call runNow() here — that would POST to /scan and create a second
+        // run record while the scheduler is about to create its own.
+        var nextRun = new Date().toISOString().slice(0,19).replace('T',' ');
         var res=await fetch('/api/scheduled-scans/'+id,{
             method:'PUT',
             headers:{'Content-Type':'application/json'},
@@ -999,7 +1028,8 @@ async function rerunSched(id){
         var data=await res.json();
         if(data.status==='ok'){
             await loadAllDataFromAPI();
-            runNow(numId);
+            // Reload after a short delay so the scheduler has time to pick it up
+            setTimeout(function(){ loadAllDataFromAPI(); }, 3000);
         }
     } catch(e){
         console.error('Error rerunning schedule:',e);
