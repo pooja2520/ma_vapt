@@ -2017,22 +2017,87 @@ from bulk_scan_engine import scan_single_ip, create_bulk_excel_report, REPORTS_D
 # In-memory store: { scan_id: { results: [], done: False, total: N, stopped: False } }
 _bulk_scans = {}
 
+def _expand_ip_list(raw_list):
+    """
+    Expand a list of IPs and/or CIDR subnets into individual host IPs.
+    - Single IPs pass through unchanged.
+    - CIDR ranges (e.g. 192.168.1.0/24) are expanded to all host IPs.
+    - Subnets larger than /16 (>65534 hosts) are skipped to prevent abuse.
+    - Duplicates are removed while preserving order.
+    """
+    import ipaddress
+    MAX_HOSTS = 65534
+    result = []
+    seen = set()
+    skipped = []
+
+    for entry in raw_list:
+        entry = str(entry).strip()
+        if not entry:
+            continue
+        try:
+            net = ipaddress.ip_network(entry, strict=False)
+            num = net.num_addresses
+
+            if num > MAX_HOSTS:
+                skipped.append(entry)
+                continue
+
+            if net.prefixlen == 32:
+                # Single host CIDR
+                ip_str = str(net.network_address)
+                if ip_str not in seen:
+                    seen.add(ip_str)
+                    result.append(ip_str)
+            elif net.prefixlen == 31:
+                # Point-to-point — both addresses are usable
+                for addr in [net.network_address, net.broadcast_address]:
+                    ip_str = str(addr)
+                    if ip_str not in seen:
+                        seen.add(ip_str)
+                        result.append(ip_str)
+            else:
+                # Normal subnet — iterate host IPs (excludes network + broadcast)
+                for host in net.hosts():
+                    ip_str = str(host)
+                    if ip_str not in seen:
+                        seen.add(ip_str)
+                        result.append(ip_str)
+        except ValueError:
+            # Not a valid network — treat as plain IP string
+            if entry not in seen:
+                seen.add(entry)
+                result.append(entry)
+
+    return result, skipped
+
+
 @app.route('/scan/bulk', methods=['POST'])
 @login_required
 def bulk_scan_start():
     """Start a bulk IP scan job and return a scan_id."""
     import threading
     data        = request.get_json(force=True) or {}
-    ips         = data.get('ips', [])
+    raw_ips     = data.get('ips', [])
     modules     = data.get('modules', ['ping', 'ports'])
     concurrency = int(data.get('concurrency', 5))
     port_depth  = data.get('port_depth', 'full')  # quick|standard|deep|full
 
-    if not ips:
+    if not raw_ips:
         return jsonify({'error': 'No IPs provided.'}), 400
 
+    # Expand any CIDR subnets into individual host IPs (backend safety net)
+    ips, skipped = _expand_ip_list(raw_ips)
+
+    if not ips:
+        return jsonify({'error': 'No valid IPs after expansion. Large subnets (>/16) are not supported.'}), 400
+
     scan_id = str(_uuid_mod.uuid4())[:8]
-    _bulk_scans[scan_id] = {'results': [], 'done': False, 'total': len(ips), 'stopped': False}
+    _bulk_scans[scan_id] = {
+        'results': [], 'done': False, 'total': len(ips),
+        'stopped': False, 'skipped_ranges': skipped,
+        'expanded_count': len(ips),
+    }
 
     def _run():
         store = _bulk_scans[scan_id]
@@ -2068,10 +2133,12 @@ def bulk_scan_result(scan_id):
     if not store:
         return jsonify({'error': 'Scan not found.'}), 404
     return jsonify({
-        'scan_id': scan_id,
-        'done':    store['done'],
-        'total':   store['total'],
-        'results': store['results'],
+        'scan_id':        scan_id,
+        'done':           store['done'],
+        'total':          store['total'],
+        'results':        store['results'],
+        'expanded_count': store.get('expanded_count', store['total']),
+        'skipped_ranges': store.get('skipped_ranges', []),
     })
 
 
