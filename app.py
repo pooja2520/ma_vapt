@@ -2226,9 +2226,43 @@ def download_report(report_id):
         return jsonify({'status': 'error', 'message': f'Report generation failed: {str(e)}'}), 500
 
 
-# ─────────────────────────────────────────────
-#  RUN
-# ─────────────────────────────────────────────
+@app.route('/download-scheduled-report/<int:run_id>')
+@login_required
+def download_scheduled_report(run_id):
+    """Download the Excel report for a specific scheduled scan run."""
+    import db
+    uid = _uid()
+    # Fetch the run record to get report_filename and verify ownership
+    runs = db.get_run_history(uid, limit=500)
+    run = next((r for r in (runs or []) if r.get('id') == run_id), None)
+    if not run:
+        return jsonify({'status': 'error', 'message': 'Run not found'}), 404
+    fname = run.get('report_filename') or ''
+    if not fname or not os.path.exists(fname):
+        return jsonify({'status': 'error', 'message': 'Report file not found on disk'}), 404
+    return send_file(fname, as_attachment=True, download_name=os.path.basename(fname))
+
+
+@app.route('/view-scheduled-report/<int:run_id>')
+@login_required
+def view_scheduled_report(run_id):
+    """View the report for a scheduled scan run — find matching reports table entry or download directly."""
+    import db
+    uid = _uid()
+    runs = db.get_run_history(uid, limit=500)
+    run = next((r for r in (runs or []) if r.get('id') == run_id), None)
+    if not run:
+        return jsonify({'status': 'error', 'message': 'Run not found'}), 404
+    fname = run.get('report_filename') or ''
+    # Try to find a matching report in the reports table by filename
+    all_reports = db.get_reports(uid) or []
+    match = next((rp for rp in all_reports if rp.get('filename') == fname), None)
+    if match:
+        return redirect(url_for('report_view', report_id=match['id']))
+    # No matching report record — fall back to direct download
+    if fname and os.path.exists(fname):
+        return send_file(fname, as_attachment=True, download_name=os.path.basename(fname))
+    return jsonify({'status': 'error', 'message': 'Report not available'}), 404
 
 # ─────────────────────────────────────────────
 #  SERVER-SIDE BACKGROUND SCHEDULER
