@@ -215,7 +215,11 @@
     <div class="modal-body">
 
       <div class="fg"><label>Schedule Name <span style="color:var(--red)">*</span></label>
-        <input type="text" id="mName" placeholder="e.g. Nightly Production Scan">
+        <input type="text" id="mName" placeholder="e.g. Nightly Production Scan"
+               oninput="validateScheduleName(this.value)" autocomplete="off">
+        <div id="mNameError" style="display:none;margin-top:.35rem;font-size:.72rem;color:#ef4444;font-weight:600;display:flex;align-items:center;gap:.3rem;">
+          <i class="fa-solid fa-circle-exclamation"></i><span id="mNameErrorText"></span>
+        </div>
       </div>
 
       <div class="fg"><label>Target URL <span style="color:var(--red)">*</span></label>
@@ -744,8 +748,15 @@ function applyPreset(type) {
 }
 
 // ── Modal ────────────────────────────────────────────────────────────
+function _clearNameError() {
+    var eb = document.getElementById('mNameError');
+    if (eb) eb.style.display = 'none';
+    var inp = document.getElementById('mName');
+    if (inp) inp.style.borderColor = '';
+}
+
 function openModal(id) {
-    id=id||null; editingId=id; loadTargetsIntoModalSelect();
+    id=id||null; editingId=id; loadTargetsIntoModalSelect(); _clearNameError();
     document.getElementById('schedModal').classList.add('open');
     document.getElementById('modalTitle').innerHTML=id?'<i class="fa-solid fa-pen-to-square"></i> Edit Schedule':'<i class="fa-solid fa-calendar-plus"></i> Create Schedule';
     if (id) {
@@ -831,9 +842,45 @@ function updatePreview() {
 
 function readModalAuth(){var t=document.getElementById('mAuth').value,a={type:t};if(t==='basic'){a.basicUsername=document.getElementById('mBasicUser').value.trim();a.basicPassword=document.getElementById('mBasicPass').value;}else if(t==='form'){a.formLoginUrl=document.getElementById('mFormLoginUrl').value.trim();a.formUsername=document.getElementById('mFormUser').value.trim();a.formPassword=document.getElementById('mFormPass').value;a.formUsernameField=document.getElementById('mFormUserField').value.trim()||'username';a.formPasswordField=document.getElementById('mFormPassField').value.trim()||'password';a.formSuccessIndicator=document.getElementById('mFormSuccess').value.trim();}return a;}
 
+// ── Schedule Name Duplicate Validation ──────────────────────────────
+function validateScheduleName(val) {
+    val = (val || '').trim();
+    var errBox  = document.getElementById('mNameError');
+    var errText = document.getElementById('mNameErrorText');
+    var inp     = document.getElementById('mName');
+    if (!val) {
+        errBox.style.display = 'none';
+        inp.style.borderColor = '';
+        return true;
+    }
+    // Skip conflict check against own entry when editing
+    var conflict = schedules.find(function(s) {
+        if (editingId && s.id == editingId) return false;
+        return (s.name || '').trim().toLowerCase() === val.toLowerCase();
+    });
+    if (conflict) {
+        errText.textContent = 'A schedule named "' + conflict.name + '" already exists — please choose a different name.';
+        errBox.style.display = 'flex';
+        inp.style.borderColor = '#ef4444';
+        inp.style.boxShadow = '0 0 0 3px rgba(239,68,68,.15)';
+        return false;
+    }
+    errBox.style.display = 'none';
+    inp.style.borderColor = '#22c55e';
+    inp.style.boxShadow = '0 0 0 3px rgba(34,197,94,.12)';
+    return true;
+}
+
 async function saveSchedule(){
     var name=document.getElementById('mName').value.trim(),target=document.getElementById('mTarget').value.trim();
     if(!name||!target){alert('Please fill in Schedule Name and Target URL.');return;}
+
+    // Block save immediately if duplicate detected client-side
+    if (!validateScheduleName(name)) {
+        document.getElementById('mName').focus();
+        return;
+    }
+
     var time=document.getElementById('mTime').value,fBtn=document.querySelector('.freq-btn.active'),freq=fBtn?fBtn.dataset.freq:'once';
     var timeout=parseInt(document.getElementById('mTimeout').value),notify=document.getElementById('mNotify').checked,authData=readModalAuth(),nextRun=calcNextRun(time,freq,!editingId);
     
@@ -852,28 +899,30 @@ async function saveSchedule(){
     try {
         var url='/api/scheduled-scans';
         var method='POST';
+        if(editingId){ url+='/'+editingId; method='PUT'; }
         
-        if(editingId){
-            url+='/'+editingId;
-            method='PUT';
-        }
-        
-        var res=await fetch(url,{
-            method:method,
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify(payload)
-        });
+        var res=await fetch(url,{method:method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
         var data=await res.json();
         
         if(data.status==='success'||data.status==='ok'){
             await loadAllDataFromAPI();
             closeModal();
             editingId=null;
-            // NOTE: Do NOT auto-trigger runNow here.
-            // The backend daemon fires the scan at the correct next_run_at time.
-            // User can click the ▶ Run Now button if they want to start immediately.
         } else {
-            alert('Error saving schedule: '+(data.message||'Unknown error'));
+            // Backend 409 duplicate-name error — show inline in the name field
+            var msg = data.message || 'Unknown error';
+            if (res.status === 409 || msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('name')) {
+                var errBox  = document.getElementById('mNameError');
+                var errText = document.getElementById('mNameErrorText');
+                var inp     = document.getElementById('mName');
+                errText.textContent = msg;
+                errBox.style.display = 'flex';
+                inp.style.borderColor = '#ef4444';
+                inp.style.boxShadow = '0 0 0 3px rgba(239,68,68,.15)';
+                inp.focus();
+            } else {
+                alert('Error saving schedule: ' + msg);
+            }
         }
     } catch(e){
         console.error('Error saving schedule:',e);
