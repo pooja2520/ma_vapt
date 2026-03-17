@@ -2587,8 +2587,8 @@ def _background_scheduler():
                                 if _freq == 'once':
                                     _dbf2.finish_scheduled_scan(_sid, None, 'completed')
                                     print(f"[scheduler] Schedule {_sid} marked completed (one-time).")
-                                elif _freq == '247':
-                                    _nxt = (datetime.now() + timedelta(minutes=5)).strftime('%Y-%m-%d %H:%M:%S')
+                                elif _freq == '1h':
+                                    _nxt = (datetime.now() + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
                                     _dbf2.finish_scheduled_scan(_sid, _nxt, 'active')
                                 elif _freq == '6h':
                                     _nxt = (datetime.now() + timedelta(hours=6)).strftime('%Y-%m-%d %H:%M:%S')
