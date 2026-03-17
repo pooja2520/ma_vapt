@@ -2627,15 +2627,33 @@ def _background_scheduler():
         _time.sleep(5)  # check every 5s for on-time scan firing
 
 
+# def _start_background_scheduler():
+#     """Start the background scheduler thread (call once at app startup).
+#     Guarded against Werkzeug debug reloader which imports the module twice.
+#     """
+#     import os as _os
+#     # In debug mode Flask uses a reloader: the module is imported in the parent
+#     # process AND in the child. WERKZEUG_RUN_MAIN is only set in the child.
+#     # We only start the scheduler in the child (real serving) process.
+#     if app.debug and _os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
+#         return
+#     t = threading.Thread(target=_background_scheduler, name='SchedulerThread')
+#     t.daemon = True
+#     t.start()
+
+
 def _start_background_scheduler():
-    """Start the background scheduler thread (call once at app startup).
-    Guarded against Werkzeug debug reloader which imports the module twice.
-    """
     import os as _os
-    # In debug mode Flask uses a reloader: the module is imported in the parent
-    # process AND in the child. WERKZEUG_RUN_MAIN is only set in the child.
-    # We only start the scheduler in the child (real serving) process.
-    if app.debug and _os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
+    # Check if we are running as root (meaning the reloader will be disabled)
+    is_root = False
+    try:
+        if _os.geteuid() == 0:
+            is_root = True
+    except (AttributeError, OSError):
+        pass
+ 
+    # Only skip thread creation IF debug is on, reloader is active, AND we are in the parent process
+    if app.debug and not is_root and _os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
         return
     t = threading.Thread(target=_background_scheduler, name='SchedulerThread')
     t.daemon = True
