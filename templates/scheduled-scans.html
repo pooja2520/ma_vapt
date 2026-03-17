@@ -59,7 +59,7 @@
       <button class="preset-btn" onclick="applyPreset('night')"><span class="preset-icon">&#127769;</span><strong>Night Scan</strong><small>02:00 AM daily</small><span class="preset-tag">Low traffic</span></button>
       <button class="preset-btn" onclick="applyPreset('morning')"><span class="preset-icon">&#127749;</span><strong>Morning Scan</strong><small>06:00 AM daily</small><span class="preset-tag">Pre-business</span></button>
       <button class="preset-btn" onclick="applyPreset('afternoon')"><span class="preset-icon">&#9728;</span><strong>Afternoon Scan</strong><small>02:00 PM daily</small><span class="preset-tag">Mid-day check</span></button>
-      <button class="preset-btn" onclick="applyPreset('continuous')"><span class="preset-icon">&#128260;</span><strong>Continuous</strong><small>Every 1 hour</small><span class="preset-tag">24/7 watch</span></button>
+      <button class="preset-btn" onclick="applyPreset('continuous')"><span class="preset-icon">&#128260;</span><strong>Continuous</strong><small>Every 6 hours</small><span class="preset-tag">24/7 watch</span></button>
       <button class="preset-btn" onclick="applyPreset('weekly')"><span class="preset-icon">&#128197;</span><strong>Weekly</strong><small>Sunday 01:00 AM</small><span class="preset-tag">Weekly report</span></button>
       <button class="preset-btn" onclick="applyPreset('monthly')"><span class="preset-icon">&#128198;</span><strong>Monthly</strong><small>1st of month</small><span class="preset-tag">Compliance</span></button>
     </div></div>
@@ -277,12 +277,12 @@
       <div class="fg"><label>Frequency <span style="color:var(--red)">*</span></label>
         <div class="freq-btns">
           <button type="button" class="freq-btn active" data-freq="once"    onclick="selFreq(this)">One-time</button>
-          <button type="button" class="freq-btn"        data-freq="1h"      onclick="selFreq(this)">Every 1h</button>
           <button type="button" class="freq-btn"        data-freq="6h"      onclick="selFreq(this)">Every 6h</button>
           <button type="button" class="freq-btn"        data-freq="12h"     onclick="selFreq(this)">Every 12h</button>
           <button type="button" class="freq-btn"        data-freq="daily"   onclick="selFreq(this)">Daily</button>
           <button type="button" class="freq-btn"        data-freq="weekly"  onclick="selFreq(this)">Weekly</button>
           <button type="button" class="freq-btn"        data-freq="monthly" onclick="selFreq(this)">Monthly</button>
+          <button type="button" class="freq-btn"        data-freq="247"     onclick="selFreq(this)">24/7</button>
         </div>
       </div>
       <div id="weekdayPicker" class="fg" style="display:none;"><label>Day of Week</label>
@@ -739,7 +739,7 @@ async function runNow(id) {
 
 // ── Presets ──────────────────────────────────────────────────────────
 function applyPreset(type) {
-    var map={night:{time:'02:00',freq:'daily',name:'Nightly Security Scan'},morning:{time:'06:00',freq:'daily',name:'Morning Security Scan'},afternoon:{time:'14:00',freq:'daily',name:'Afternoon Security Scan'},continuous:{time:'00:00',freq:'1h',name:'24/7 Continuous Scan'},weekly:{time:'01:00',freq:'weekly',name:'Weekly Full Scan'},monthly:{time:'02:00',freq:'monthly',name:'Monthly Compliance Scan'}};
+    var map={night:{time:'02:00',freq:'daily',name:'Nightly Security Scan'},morning:{time:'06:00',freq:'daily',name:'Morning Security Scan'},afternoon:{time:'14:00',freq:'daily',name:'Afternoon Security Scan'},continuous:{time:'00:00',freq:'6h',name:'24/7 Continuous Scan'},weekly:{time:'01:00',freq:'weekly',name:'Weekly Full Scan'},monthly:{time:'02:00',freq:'monthly',name:'Monthly Compliance Scan'}};
     var p=map[type]; if(!p) return;
     openModal();
     document.getElementById('mName').value=p.name; document.getElementById('mTime').value=p.time;
@@ -836,7 +836,7 @@ function updatePreview() {
     var pp=time.split(':'),hr=parseInt(pp[0]),mn=pp[1],ts=(hr%12||12)+':'+mn+' '+(hr>=12?'PM':'AM');
     var at=document.getElementById('mAuth').value, an=at!=='none'?' (with '+(at==='basic'?'Basic Auth':'Form Login')+')':'';
     var md=document.getElementById('mMonthDay')?document.getElementById('mMonthDay').value:'1';
-    var msgs={once:'This scan will run one-time at '+ts+an,'1h':'This scan will run every 1 hour starting at '+ts+an,'6h':'This scan will run every 6 hours starting at '+ts+an,'12h':'Every 12 hours starting at '+ts+an,daily:'Every day at '+ts+an,weekly:'Every '+(getSelectedDays().join(', ')||'Sunday')+' at '+ts+an,monthly:'Day '+md+' of each month at '+ts+an};
+    var msgs={once:'This scan will run one-time at '+ts+an,'6h':'This scan will run every 6 hours starting at '+ts+an,'12h':'Every 12 hours starting at '+ts+an,daily:'Every day at '+ts+an,weekly:'Every '+(getSelectedDays().join(', ')||'Sunday')+' at '+ts+an,monthly:'Day '+md+' of each month at '+ts+an,'247':'Continuously 24/7'+an};
     document.getElementById('previewText').textContent=msgs[freq]||msgs.once;
 }
 
@@ -935,8 +935,8 @@ function calcNextRun(time, freq, isNew) {
     var p    = (time || '02:00').split(':').map(Number);
     var next = new Date(now);
 
-    if (freq === '1h') {
-        // Every 1 hour: start in 1 min then repeat every hour
+    if (freq === '247') {
+        // Always start in 1 min for continuous scans
         next = new Date(now.getTime() + 1 * 60000);
     } else if (freq === 'once') {
         // One-time: use exactly the time the user picked today.
@@ -944,8 +944,8 @@ function calcNextRun(time, freq, isNew) {
         // doesn't fire it immediately (user should use ▶ Run Now for that).
         next.setHours(p[0], p[1], 0, 0);
         if (next <= now) next.setDate(next.getDate() + 1);
-    } else if (freq === '1h' || freq === '6h' || freq === '12h') {
-        var interval = freq === '1h' ? 1 : (freq === '6h' ? 6 : 12);
+    } else if (freq === '6h' || freq === '12h') {
+        var interval = freq === '6h' ? 6 : 12;
         next.setHours(p[0], p[1], 0, 0);
         // Step back by intervals until next <= now
         while (next > now) {
@@ -1143,7 +1143,7 @@ function renderSchedules(){
     var filter=document.getElementById('filterStatus')?document.getElementById('filterStatus').value:'',list=filter?schedules.filter(function(s){return s.status===filter;}):schedules,con=document.getElementById('scheduleList');
     document.getElementById('tcSchedules').textContent=schedules.length;
     if(!list.length){con.innerHTML='<div class="empty-state"><i class="fa-solid fa-calendar-xmark"></i><p>No schedules found.</p><button class="btn btn-p" onclick="openModal()" style="margin-top:.75rem;"><i class="fa-solid fa-plus"></i> Create Schedule</button></div>';return;}
-    var fl={once:'One-time','1h':'Every 1h','6h':'Every 6h','12h':'Every 12h',daily:'Daily',weekly:'Weekly',monthly:'Monthly'},fi={once:'fa-circle-dot','1h':'fa-rotate','6h':'fa-rotate','12h':'fa-rotate',daily:'fa-sun',weekly:'fa-calendar-week',monthly:'fa-calendar'};
+    var fl={once:'One-time','6h':'Every 6h','12h':'Every 12h',daily:'Daily',weekly:'Weekly',monthly:'Monthly','247':'24/7'},fi={once:'fa-circle-dot','6h':'fa-rotate','12h':'fa-rotate',daily:'fa-sun',weekly:'fa-calendar-week',monthly:'fa-calendar','247':'fa-infinity'};
     con.innerHTML=list.map(function(s){
         var isR=s.status==='running',isA=s.status==='active',isC=s.status==='completed';
         var pp=(s.time||'02:00').split(':'),hr=parseInt(pp[0]),ts=(hr%12||12)+':'+pp[1]+' '+(hr>=12?'PM':'AM');
@@ -1336,7 +1336,7 @@ function renderPriority(){
     var sl=document.getElementById('solutionList'),wr=sorted.filter(function(v){return v.remediation;});
     if(!wr.length){sl.innerHTML='<div class="empty-state"><i class="fa-solid fa-screwdriver-wrench" style="color:var(--border);"></i><p>No solutions yet.</p></div>';}
     else sl.innerHTML=wr.map(function(v){var sev=v.severity||'info',sc={critical:'bc',high:'bh',medium:'bm',low:'bl'}[sev]||'bi',steps=v.steps&&v.steps.length?'<div class="solution-steps">'+v.steps.map(function(st,si){return'<div class="sol-step"><div class="sol-num">'+(si+1)+'</div><small>'+st+'</small></div>';}).join('')+'</div>':'';return'<div class="solution-item"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem;flex-wrap:wrap;gap:.3rem;"><strong style="font-size:.8rem;">'+v.name+'</strong><span class="bx '+sc+'" style="font-size:.62rem;">'+sev.charAt(0).toUpperCase()+sev.slice(1)+'</span></div><p style="font-size:.78rem;line-height:1.6;margin-bottom:.5rem;">'+v.remediation+'</p>'+steps+'</div>';}).join('');
-    var tl=document.getElementById('fixTimeline'),as=schedules.filter(function(s){return s.status==='active'||s.status==='running';}),fl={once:'One-time','1h':'Every 1h','6h':'Every 6h','12h':'Every 12h',daily:'Daily',weekly:'Weekly',monthly:'Monthly'};
+    var tl=document.getElementById('fixTimeline'),as=schedules.filter(function(s){return s.status==='active'||s.status==='running';}),fl={once:'One-time','6h':'Every 6h','12h':'Every 12h',daily:'Daily',weekly:'Weekly',monthly:'Monthly','247':'24/7'};
     var realOpen=realVulns.filter(function(v){return v.status==='open';});
     if(!as.length||!realOpen.length){tl.innerHTML='<div class="empty-state"><i class="fa-solid fa-timeline" style="color:var(--border);"></i><p>No active schedules with open vulnerabilities.</p></div>';}
     else tl.innerHTML=as.map(function(s){var sv=realVulns.filter(function(v){return v.scheduleName===s.name&&v.status==='open';}),bh=sv.slice(0,3).map(function(v){var sc2={critical:'bc',high:'bh',medium:'bm',low:'bl'}[v.severity]||'bi';return'<span class="bx '+sc2+'" style="font-size:.62rem;">'+v.name+'</span>';}).join('')+(sv.length>3?'<span style="font-size:.72rem;color:var(--text-muted);">+'+(sv.length-3)+' more</span>':'');return'<div class="timeline-item"><div class="tl-dot"></div><div class="tl-content"><div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.25rem;"><strong style="font-size:.825rem;">'+s.name+'</strong><span class="bx bac" style="font-size:.62rem;">'+(fl[s.freq]||s.freq)+'</span><span style="font-size:.72rem;color:var(--text-muted);">Next: '+fmtNextRun(s.nextRun)+'</span></div><p style="font-size:.75rem;color:var(--text-muted);">'+sv.length+' open vuln'+(sv.length!==1?'s':'')+' will be re-checked</p>'+(sv.length?'<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.3rem;">'+bh+'</div>':'')+'</div></div>';}).join('');
