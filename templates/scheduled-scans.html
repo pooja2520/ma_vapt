@@ -944,8 +944,8 @@ function calcNextRun(time, freq, isNew) {
         // doesn't fire it immediately (user should use ▶ Run Now for that).
         next.setHours(p[0], p[1], 0, 0);
         if (next <= now) next.setDate(next.getDate() + 1);
-    } else if (freq === '6h' || freq === '12h') {
-        var interval = freq === '6h' ? 6 : 12;
+    } else if (freq === '1h' || freq === '6h' || freq === '12h') {
+        var interval = freq === '1h' ? 1 : (freq === '6h' ? 6 : 12);
         next.setHours(p[0], p[1], 0, 0);
         // Step back by intervals until next <= now
         while (next > now) {
