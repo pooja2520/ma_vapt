@@ -29,7 +29,7 @@
   </div>
 
   <!-- ── Summary Stats ──────────────────────────────────────── -->
-  <div class="hist-stats" id="histStats">
+  <div class="hist-stats">
     <div class="hst-card">
       <div class="hst-icon blue"><i class="fa-solid fa-network-wired"></i></div>
       <div class="hst-val" id="sTotalScans">—</div>
@@ -58,13 +58,13 @@
   </div>
 
   <!-- ── Activity Chart ─────────────────────────────────────── -->
-  <div class="hist-chart-wrap" id="histChartWrap">
+  <div class="hist-chart-wrap">
     <div class="hist-chart-title">
       <i class="fa-solid fa-chart-column"></i> Scan Activity (Last 10 Scans — Vulnerabilities Found)
     </div>
     <div class="chart-bars" id="histChartBars">
-      <div style="display:flex;align-items:center;justify-content:center;height:80px;color:var(--text-muted);font-size:.8rem;">
-        <i class="fa-solid fa-spinner fa-spin" style="margin-right:.5rem;"></i> Loading chart…
+      <div style="display:flex;align-items:center;gap:.4rem;color:var(--text-muted);font-size:.8rem;margin:auto;">
+        <i class="fa-solid fa-spinner fa-spin"></i> Loading…
       </div>
     </div>
   </div>
@@ -74,8 +74,7 @@
     <div class="hist-search-wrap">
       <i class="fa-solid fa-magnifying-glass"></i>
       <input type="text" class="hist-search" id="histSearchInput"
-        placeholder="Search by IP, scan ID, date…"
-        oninput="applyFilters()">
+        placeholder="Search by IP, scan ID, date…" oninput="applyFilters()">
     </div>
     <select class="hist-filter-select" id="histSevFilter" onchange="applyFilters()">
       <option value="">All Severities</option>
@@ -96,24 +95,24 @@
     </button>
   </div>
 
-  <!-- ── History List ──────────────────────────────────────── -->
+  <!-- ── Sessions Card ──────────────────────────────────────── -->
   <div class="card">
     <div class="ch" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;">
       <span><i class="fa-solid fa-list-ul"></i> Scan Sessions</span>
       <div style="display:flex;align-items:center;gap:.75rem;">
-        <span id="liveIndicator" style="display:none;font-size:.7rem;color:#22c55e;font-weight:600;">
-          <i class="fa-solid fa-circle" style="font-size:.45rem;animation:blink 1.5s infinite;"></i> LIVE
+        <span id="liveIndicator" style="display:none;font-size:.7rem;color:#22c55e;font-weight:700;letter-spacing:.03em;">
+          <i class="fa-solid fa-circle" style="font-size:.4rem;animation:liveBlink 1.5s infinite;"></i> LIVE
         </span>
-        <span id="histCount" style="font-size:.75rem;font-weight:600;color:#ffffff;">Loading…</span>
+        <span id="histCount" style="font-size:.75rem;font-weight:600;color:#fff;">Loading…</span>
       </div>
     </div>
-    <div class="cb" style="padding:.75rem;">
+    <div class="cb" style="padding:.5rem 0 0;">
 
-      <!-- Skeleton loader shown on first load -->
-      <div id="histSkeleton">
-        <div class="hist-card" style="opacity:.45;pointer-events:none;padding:.875rem 1rem;"><div style="background:var(--border);border-radius:6px;height:14px;width:220px;"></div></div>
-        <div class="hist-card" style="opacity:.3;pointer-events:none;padding:.875rem 1rem;margin-top:.5rem;"><div style="background:var(--border);border-radius:6px;height:14px;width:180px;"></div></div>
-        <div class="hist-card" style="opacity:.15;pointer-events:none;padding:.875rem 1rem;margin-top:.5rem;"><div style="background:var(--border);border-radius:6px;height:14px;width:200px;"></div></div>
+      <!-- Skeleton -->
+      <div id="histSkeleton" style="padding:.75rem;">
+        <div style="height:56px;border:1.5px solid var(--border);border-radius:10px;margin-bottom:.5rem;opacity:.5;"></div>
+        <div style="height:56px;border:1.5px solid var(--border);border-radius:10px;margin-bottom:.5rem;opacity:.3;"></div>
+        <div style="height:56px;border:1.5px solid var(--border);border-radius:10px;opacity:.15;"></div>
       </div>
 
       <!-- Empty state -->
@@ -133,11 +132,11 @@
         </a>
       </div>
 
-      <!-- Dynamic session cards injected here -->
+      <!-- Session rows -->
       <div id="histList"></div>
 
       <!-- Pagination -->
-      <div class="hist-pagination" id="histPagination" style="display:none;">
+      <div class="hist-pagination" id="histPagination" style="display:none;padding:.75rem 1rem;">
         <span class="pag-info" id="pagInfo"></span>
         <div class="pag-btns" id="pagBtns"></div>
       </div>
@@ -147,7 +146,7 @@
 </div>
 </div>
 
-<!-- ── Delete Confirm Modal ───────────────────────────────── -->
+<!-- ── Delete Modal ───────────────────────────────────────── -->
 <div class="hist-modal-bg" id="deleteModal">
   <div class="hist-modal">
     <h3><i class="fa-solid fa-trash"></i> <span id="deleteModalTitle">Delete Scan?</span></h3>
@@ -162,7 +161,305 @@
 </div>
 
 <style>
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+@keyframes liveBlink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+/* ── Session card boxes ─────────────────────────────────────── */
+.h-row {
+  background: #fff;
+  border: 1.5px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  margin: 0 .75rem .625rem;
+  overflow: hidden;
+  transition: border-color .18s, box-shadow .18s;
+}
+.h-row:last-child { margin-bottom: .75rem; }
+.h-row:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 2px 12px rgba(37,99,235,.08);
+}
+.h-row.expanded {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+}
+
+.h-row-main {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .875rem 1rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Severity icon bubble — circle style matching screenshot */
+.h-sev-icon {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.05rem;
+  flex-shrink: 0;
+}
+.h-sev-icon.critical { background:#fee2e2; color:#dc2626; }
+.h-sev-icon.high     { background:#ffedd5; color:#ea580c; }
+.h-sev-icon.medium   { background:#fef3c7; color:#d97706; }
+.h-sev-icon.low      { background:#dbeafe; color:#2563eb; }
+.h-sev-icon.clean    { background:#dcfce7; color:#16a34a; }
+.h-sev-icon.running  { background:#fef3c7; color:#d97706; }
+
+/* Title + meta block */
+.h-info { flex: 1; min-width: 0; }
+.h-title {
+  font-size: .875rem;
+  font-weight: 700;
+  color: var(--text, #111827);
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  flex-wrap: wrap;
+  line-height: 1.3;
+}
+.h-scan-id {
+  font-size: .68rem;
+  color: var(--text-muted, #6b7280);
+  font-family: monospace;
+  font-weight: 600;
+}
+.h-meta {
+  font-size: .72rem;
+  color: var(--text-muted, #6b7280);
+  margin-top: .2rem;
+  display: flex;
+  align-items: center;
+  gap: .625rem;
+  flex-wrap: wrap;
+}
+.h-meta i { font-size: .6rem; }
+.h-meta .h-ips-preview {
+  color: #4b5563;
+  font-size: .68rem;
+  font-family: monospace;
+}
+
+/* Right badges + actions */
+.h-badges {
+  display: flex;
+  align-items: center;
+  gap: .375rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.hb {
+  display: inline-flex;
+  align-items: center;
+  gap: .2rem;
+  padding: .2rem .55rem;
+  border-radius: 6px;
+  font-size: .7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.hb.online   { background:#dcfce7; color:#15803d; }
+.hb.offline  { background:#f3f4f6; color:#374151; }
+.hb.vulns-count { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+.hb.clean    { background:#dcfce7; color:#15803d; border:1px solid #86efac; }
+/* Severity pill — standalone colored badge e.g. "High" */
+.hb.sev-pill.critical { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+.hb.sev-pill.high     { background:#ffedd5; color:#9a3412; border:1px solid #fdba74; }
+.hb.sev-pill.medium   { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
+.hb.sev-pill.low      { background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
+.hb.running-badge { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
+
+.h-actions {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  flex-shrink: 0;
+}
+.h-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  padding: .28rem .65rem;
+  border-radius: 7px;
+  border: 1.5px solid var(--border, #e5e7eb);
+  background: #fff;
+  font-size: .72rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text-muted, #4b5563);
+  transition: all .15s;
+  white-space: nowrap;
+  text-decoration: none;
+  font-family: inherit;
+}
+.h-btn:hover         { border-color:#2563eb; color:#2563eb; background:#eff6ff; }
+.h-btn.primary       { background:#2563eb; color:#fff; border-color:#2563eb; }
+.h-btn.primary:hover { background:#1d4ed8; border-color:#1d4ed8; color:#fff; }
+.h-btn.danger:hover  { border-color:#ef4444; color:#ef4444; background:#fef2f2; }
+.h-chevron {
+  color: var(--text-muted); font-size:.75rem;
+  transition: transform .2s; flex-shrink:0; margin-left:.1rem;
+}
+
+/* ── Expanded detail panel ──────────────────────────────────── */
+.h-detail {
+  background: #f8faff;
+  border-top: 1px solid var(--border, #e5e7eb);
+  padding: 1rem;
+  display: none;
+}
+.h-detail[style*="block"] {
+  animation: detailSlide .18s ease;
+}
+@keyframes detailSlide {
+  from { opacity:0; transform:translateY(-4px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+/* 3-panel grid matching target design */
+.h-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: .75rem;
+  margin-bottom: 1rem;
+}
+@media(max-width:900px) { .h-detail-grid { grid-template-columns: 1fr 1fr; } }
+@media(max-width:600px) { .h-detail-grid { grid-template-columns: 1fr; } }
+
+.h-detail-panel {
+  background: #fff;
+  border: 1.5px solid var(--border, #e5e7eb);
+  border-radius: 10px;
+  padding: .875rem;
+}
+.h-detail-panel-title {
+  font-size: .72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted, #6b7280);
+  margin-bottom: .625rem;
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+}
+.h-detail-panel-title i { font-size: .8rem; color: var(--blue, #2563eb); }
+
+.h-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: .28rem 0;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: .78rem;
+  gap: .5rem;
+}
+.h-detail-row:last-child { border-bottom: none; }
+.h-detail-row .dk { color: var(--text-muted, #6b7280); font-weight: 500; white-space: nowrap; }
+.h-detail-row .dv { font-weight: 600; color: var(--text, #111827); text-align: right; font-family: monospace; font-size: .74rem; }
+
+/* Module chips in detail panel */
+.h-mod-chip {
+  display: inline-flex; align-items: center; gap: .2rem;
+  padding: .15rem .45rem; border-radius: 5px;
+  font-size: .65rem; font-weight: 700;
+  background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;
+  margin: .1rem .1rem 0 0;
+}
+.h-mod-chip i { font-size: .55rem; }
+
+/* ── IP Results section ─────────────────────────────────────── */
+.h-ip-section-title {
+  font-size: .72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted, #6b7280);
+  margin-bottom: .5rem;
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+}
+.h-ip-section-title i { color: var(--blue, #2563eb); }
+
+.h-ip-tbl-wrap {
+  overflow-x: auto;
+  border-radius: 9px;
+  border: 1.5px solid var(--border, #e5e7eb);
+  margin-bottom: .875rem;
+}
+.h-ip-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .78rem;
+  background: #fff;
+}
+.h-ip-tbl thead th {
+  padding: .45rem .875rem;
+  text-align: left;
+  font-size: .68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-muted, #9ca3af);
+  background: var(--bg, #f9fafb);
+  border-bottom: 1.5px solid var(--border, #e5e7eb);
+  white-space: nowrap;
+}
+.h-ip-tbl tbody tr { border-bottom: 1px solid #f3f4f6; transition: background .12s; }
+.h-ip-tbl tbody tr:hover { background: #f8faff; }
+.h-ip-tbl tbody tr:last-child { border-bottom: none; }
+.h-ip-tbl td { padding: .5rem .875rem; vertical-align: middle; }
+.h-ip-tbl td.mono { font-family: monospace; font-weight: 700; font-size: .8rem; }
+
+/* Status + severity pills in table */
+.ip-status {
+  display: inline-flex; align-items: center; gap: .25rem;
+  padding: .18rem .5rem; border-radius: 5px;
+  font-size: .68rem; font-weight: 700;
+}
+.ip-status.online  { background: #dcfce7; color: #15803d; }
+.ip-status.offline { background: #f3f4f6; color: #4b5563; }
+.ip-sev {
+  display: inline-flex; padding: .15rem .5rem; border-radius: 5px;
+  font-size: .65rem; font-weight: 800; text-transform: uppercase;
+}
+.ip-sev.critical { background:#fee2e2; color:#991b1b; }
+.ip-sev.high     { background:#ffedd5; color:#9a3412; }
+.ip-sev.medium   { background:#fef3c7; color:#92400e; }
+.ip-sev.low      { background:#dbeafe; color:#1e40af; }
+.ip-sev.none,
+.ip-sev.clean    { background:#f3f4f6; color:#4b5563; }
+
+/* ── Export buttons at bottom of expanded ───────────────────── */
+.h-export-row {
+  display: flex;
+  gap: .4rem;
+  flex-wrap: wrap;
+  margin-top: .25rem;
+}
+
+/* Running scan amber banner */
+.h-running-banner {
+  background: linear-gradient(90deg,#fef3c7,#fffbeb);
+  border-bottom: 1px solid #fde68a;
+  padding: .4rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .72rem;
+  font-weight: 700;
+  color: #92400e;
+}
+.h-running-banner a {
+  margin-left: auto;
+  color: #1d4ed8;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  font-weight: 700;
+}
 </style>
 
 {% endblock %}
@@ -170,79 +467,75 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/layout.js') }}"></script>
 <script>
-// ── Init ─────────────────────────────────────────────────────
 initLayout('/history');
 
-// ── State ────────────────────────────────────────────────────
-const PER_PAGE     = 10;
-const POLL_MS      = 8000;
-let allHistory     = [];
-let filteredHistory= [];
-let currentPage    = 1;
-let deleteTargetId = null;
-let deleteAll      = false;
-let liveTimer      = null;
-const _loadedIPs   = new Set();
+// ── State ─────────────────────────────────────────────────────
+const PER_PAGE   = 15;
+const POLL_MS    = 8000;
+let allHistory   = [];
+let filtered     = [];
+let page         = 1;
+let delTarget    = null;
+let delAll       = false;
+let liveTimer    = null;
+const loadedIPs  = new Set();
 
 // ════════════════════════════════════════════════════════════════
-//  FETCH FROM API
+//  LOAD
 // ════════════════════════════════════════════════════════════════
 async function loadHistory(silent = false) {
   try {
     const res  = await fetch('/api/bulk/history?per=200', { credentials: 'same-origin' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-
     allHistory = data.sessions || [];
     updateStatCards(data.stats || {});
     renderChart(data.chart   || []);
     applyFilters();
-
-    // Live indicator if any scan still running
     const anyRunning = allHistory.some(s => s.status === 'running');
     document.getElementById('liveIndicator').style.display = anyRunning ? '' : 'none';
-
+    if (liveTimer) clearTimeout(liveTimer);
+    liveTimer = setTimeout(() => loadHistory(true), anyRunning ? 3000 : POLL_MS);
+    return;
   } catch(err) {
     if (!silent) {
       document.getElementById('histSkeleton').style.display = 'none';
       document.getElementById('histCount').textContent = 'Error loading data';
     }
   }
-  // Always re-schedule poll to pick up new scans saved from the scanner tab
   if (liveTimer) clearTimeout(liveTimer);
-  // Poll every 3s while a scan is running, 8s otherwise
-  const anyRunning2 = allHistory.some(s => s.status === 'running');
-  liveTimer = setTimeout(() => loadHistory(true), anyRunning2 ? 3000 : POLL_MS);
+  liveTimer = setTimeout(() => loadHistory(true), POLL_MS);
 }
 
 // ════════════════════════════════════════════════════════════════
-//  STATS CARDS
+//  STATS
 // ════════════════════════════════════════════════════════════════
 function updateStatCards(s) {
-  document.getElementById('sTotalScans').textContent = num(s.total_scans);
-  document.getElementById('sTotalIPs').textContent   = num(s.total_ips_scanned);
-  document.getElementById('sTotalVulns').textContent = num(s.total_vulns);
-  document.getElementById('sTotalPorts').textContent = num(s.total_open_ports);
-  document.getElementById('sCritical').textContent   = num(s.total_critical);
+  const set = (id, v) => { const el=document.getElementById(id); if(el) el.textContent=(v!=null)?Number(v).toLocaleString():'0'; };
+  set('sTotalScans', s.total_scans);
+  set('sTotalIPs',   s.total_ips_scanned);
+  set('sTotalVulns', s.total_vulns);
+  set('sTotalPorts', s.total_open_ports);
+  set('sCritical',   s.total_critical);
 }
-function num(n) { return (n != null) ? Number(n).toLocaleString() : '0'; }
 
 // ════════════════════════════════════════════════════════════════
-//  CHART
+//  CHART (uses .chart-bar-wrap + .chart-bar + .chart-lbl from history.css)
 // ════════════════════════════════════════════════════════════════
-function renderChart(chartData) {
+function renderChart(data) {
   const el = document.getElementById('histChartBars');
-  if (!chartData.length) {
-    el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:80px;color:var(--text-muted);font-size:.8rem;">No data yet</div>';
+  if (!el) return;
+  if (!data.length) {
+    el.innerHTML = '<div style="margin:auto;color:var(--text-muted);font-size:.8rem;">No data yet</div>';
     return;
   }
-  const maxV = Math.max(...chartData.map(c => c.vulns), 1);
-  el.innerHTML = chartData.map(c => {
-    const pct = Math.max(8, Math.round(c.vulns / maxV * 100));
-    const col = c.vulns === 0 ? '#3b82f6' : c.vulns < 5 ? '#f59e0b' : '#f97316';
-    return `<div class="chart-bar-col" title="${c.vulns} vulns — ${c.label}">
-      <div class="chart-bar" style="height:${pct}%;background:${col};min-height:8px;border-radius:4px 4px 0 0;"></div>
-      <div class="chart-bar-lbl">${esc(c.label)}</div>
+  const maxV = Math.max(...data.map(c => c.vulns), 1);
+  el.innerHTML = data.map(c => {
+    const pct = Math.max(6, Math.round(c.vulns / maxV * 100));
+    const cls = c.vulns === 0 ? 'clean' : c.vulns < 5 ? 'low' : c.vulns < 12 ? 'medium' : c.vulns < 20 ? 'high' : 'critical';
+    return `<div class="chart-bar-wrap" title="${c.vulns} vulns — ${c.label}">
+      <div class="chart-bar ${cls}" style="height:${pct}%;"></div>
+      <div class="chart-lbl">${esc(c.label)}</div>
     </div>`;
   }).join('');
 }
@@ -251,15 +544,15 @@ function renderChart(chartData) {
 //  FILTER + SORT
 // ════════════════════════════════════════════════════════════════
 function applyFilters() {
-  const q    = (document.getElementById('histSearchInput').value || '').toLowerCase();
-  const sev  = document.getElementById('histSevFilter').value;
-  const sort = document.getElementById('histSortFilter').value;
+  const q   = (document.getElementById('histSearchInput').value || '').toLowerCase();
+  const sev = document.getElementById('histSevFilter').value;
+  const srt = document.getElementById('histSortFilter').value;
 
-  filteredHistory = allHistory.filter(h => {
+  filtered = allHistory.filter(h => {
     if (q) {
-      const haystack = [h.label, h.scan_id, h.started_at].join(' ').toLowerCase();
-      const inIPs    = (h.results || []).some(r => (r.ip || '').includes(q));
-      if (!haystack.includes(q) && !inIPs) return false;
+      const hay = [h.label, h.scan_id, h.started_at].join(' ').toLowerCase();
+      const inIP = (h.results || []).some(r => (r.ip || '').includes(q));
+      if (!hay.includes(q) && !inIP) return false;
     }
     if (sev === 'critical' && !h.critical_count) return false;
     if (sev === 'high'     && !h.high_count)     return false;
@@ -269,14 +562,14 @@ function applyFilters() {
     return true;
   });
 
-  filteredHistory.sort((a, b) => {
-    if (sort === 'oldest')     return new Date(a.started_at) - new Date(b.started_at);
-    if (sort === 'most_vulns') return b.total_vulns - a.total_vulns;
-    if (sort === 'most_ips')   return b.total_ips   - a.total_ips;
+  filtered.sort((a, b) => {
+    if (srt === 'oldest')     return new Date(a.started_at) - new Date(b.started_at);
+    if (srt === 'most_vulns') return b.total_vulns - a.total_vulns;
+    if (srt === 'most_ips')   return b.total_ips   - a.total_ips;
     return new Date(b.started_at) - new Date(a.started_at);
   });
 
-  currentPage = 1;
+  page = 1;
   renderList();
 }
 
@@ -285,11 +578,10 @@ function applyFilters() {
 // ════════════════════════════════════════════════════════════════
 function renderList() {
   document.getElementById('histSkeleton').style.display = 'none';
-
-  const total = filteredHistory.length;
+  const total = filtered.length;
   const pages = Math.max(1, Math.ceil(total / PER_PAGE));
-  currentPage = Math.min(currentPage, pages);
-  const slice = filteredHistory.slice((currentPage-1)*PER_PAGE, currentPage*PER_PAGE);
+  page = Math.min(page, pages);
+  const slice = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE);
 
   document.getElementById('histCount').textContent =
     total === allHistory.length
@@ -300,182 +592,230 @@ function renderList() {
   const listEl = document.getElementById('histList');
 
   if (!total) {
-    empty.style.display  = '';
-    listEl.innerHTML     = '';
+    empty.style.display = '';
+    listEl.innerHTML = '';
     document.getElementById('histPagination').style.display = 'none';
     return;
   }
   empty.style.display = 'none';
-  listEl.innerHTML = slice.map(h => cardHTML(h)).join('');
+  listEl.innerHTML = slice.map(h => rowHTML(h)).join('');
   renderPagination(total, pages);
 }
 
 // ════════════════════════════════════════════════════════════════
-//  CARD HTML
+//  ROW HTML — matches target design exactly
 // ════════════════════════════════════════════════════════════════
-function cardHTML(h) {
+function rowHTML(h) {
   const running  = h.status === 'running';
   const label    = h.label || `Bulk Scan — ${h.total_ips} IPs`;
-  const shortId  = '#' + String(h.scan_id || h.id).slice(0, 10);
-  const scanDate = fmtDate(h.started_at);
-  const scanTime = fmtTime(h.started_at);
+  const shortId  = '#' + String(h.scan_id || h.id).slice(0, 8);
   const dur      = h.duration_seconds != null ? fmtDur(h.duration_seconds) : (running ? '…' : '—');
+  const offCount = h.offline_count != null ? h.offline_count : Math.max(0, h.total_ips - h.online_count);
 
-  const sevLabel = h.critical_count ? 'Critical'
-                 : h.high_count     ? 'High'
-                 : h.medium_count   ? 'Medium'
-                 : h.low_count      ? 'Low'
-                 : 'Clean';
-  const sevCls   = sevLabel.toLowerCase();
+  // Severity level
+  const sevKey = h.critical_count ? 'critical' : h.high_count ? 'high'
+               : h.medium_count   ? 'medium'   : h.low_count  ? 'low' : 'clean';
+  const sevLbl = running ? 'Running' : (sevKey === 'clean' ? 'Clean' : sevKey.charAt(0).toUpperCase() + sevKey.slice(1));
 
-  const offCount = (h.offline_count != null) ? h.offline_count : Math.max(0, h.total_ips - h.online_count);
+  // IP preview (first 3 IPs + "+N more")
+  const ipResults = h.results || [];
+  const ipPreview = ipResults.length
+    ? ipResults.slice(0, 3).map(r => r.ip).join(', ') + (ipResults.length > 3 ? ` +${ipResults.length - 3} more` : '')
+    : '';
 
-  const statusBadge = running
-    ? `<span class="hc-status running"><i class="fa-solid fa-spinner fa-spin" style="font-size:.5rem;"></i> Running</span>`
-    : `<span class="hc-status done"><i class="fa-solid fa-circle-check"></i> Done</span>`;
+  // Datetime combined
+  const dtStr = h.started_at
+    ? `${fmtDateShort(h.started_at)}, ${fmtTime(h.started_at)}`
+    : '—';
 
-  const modHtml = (h.modules||[]).length
-    ? h.modules.map(m => `<span class="hc-mod">${esc(m)}</span>`).join('')
-    : '<span class="hc-mod" style="opacity:.4;">default</span>';
+  // Vulns badge — shows bug count with severity color
+  const vulnBadge = h.total_vulns > 0
+    ? `<span class="hb vulns-count"><i class="fa-solid fa-bug"></i> ${h.total_vulns} Vulns</span>`
+    : `<span class="hb clean"><i class="fa-solid fa-circle-check"></i> Clean</span>`;
 
-  return `
-<div class="hist-card" id="hcard-${h.id}" style="${running ? 'border-color:#f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,.15);' : ''}">
-  ${running ? `<div style="background:linear-gradient(90deg,#fef3c7,#fffbeb);border-bottom:1px solid #fde68a;padding:.4rem 1rem;display:flex;align-items:center;gap:.5rem;font-size:.72rem;font-weight:700;color:#92400e;">
+  // Separate severity pill (e.g. "High" in orange)
+  const sevBadge = running
+    ? `<span class="hb running-badge"><i class="fa-solid fa-spinner fa-spin" style="font-size:.55rem;"></i> Running</span>`
+    : h.total_vulns > 0
+      ? `<span class="hb sev-pill ${sevKey}">${sevLbl}</span>`
+      : '';
+
+  // Re-run / Resume button — always blue primary
+  const actionBtn = running
+    ? `<a href="/bulk-ip-scanning" class="h-btn primary" onclick="event.stopPropagation()"><i class="fa-solid fa-arrow-up-right-from-square"></i> Resume</a>`
+    : `<button class="h-btn primary" onclick="event.stopPropagation();rerunScan(${h.id})"><i class="fa-solid fa-rotate"></i> Re-run</button>`;
+
+  return `<div class="h-row" id="hrow-${h.id}">
+  ${running ? `<div class="h-running-banner">
     <i class="fa-solid fa-spinner fa-spin" style="font-size:.65rem;color:#d97706;"></i>
-    Scan in progress — results will update automatically
-    <a href="/bulk-ip-scanning" style="margin-left:auto;color:#1d4ed8;font-weight:700;text-decoration:none;display:flex;align-items:center;gap:.3rem;">
-      <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:.65rem;"></i> Go to Scanner
-    </a>
+    Scan in progress — history will update automatically
+    <a href="/bulk-ip-scanning"><i class="fa-solid fa-arrow-up-right-from-square" style="font-size:.6rem;"></i> Go to Scanner</a>
   </div>` : ''}
-  <div class="hc-header" onclick="toggleCard(${h.id})">
-    <div class="hc-left">
-      <div class="hc-icon"><i class="fa-solid fa-network-wired"></i></div>
-      <div class="hc-meta">
-        <div class="hc-title">${esc(label)} <span class="hc-id">${esc(shortId)}</span> ${statusBadge}</div>
-        <div class="hc-sub">
-          <span><i class="fa-regular fa-calendar"></i> ${scanDate}</span>
-          <span><i class="fa-regular fa-clock"></i> ${scanTime}</span>
-          <span><i class="fa-solid fa-stopwatch"></i> ${dur}</span>
-          <span><i class="fa-solid fa-layer-group"></i> ${esc(h.port_depth||'full')}</span>
-        </div>
+  <div class="h-row-main" onclick="toggleRow(${h.id})">
+    <div class="h-sev-icon ${running ? 'running' : sevKey}">
+      ${running
+        ? '<i class="fa-solid fa-spinner fa-spin"></i>'
+        : sevKey === 'critical' ? '<i class="fa-solid fa-circle-exclamation"></i>'
+        : sevKey === 'high'     ? '<i class="fa-solid fa-circle-exclamation"></i>'
+        : sevKey === 'medium'   ? '<i class="fa-solid fa-triangle-exclamation"></i>'
+        : sevKey === 'low'      ? '<i class="fa-solid fa-shield-halved"></i>'
+        : '<i class="fa-solid fa-circle-check"></i>'
+      }
+    </div>
+    <div class="h-info">
+      <div class="h-title">
+        <i class="fa-solid fa-network-wired" style="font-size:.75rem;color:#6b7280;"></i>
+        <span>${esc(label)}</span>
+        <span class="h-scan-id">${esc(shortId)}</span>
+      </div>
+      <div class="h-meta">
+        <span><i class="fa-regular fa-calendar"></i> ${dtStr}</span>
+        <span><i class="fa-solid fa-stopwatch"></i> ${dur}</span>
+        <span><i class="fa-solid fa-layer-group"></i> ${esc(h.port_depth || 'full')}</span>
+        ${ipPreview ? `<span class="h-ips-preview">${esc(ipPreview)}</span>` : ''}
       </div>
     </div>
-    <div class="hc-right">
-      <span class="mini-status online"><i class="fa-solid fa-circle" style="font-size:.35rem;"></i>${h.online_count} Online</span>
-      <span class="mini-status offline"><i class="fa-solid fa-circle" style="font-size:.35rem;"></i>${offCount} Off</span>
-      <span class="mini-sev ${sevCls}">${h.total_vulns} Vulns</span>
-      <span class="mini-sev ${sevCls}">${sevLabel}</span>
-      <div class="hc-actions" onclick="event.stopPropagation()">
-        ${running
-          ? `<a href="/bulk-ip-scanning" class="hc-btn primary"><i class="fa-solid fa-arrow-up-right-from-square"></i> Resume Scan</a>`
-          : `<button class="hc-btn primary" onclick="rerunScan(${h.id})"><i class="fa-solid fa-rotate"></i> Re-run</button>`
-        }
-        <button class="hc-btn" onclick="exportSession(${h.id},'json')" ${running ? 'disabled style="opacity:.4"' : ''}><i class="fa-solid fa-file-code"></i> Export</button>
-        <button class="hc-btn danger" onclick="openDeleteModal(${h.id})"><i class="fa-solid fa-trash"></i></button>
-        <i class="fa-solid fa-chevron-down hc-chevron" id="chev-${h.id}" style="transition:transform .2s;color:var(--text-muted);font-size:.75rem;"></i>
-      </div>
+    <div class="h-badges">
+      <span class="hb online"><i class="fa-solid fa-circle" style="font-size:.35rem;"></i> ${h.online_count} Online</span>
+      <span class="hb offline"><i class="fa-solid fa-circle" style="font-size:.35rem;"></i> ${offCount} Off</span>
+      ${vulnBadge}
+      ${sevBadge}
+      ${actionBtn}
+      <button class="h-btn" onclick="event.stopPropagation();exportSession(${h.id},'json')"
+        title="Export" ${running ? 'disabled style="opacity:.4"' : ''}>
+        <i class="fa-solid fa-file-export"></i> Export
+      </button>
+      <button class="h-btn danger" onclick="event.stopPropagation();openDeleteModal(${h.id})" title="Delete">
+        <i class="fa-solid fa-trash"></i>
+      </button>
+      <i class="fa-solid fa-chevron-down h-chevron" id="chev-${h.id}"></i>
     </div>
   </div>
 
-  <div class="hc-body" id="hcbody-${h.id}" style="display:none;">
-    <div class="hd-grid">
-      <div class="hd-card">
-        <div class="hd-card-title"><i class="fa-solid fa-circle-info"></i> Scan Info</div>
-        <div class="hd-row"><span>Scan ID</span><span class="mono" style="font-size:.7rem;">${esc(h.scan_id||'')}</span></div>
-        <div class="hd-row"><span>Started</span><span>${esc(h.started_at||'—')}</span></div>
-        <div class="hd-row"><span>Finished</span><span>${esc(h.finished_at||(running?'Still running…':'—'))}</span></div>
-        <div class="hd-row"><span>Duration</span><span>${dur}</span></div>
-        <div class="hd-row"><span>Port Depth</span><span>${esc(h.port_depth||'full')}</span></div>
-        <div class="hd-row"><span>Modules</span><span>${modHtml}</span></div>
+  <!-- Expanded detail -->
+  <div class="h-detail" id="hdetail-${h.id}">
+    <div class="h-detail-grid">
+      <!-- Panel 1: Scan Info -->
+      <div class="h-detail-panel">
+        <div class="h-detail-panel-title"><i class="fa-solid fa-circle-info"></i> Scan Info</div>
+        <div class="h-detail-row"><span class="dk">Scan ID</span><span class="dv">${esc(h.scan_id||'')}</span></div>
+        <div class="h-detail-row"><span class="dk">Started</span><span class="dv">${fmtDateFull(h.started_at)}</span></div>
+        <div class="h-detail-row"><span class="dk">Finished</span><span class="dv">${h.finished_at ? fmtDateFull(h.finished_at) : (running ? 'Running…' : '—')}</span></div>
+        <div class="h-detail-row"><span class="dk">Duration</span><span class="dv">${dur}</span></div>
+        <div class="h-detail-row"><span class="dk">Port Depth</span><span class="dv">${esc(h.port_depth||'full')}</span></div>
       </div>
-      <div class="hd-card">
-        <div class="hd-card-title"><i class="fa-solid fa-chart-pie"></i> Results Summary</div>
-        <div class="hd-row"><span>Total IPs</span><span>${h.total_ips}</span></div>
-        <div class="hd-row"><span>Online</span><span style="color:#22c55e;font-weight:600;">${h.online_count}</span></div>
-        <div class="hd-row"><span>Offline</span><span style="color:var(--text-muted);">${offCount}</span></div>
-        <div class="hd-row"><span>Open Ports</span><span>${h.open_ports}</span></div>
-        <div class="hd-row"><span>Vulns</span><span style="color:#ef4444;font-weight:600;">${h.total_vulns}</span></div>
-        <div class="hd-row" style="border-bottom:none;"><span>By Severity</span>
-          <span>
-            ${h.critical_count?`<span class="mini-sev critical">${h.critical_count}C</span> `:''}
-            ${h.high_count    ?`<span class="mini-sev high">${h.high_count}H</span> `:''}
-            ${h.medium_count  ?`<span class="mini-sev medium">${h.medium_count}M</span> `:''}
-            ${h.low_count     ?`<span class="mini-sev low">${h.low_count}L</span>`:''}
-            ${(!h.critical_count&&!h.high_count&&!h.medium_count&&!h.low_count)?'<span style="color:var(--text-muted)">Clean</span>':''}
+      <!-- Panel 2: Results Summary -->
+      <div class="h-detail-panel">
+        <div class="h-detail-panel-title"><i class="fa-solid fa-chart-pie"></i> Results Summary</div>
+        <div class="h-detail-row"><span class="dk">Total IPs</span><span class="dv">${h.total_ips}</span></div>
+        <div class="h-detail-row"><span class="dk">Online</span><span class="dv" style="color:#16a34a;">${h.online_count}</span></div>
+        <div class="h-detail-row"><span class="dk">Offline</span><span class="dv" style="color:#6b7280;">${offCount}</span></div>
+        <div class="h-detail-row"><span class="dk">Open Ports</span><span class="dv">${h.open_ports}</span></div>
+        <div class="h-detail-row"><span class="dk">Vulnerabilities</span><span class="dv" style="color:${h.total_vulns>0?'#dc2626':'#16a34a'};">${h.total_vulns}</span></div>
+        <div class="h-detail-row"><span class="dk">Severity</span>
+          <span class="dv">
+            ${h.critical_count?`<span class="ip-sev critical">${h.critical_count} Critical</span> `:''}
+            ${h.high_count    ?`<span class="ip-sev high">${h.high_count} High</span> `:''}
+            ${h.medium_count  ?`<span class="ip-sev medium">${h.medium_count} Medium</span> `:''}
+            ${h.low_count     ?`<span class="ip-sev low">${h.low_count} Low</span>`:''}
+            ${!h.total_vulns  ?`<span class="ip-sev clean">Clean</span>`:''}
           </span>
         </div>
       </div>
-    </div>
-
-    <!-- IP table lazy loaded -->
-    <div id="hcips-${h.id}">
-      <div style="text-align:center;padding:.75rem;color:var(--text-muted);font-size:.8rem;">
-        <i class="fa-solid fa-spinner fa-spin"></i> Loading IP results…
+      <!-- Panel 3: Modules Used -->
+      <div class="h-detail-panel">
+        <div class="h-detail-panel-title"><i class="fa-solid fa-puzzle-piece"></i> Modules Used</div>
+        <div style="display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.625rem;">
+          ${(h.modules||[]).length
+            ? h.modules.map(m => `<span class="h-mod-chip"><i class="fa-solid fa-check" style="color:#16a34a;"></i>${esc(m)}</span>`).join('')
+            : '<span style="color:var(--text-muted);font-size:.75rem;">No module info</span>'
+          }
+        </div>
+        <div class="h-detail-row"><span class="dk">Scan Type</span><span class="dv">bulk</span></div>
       </div>
     </div>
 
-    <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.75rem;">
-      <button class="hc-btn primary" onclick="exportSession(${h.id},'xlsx')"><i class="fa-solid fa-file-excel"></i> Excel</button>
-      <button class="hc-btn" onclick="exportSession(${h.id},'json')"><i class="fa-solid fa-file-code"></i> JSON</button>
-      <button class="hc-btn" onclick="exportSession(${h.id},'csv')"><i class="fa-solid fa-file-csv"></i> CSV</button>
-      <button class="hc-btn" onclick="rerunScan(${h.id})"><i class="fa-solid fa-rotate"></i> Re-run</button>
+    <!-- IP Results Table (lazy loaded) -->
+    <div class="h-ip-section-title"><i class="fa-solid fa-server"></i> IP Results</div>
+    <div id="hipips-${h.id}">
+      <div style="padding:.75rem 0;color:var(--text-muted);font-size:.8rem;text-align:center;">
+        <i class="fa-solid fa-spinner fa-spin"></i> Loading…
+      </div>
+    </div>
+
+    <!-- Export buttons -->
+    <div class="h-export-row">
+      <button class="h-btn primary" onclick="exportSession(${h.id},'xlsx')"><i class="fa-solid fa-file-excel"></i> Excel</button>
+      <button class="h-btn" onclick="exportSession(${h.id},'json')"><i class="fa-solid fa-file-code"></i> JSON</button>
+      <button class="h-btn" onclick="exportSession(${h.id},'csv')"><i class="fa-solid fa-file-csv"></i> CSV</button>
+      <button class="h-btn" onclick="rerunScan(${h.id})"><i class="fa-solid fa-rotate"></i> Re-run Scan</button>
     </div>
   </div>
 </div>`;
 }
 
 // ════════════════════════════════════════════════════════════════
-//  TOGGLE EXPAND + LAZY LOAD IPs
+//  TOGGLE ROW + LAZY LOAD IPs
 // ════════════════════════════════════════════════════════════════
-async function toggleCard(id) {
-  const body = document.getElementById('hcbody-' + id);
-  const chev = document.getElementById('chev-'   + id);
-  if (!body) return;
-  const open = body.style.display !== 'none';
+async function toggleRow(id) {
+  const detail = document.getElementById('hdetail-' + id);
+  const chev   = document.getElementById('chev-'   + id);
+  const row    = document.getElementById('hrow-'   + id);
+  if (!detail) return;
 
-  // Close all
-  document.querySelectorAll('.hc-body').forEach(b => b.style.display = 'none');
-  document.querySelectorAll('.hc-chevron').forEach(c => c.style.transform = '');
+  const isOpen = detail.style.display === 'block';
 
-  if (!open) {
-    body.style.display = '';
+  // Close all first — remove expanded class from all rows
+  document.querySelectorAll('.h-detail').forEach(d => d.style.display = 'none');
+  document.querySelectorAll('.h-chevron').forEach(c => c.style.transform = '');
+  document.querySelectorAll('.h-row').forEach(r => r.classList.remove('expanded'));
+
+  if (!isOpen) {
+    detail.style.display = 'block';
     if (chev) chev.style.transform = 'rotate(180deg)';
-    if (!_loadedIPs.has(id)) { _loadedIPs.add(id); loadIPTable(id); }
+    if (row)  row.classList.add('expanded');
+    if (!loadedIPs.has(id)) { loadedIPs.add(id); loadIPTable(id); }
   }
 }
 
 async function loadIPTable(id) {
-  const el = document.getElementById('hcips-' + id);
+  const el = document.getElementById('hipips-' + id);
   if (!el) return;
   try {
     const res  = await fetch(`/api/bulk/history/${id}`, { credentials: 'same-origin' });
     const data = await res.json();
     const rows = (data.session && data.session.results) || [];
     if (!rows.length) {
-      el.innerHTML = '<div style="padding:.75rem;color:var(--text-muted);font-size:.78rem;">No IP results stored for this session.</div>';
+      el.innerHTML = '<div style="padding:.75rem 0;color:var(--text-muted);font-size:.78rem;">No IP results stored.</div>';
       return;
     }
-    const trows = rows.slice(0, 50).map(r => `<tr>
-      <td class="mono">${esc(r.ip||'')}</td>
-      <td><span class="mini-status ${r.status||'offline'}"><i class="fa-solid fa-circle" style="font-size:.35rem;"></i>${r.status==='online'?'Online':'Offline'}</span></td>
-      <td style="font-size:.7rem;color:var(--text-muted);">${esc(r.hostname||'-')}</td>
-      <td style="font-size:.7rem;">${(r.ports||[]).length}p</td>
-      <td><span class="mini-sev ${r.severity||'none'}">${(r.severity||'none').toUpperCase()}</span></td>
-      <td style="font-size:.7rem;color:var(--text-muted);">${(r.vulnerabilities||[]).length}v</td>
-    </tr>`).join('');
+    const trows = rows.slice(0, 100).map(r => {
+      const portCount = (r.ports || []).length;
+      const vulnCount = (r.vulnerabilities || []).length;
+      const sev = (r.severity || 'none').toLowerCase();
+      const hostname = r.hostname && r.hostname !== '-' ? esc(r.hostname) : 'Unknown';
+      return `<tr>
+        <td class="mono">${esc(r.ip||'')}</td>
+        <td><span class="ip-status ${r.status||'offline'}"><i class="fa-solid fa-circle" style="font-size:.3rem;"></i>${r.status==='online'?'Online':'Offline'}</span></td>
+        <td style="font-size:.75rem;color:#4b5563;">${hostname}</td>
+        <td style="font-size:.75rem;">${portCount} port${portCount!==1?'s':''}</td>
+        <td><span class="ip-sev ${sev}">${sev.toUpperCase()}</span></td>
+        <td style="font-size:.75rem;color:#4b5563;">${vulnCount} vuln${vulnCount!==1?'s':''}</td>
+      </tr>`;
+    }).join('');
     el.innerHTML = `
-      <div style="font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:.75rem 0 .4rem;">
-        <i class="fa-solid fa-server" style="color:var(--blue)"></i> IP Results
-      </div>
-      <div class="hd-ip-tbl-wrap">
-        <table class="hd-ip-tbl">
-          <thead><tr><th>IP</th><th>Status</th><th>Hostname</th><th>Ports</th><th>Severity</th><th>Vulns</th></tr></thead>
+      <div class="h-ip-tbl-wrap">
+        <table class="h-ip-tbl">
+          <thead><tr>
+            <th>IP Address</th><th>Status</th><th>Hostname</th>
+            <th>Ports</th><th>Severity</th><th>Vulns</th>
+          </tr></thead>
           <tbody>${trows}</tbody>
         </table>
-        ${rows.length>50?`<div style="padding:.4rem .75rem;font-size:.72rem;color:var(--text-muted);">Showing first 50 of ${rows.length} IPs</div>`:''}
+        ${rows.length > 100 ? `<div style="padding:.4rem .875rem;font-size:.72rem;color:var(--text-muted);">Showing first 100 of ${rows.length} IPs — export for full results</div>` : ''}
       </div>`;
   } catch(e) {
-    el.innerHTML = '<div style="color:var(--red);font-size:.78rem;padding:.5rem;">Failed to load IP results.</div>';
+    el.innerHTML = '<div style="color:#dc2626;font-size:.78rem;padding:.5rem;">Failed to load IP results.</div>';
   }
 }
 
@@ -483,150 +823,137 @@ async function loadIPTable(id) {
 //  PAGINATION
 // ════════════════════════════════════════════════════════════════
 function renderPagination(total, pages) {
-  const pagEl  = document.getElementById('histPagination');
+  const pagEl = document.getElementById('histPagination');
   if (pages <= 1) { pagEl.style.display = 'none'; return; }
   pagEl.style.display = '';
-  const start = (currentPage-1)*PER_PAGE+1;
-  const end   = Math.min(currentPage*PER_PAGE, total);
-  document.getElementById('pagInfo').textContent = `Showing ${start}–${end} of ${total}`;
-  let html = `<button class="pag-btn" onclick="goPage(${currentPage-1})" ${currentPage===1?'disabled':''}>‹</button>`;
+  const s = (page-1)*PER_PAGE+1, e = Math.min(page*PER_PAGE, total);
+  document.getElementById('pagInfo').textContent = `Showing ${s}–${e} of ${total}`;
+  let html = `<button class="pag-btn" onclick="goPage(${page-1})" ${page===1?'disabled':''}>‹</button>`;
   for (let p=1; p<=pages; p++) {
-    if (pages>7 && Math.abs(p-currentPage)>2 && p!==1 && p!==pages) {
-      if (p===2||p===pages-1) html += '<span style="padding:0 .25rem;color:var(--text-muted)">…</span>';
+    if (pages>7 && Math.abs(p-page)>2 && p!==1 && p!==pages) {
+      if (p===2||p===pages-1) html+='<span style="padding:0 .25rem;color:var(--text-muted)">…</span>';
       continue;
     }
-    html += `<button class="pag-btn${p===currentPage?' active':''}" onclick="goPage(${p})">${p}</button>`;
+    html += `<button class="pag-btn${p===page?' active':''}" onclick="goPage(${p})">${p}</button>`;
   }
-  html += `<button class="pag-btn" onclick="goPage(${currentPage+1})" ${currentPage===pages?'disabled':''}>›</button>`;
+  html += `<button class="pag-btn" onclick="goPage(${page+1})" ${page===pages?'disabled':''}>›</button>`;
   document.getElementById('pagBtns').innerHTML = html;
 }
-
 function goPage(p) {
-  const pages = Math.max(1, Math.ceil(filteredHistory.length/PER_PAGE));
-  currentPage = Math.max(1, Math.min(p, pages));
+  page = Math.max(1, Math.min(p, Math.ceil(filtered.length/PER_PAGE)));
   renderList();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  window.scrollTo({top:0,behavior:'smooth'});
 }
 
 // ════════════════════════════════════════════════════════════════
-//  REFRESH BUTTON
+//  REFRESH
 // ════════════════════════════════════════════════════════════════
 async function refreshHistory() {
-  const btn  = document.getElementById('refreshBtn');
-  const icon = btn.querySelector('i');
-  icon.classList.add('fa-spin');
-  btn.disabled = true;
+  const btn=document.getElementById('refreshBtn'), ico=btn.querySelector('i');
+  ico.classList.add('fa-spin'); btn.disabled=true;
   if (liveTimer) clearTimeout(liveTimer);
   await loadHistory(false);
-  icon.classList.remove('fa-spin');
-  btn.disabled = false;
+  ico.classList.remove('fa-spin'); btn.disabled=false;
 }
 
 // ════════════════════════════════════════════════════════════════
 //  EXPORT
 // ════════════════════════════════════════════════════════════════
 async function exportSession(id, fmt) {
-  if (fmt === 'xlsx') { window.open(`/scan/report/${id}?format=xlsx`, '_blank'); return; }
+  if (fmt==='xlsx') { window.open(`/scan/report/${id}?format=xlsx`,'_blank'); return; }
   try {
-    const res  = await fetch(`/api/bulk/history/${id}`, { credentials: 'same-origin' });
-    const data = await res.json();
-    const h    = data.session;
-    if (!h) return;
-    if (fmt === 'json') {
-      triggerDownload(new Blob([JSON.stringify(h,null,2)],{type:'application/json'}), `bulk-scan-${h.scan_id||id}.json`);
+    const res=await fetch(`/api/bulk/history/${id}`,{credentials:'same-origin'});
+    const data=await res.json(); const h=data.session; if(!h) return;
+    if (fmt==='json') {
+      dl(new Blob([JSON.stringify(h,null,2)],{type:'application/json'}),`bulk-scan-${h.scan_id||id}.json`);
     } else {
-      const hdrs = ['IP','Hostname','OS','Status','Ports','Vulns','Severity'];
-      const csvRows = (h.results||[]).map(r=>[r.ip,r.hostname||'-',r.os||'-',r.status,(r.ports||[]).map(p=>p.port).join(';'),(r.vulnerabilities||[]).map(v=>v.name).join(';'),r.severity||'none']);
-      const csv = [hdrs,...csvRows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-      triggerDownload(new Blob([csv],{type:'text/csv'}),`bulk-scan-${h.scan_id||id}.csv`);
+      const hdrs=['IP','Hostname','OS','Status','Ports','Vulns','Severity'];
+      const rows=(h.results||[]).map(r=>[r.ip,r.hostname||'-',r.os||'-',r.status,
+        (r.ports||[]).map(p=>p.port).join(';'),(r.vulnerabilities||[]).map(v=>v.name).join(';'),r.severity||'none']);
+      const csv=[hdrs,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+      dl(new Blob([csv],{type:'text/csv'}),`bulk-scan-${h.scan_id||id}.csv`);
     }
-  } catch(e) { alert('Export failed: ' + e.message); }
+  } catch(e){ alert('Export failed: '+e.message); }
 }
-
-async function exportAllHistory() {
-  triggerDownload(new Blob([JSON.stringify(allHistory,null,2)],{type:'application/json'}),'vapt-bulk-history-all.json');
+function exportAllHistory() {
+  dl(new Blob([JSON.stringify(allHistory,null,2)],{type:'application/json'}),'vapt-bulk-history-all.json');
 }
-
-function triggerDownload(blob, filename) {
-  const url=URL.createObjectURL(blob); const a=document.createElement('a');
-  a.href=url; a.download=filename; a.click(); URL.revokeObjectURL(url);
-}
+function dl(blob,name){ const u=URL.createObjectURL(blob),a=document.createElement('a'); a.href=u; a.download=name; a.click(); URL.revokeObjectURL(u); }
 
 // ════════════════════════════════════════════════════════════════
 //  RE-RUN
 // ════════════════════════════════════════════════════════════════
 async function rerunScan(id) {
   try {
-    const res  = await fetch(`/api/bulk/history/${id}`, { credentials: 'same-origin' });
-    const data = await res.json();
-    const h    = data.session;
-    if (h) {
-      const ips = (h.results||[]).map(r=>r.ip).join('\n');
-      try { localStorage.setItem('vapt_bulk_prefill', JSON.stringify({ips, port_depth:h.port_depth||'full', modules:h.modules||[]})); } catch(e){}
-    }
-  } catch(e){}
-  window.location.href = '/bulk-ip-scanning?restore=1';
+    const res=await fetch(`/api/bulk/history/${id}`,{credentials:'same-origin'});
+    const data=await res.json(); const h=data.session;
+    if(h) try{ localStorage.setItem('vapt_bulk_prefill',JSON.stringify({
+      ips:(h.results||[]).map(r=>r.ip).join('\n'), port_depth:h.port_depth||'full', modules:h.modules||[]
+    })); }catch(e){}
+  }catch(e){}
+  window.location.href='/bulk-ip-scanning?restore=1';
 }
 
 // ════════════════════════════════════════════════════════════════
 //  DELETE
 // ════════════════════════════════════════════════════════════════
 function openDeleteModal(id) {
-  deleteTargetId = id; deleteAll = false;
-  const h = allHistory.find(s=>s.id===id);
-  document.getElementById('deleteModalTitle').textContent = 'Delete Scan?';
-  document.getElementById('deleteModalBody').textContent  = `Permanently remove "${h?h.label:'this scan'}" and all its results?`;
+  delTarget=id; delAll=false;
+  const h=allHistory.find(s=>s.id===id);
+  document.getElementById('deleteModalTitle').textContent='Delete Scan?';
+  document.getElementById('deleteModalBody').textContent=`Permanently remove "${h?h.label:'this scan'}"?`;
   document.getElementById('deleteModal').classList.add('open');
 }
-
 function openClearAllModal() {
-  deleteAll = true; deleteTargetId = null;
-  document.getElementById('deleteModalTitle').textContent = 'Clear All History?';
-  document.getElementById('deleteModalBody').textContent  = `Delete all ${allHistory.length} scan session${allHistory.length!==1?'s':''}? This cannot be undone.`;
+  delAll=true; delTarget=null;
+  document.getElementById('deleteModalTitle').textContent='Clear All History?';
+  document.getElementById('deleteModalBody').textContent=`Delete all ${allHistory.length} scan session${allHistory.length!==1?'s':''}? Cannot be undone.`;
   document.getElementById('deleteModal').classList.add('open');
 }
-
 function closeDeleteModal() {
   document.getElementById('deleteModal').classList.remove('open');
-  deleteTargetId = null; deleteAll = false;
+  delTarget=null; delAll=false;
 }
-
 async function confirmDelete() {
   closeDeleteModal();
-  try {
-    const url = deleteAll ? '/api/bulk/history' : `/api/bulk/history/${deleteTargetId}`;
-    await fetch(url, { method:'DELETE', credentials:'same-origin' });
-  } catch(e) { console.error(e); }
-  if (liveTimer) clearTimeout(liveTimer);
+  const url=delAll?'/api/bulk/history':`/api/bulk/history/${delTarget}`;
+  try{ await fetch(url,{method:'DELETE',credentials:'same-origin'}); }catch(e){}
+  if(liveTimer) clearTimeout(liveTimer);
   await loadHistory(false);
 }
-
-document.getElementById('deleteModal').addEventListener('click', function(e){ if(e.target===this) closeDeleteModal(); });
+document.getElementById('deleteModal').addEventListener('click',e=>{ if(e.target===e.currentTarget) closeDeleteModal(); });
 
 // ════════════════════════════════════════════════════════════════
-//  HELPERS
+//  DATE HELPERS
 // ════════════════════════════════════════════════════════════════
-function fmtDate(s) {
-  if (!s) return '—';
-  try { const d=new Date(s.replace(' ','T')); return d.toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'}); }
-  catch(e){ return (s+'').split(' ')[0]; }
+function fmtDateShort(s) {
+  if(!s) return '—';
+  try { const d=new Date(s.replace(' ','T')); return `${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`; }
+  catch{ return String(s).split(' ')[0]; }
+}
+function fmtDateFull(s) {
+  if(!s) return '—';
+  try {
+    const d=new Date(s.replace(' ','T'));
+    return d.toLocaleDateString(undefined,{month:'numeric',day:'numeric',year:'numeric'})
+      + ', ' + d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  } catch{ return s; }
 }
 function fmtTime(s) {
-  if (!s) return '—';
-  try { const d=new Date(s.replace(' ','T')); return d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}); }
-  catch(e){ return (s+'').split(' ')[1]||''; }
+  if(!s) return '—';
+  try { return new Date(s.replace(' ','T')).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}); }
+  catch{ return String(s).split(' ')[1]||''; }
 }
 function fmtDur(sec) {
-  if (sec==null||sec<0) return '—';
-  if (sec<60)   return sec+'s';
-  if (sec<3600) return Math.floor(sec/60)+'m '+sec%60+'s';
+  if(sec==null||sec<0) return '—';
+  if(sec<60) return sec+'s';
+  if(sec<3600) return Math.floor(sec/60)+'m '+sec%60+'s';
   return Math.floor(sec/3600)+'h '+Math.floor(sec%3600/60)+'m';
 }
 function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ── Boot ─────────────────────────────────────────────────────
 loadHistory();
 </script>
 {% endblock %}
