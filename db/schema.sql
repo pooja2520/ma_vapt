@@ -109,6 +109,36 @@ CREATE TABLE IF NOT EXISTS reports (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- ── BULK IP SCAN SESSIONS ───────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS bulk_ip_scan_sessions (
+    id               INT AUTO_INCREMENT PRIMARY KEY,
+    user_id          INT NOT NULL,
+    scan_id          VARCHAR(64) NOT NULL UNIQUE,
+    label            VARCHAR(255) DEFAULT NULL,
+    status           VARCHAR(20) NOT NULL DEFAULT 'running',
+    total_ips        INT NOT NULL DEFAULT 0,
+    online_count     INT NOT NULL DEFAULT 0,
+    offline_count    INT NOT NULL DEFAULT 0,
+    total_vulns      INT NOT NULL DEFAULT 0,
+    open_ports       INT NOT NULL DEFAULT 0,
+    critical_count   INT NOT NULL DEFAULT 0,
+    high_count       INT NOT NULL DEFAULT 0,
+    medium_count     INT NOT NULL DEFAULT 0,
+    low_count        INT NOT NULL DEFAULT 0,
+    port_depth       VARCHAR(20) DEFAULT 'full',
+    modules_json     TEXT DEFAULT NULL,
+    results_json     LONGTEXT DEFAULT NULL,
+    started_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at      DATETIME DEFAULT NULL,
+    duration_seconds INT DEFAULT NULL,
+    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_bulk_user    (user_id),
+    INDEX idx_bulk_status  (status),
+    INDEX idx_bulk_started (started_at)
+);
+
 -- ── SCHEDULED SCANS ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS scheduled_scans (
     id               INT AUTO_INCREMENT PRIMARY KEY,
