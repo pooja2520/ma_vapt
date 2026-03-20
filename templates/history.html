@@ -1,0 +1,620 @@
+{% extends "base.html" %}
+{% block title %}Scan History - VAPT Scanner Pro{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/scanning.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/scanner.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/history.css') }}">
+{% endblock %}
+{% block body %}
+<div id="_main">
+<div class="content">
+
+  <!-- ── Page Title ─────────────────────────────────────────── -->
+  <div class="pt" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:.75rem;">
+    <div>
+      <h1><i class="fa-solid fa-clock-rotate-left"></i> Bulk IP Scan History</h1>
+      <p>All previous bulk IP scanner sessions, results, and reports</p>
+    </div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+      <a href="/bulk-ip-scanning" class="btn btn-p" style="text-decoration:none;">
+        <i class="fa-solid fa-plus"></i> New Bulk Scan
+      </a>
+      <button class="btn btn-o" onclick="exportAllHistory()">
+        <i class="fa-solid fa-file-export"></i> Export All
+      </button>
+      <button class="btn btn-o" onclick="openClearAllModal()" style="color:#ef4444;border-color:#fca5a5;">
+        <i class="fa-solid fa-trash"></i> Clear All
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Summary Stats ──────────────────────────────────────── -->
+  <div class="hist-stats" id="histStats">
+    <div class="hst-card">
+      <div class="hst-icon blue"><i class="fa-solid fa-network-wired"></i></div>
+      <div class="hst-val" id="sTotalScans">—</div>
+      <div class="hst-lbl">Total Scans</div>
+    </div>
+    <div class="hst-card">
+      <div class="hst-icon green"><i class="fa-solid fa-server"></i></div>
+      <div class="hst-val" id="sTotalIPs">—</div>
+      <div class="hst-lbl">IPs Scanned</div>
+    </div>
+    <div class="hst-card">
+      <div class="hst-icon red"><i class="fa-solid fa-bug"></i></div>
+      <div class="hst-val" id="sTotalVulns">—</div>
+      <div class="hst-lbl">Vulnerabilities</div>
+    </div>
+    <div class="hst-card">
+      <div class="hst-icon orange"><i class="fa-solid fa-door-open"></i></div>
+      <div class="hst-val" id="sTotalPorts">—</div>
+      <div class="hst-lbl">Open Ports Found</div>
+    </div>
+    <div class="hst-card">
+      <div class="hst-icon purple"><i class="fa-solid fa-triangle-exclamation"></i></div>
+      <div class="hst-val" id="sCritical">—</div>
+      <div class="hst-lbl">Critical Findings</div>
+    </div>
+  </div>
+
+  <!-- ── Activity Chart ─────────────────────────────────────── -->
+  <div class="hist-chart-wrap" id="histChartWrap">
+    <div class="hist-chart-title">
+      <i class="fa-solid fa-chart-column"></i> Scan Activity (Last 10 Scans — Vulnerabilities Found)
+    </div>
+    <div class="chart-bars" id="histChartBars">
+      <div style="display:flex;align-items:center;justify-content:center;height:80px;color:var(--text-muted);font-size:.8rem;">
+        <i class="fa-solid fa-spinner fa-spin" style="margin-right:.5rem;"></i> Loading chart…
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Toolbar ───────────────────────────────────────────── -->
+  <div class="hist-toolbar">
+    <div class="hist-search-wrap">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <input type="text" class="hist-search" id="histSearchInput"
+        placeholder="Search by IP, scan ID, date…"
+        oninput="applyFilters()">
+    </div>
+    <select class="hist-filter-select" id="histSevFilter" onchange="applyFilters()">
+      <option value="">All Severities</option>
+      <option value="critical">Critical</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+      <option value="none">Clean</option>
+    </select>
+    <select class="hist-filter-select" id="histSortFilter" onchange="applyFilters()">
+      <option value="newest">Newest First</option>
+      <option value="oldest">Oldest First</option>
+      <option value="most_vulns">Most Vulns</option>
+      <option value="most_ips">Most IPs</option>
+    </select>
+    <button class="btn btn-o" onclick="refreshHistory()" id="refreshBtn">
+      <i class="fa-solid fa-arrows-rotate"></i> Refresh
+    </button>
+  </div>
+
+  <!-- ── History List ──────────────────────────────────────── -->
+  <div class="card">
+    <div class="ch" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;">
+      <span><i class="fa-solid fa-list-ul"></i> Scan Sessions</span>
+      <div style="display:flex;align-items:center;gap:.75rem;">
+        <span id="liveIndicator" style="display:none;font-size:.7rem;color:#22c55e;font-weight:600;">
+          <i class="fa-solid fa-circle" style="font-size:.45rem;animation:blink 1.5s infinite;"></i> LIVE
+        </span>
+        <span id="histCount" style="font-size:.75rem;font-weight:600;color:#ffffff;">Loading…</span>
+      </div>
+    </div>
+    <div class="cb" style="padding:.75rem;">
+
+      <!-- Skeleton loader shown on first load -->
+      <div id="histSkeleton">
+        <div class="hist-card" style="opacity:.45;pointer-events:none;padding:.875rem 1rem;"><div style="background:var(--border);border-radius:6px;height:14px;width:220px;"></div></div>
+        <div class="hist-card" style="opacity:.3;pointer-events:none;padding:.875rem 1rem;margin-top:.5rem;"><div style="background:var(--border);border-radius:6px;height:14px;width:180px;"></div></div>
+        <div class="hist-card" style="opacity:.15;pointer-events:none;padding:.875rem 1rem;margin-top:.5rem;"><div style="background:var(--border);border-radius:6px;height:14px;width:200px;"></div></div>
+      </div>
+
+      <!-- Empty state -->
+      <div class="hist-empty" id="histEmpty" style="display:none;">
+        <div class="hist-empty-icon-wrap">
+          <i class="fa-solid fa-clock-rotate-left"></i>
+        </div>
+        <h3>No scan history yet</h3>
+        <p>Run your first bulk IP scan and results will appear here automatically.</p>
+        <a href="/bulk-ip-scanning" class="hist-empty-cta">
+          <i class="fa-solid fa-network-wired hist-empty-cta-icon"></i>
+          <span class="hist-empty-cta-text">
+            <strong>Start Your First Scan</strong>
+            <small>Scan single or multiple IPs</small>
+          </span>
+          <i class="fa-solid fa-arrow-right hist-empty-cta-arrow"></i>
+        </a>
+      </div>
+
+      <!-- Dynamic session cards injected here -->
+      <div id="histList"></div>
+
+      <!-- Pagination -->
+      <div class="hist-pagination" id="histPagination" style="display:none;">
+        <span class="pag-info" id="pagInfo"></span>
+        <div class="pag-btns" id="pagBtns"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ── Delete Confirm Modal ───────────────────────────────── -->
+<div class="hist-modal-bg" id="deleteModal">
+  <div class="hist-modal">
+    <h3><i class="fa-solid fa-trash"></i> <span id="deleteModalTitle">Delete Scan?</span></h3>
+    <p id="deleteModalBody"></p>
+    <div class="hist-modal-btns">
+      <button class="btn btn-o" onclick="closeDeleteModal()">Cancel</button>
+      <button class="btn" style="background:#ef4444;color:#fff;border-color:#ef4444;" onclick="confirmDelete()">
+        <i class="fa-solid fa-trash"></i> Delete
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/layout.js') }}"></script>
+<script>
+// ── Init ─────────────────────────────────────────────────────
+initLayout('/history');
+
+// ── State ────────────────────────────────────────────────────
+const PER_PAGE     = 10;
+const POLL_MS      = 8000;
+let allHistory     = [];
+let filteredHistory= [];
+let currentPage    = 1;
+let deleteTargetId = null;
+let deleteAll      = false;
+let liveTimer      = null;
+const _loadedIPs   = new Set();
+
+// ════════════════════════════════════════════════════════════════
+//  FETCH FROM API
+// ════════════════════════════════════════════════════════════════
+async function loadHistory(silent = false) {
+  try {
+    const res  = await fetch('/api/bulk/history?per=200', { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+
+    allHistory = data.sessions || [];
+    updateStatCards(data.stats || {});
+    renderChart(data.chart   || []);
+    applyFilters();
+
+    // Live indicator if any scan still running
+    const anyRunning = allHistory.some(s => s.status === 'running');
+    document.getElementById('liveIndicator').style.display = anyRunning ? '' : 'none';
+
+  } catch(err) {
+    if (!silent) {
+      document.getElementById('histSkeleton').style.display = 'none';
+      document.getElementById('histCount').textContent = 'Error loading data';
+    }
+  }
+  // Always re-schedule poll to pick up new scans saved from the scanner tab
+  if (liveTimer) clearTimeout(liveTimer);
+  liveTimer = setTimeout(() => loadHistory(true), POLL_MS);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  STATS CARDS
+// ════════════════════════════════════════════════════════════════
+function updateStatCards(s) {
+  document.getElementById('sTotalScans').textContent = num(s.total_scans);
+  document.getElementById('sTotalIPs').textContent   = num(s.total_ips_scanned);
+  document.getElementById('sTotalVulns').textContent = num(s.total_vulns);
+  document.getElementById('sTotalPorts').textContent = num(s.total_open_ports);
+  document.getElementById('sCritical').textContent   = num(s.total_critical);
+}
+function num(n) { return (n != null) ? Number(n).toLocaleString() : '0'; }
+
+// ════════════════════════════════════════════════════════════════
+//  CHART
+// ════════════════════════════════════════════════════════════════
+function renderChart(chartData) {
+  const el = document.getElementById('histChartBars');
+  if (!chartData.length) {
+    el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:80px;color:var(--text-muted);font-size:.8rem;">No data yet</div>';
+    return;
+  }
+  const maxV = Math.max(...chartData.map(c => c.vulns), 1);
+  el.innerHTML = chartData.map(c => {
+    const pct = Math.max(8, Math.round(c.vulns / maxV * 100));
+    const col = c.vulns === 0 ? '#3b82f6' : c.vulns < 5 ? '#f59e0b' : '#f97316';
+    return `<div class="chart-bar-col" title="${c.vulns} vulns — ${c.label}">
+      <div class="chart-bar" style="height:${pct}%;background:${col};min-height:8px;border-radius:4px 4px 0 0;"></div>
+      <div class="chart-bar-lbl">${esc(c.label)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ════════════════════════════════════════════════════════════════
+//  FILTER + SORT
+// ════════════════════════════════════════════════════════════════
+function applyFilters() {
+  const q    = (document.getElementById('histSearchInput').value || '').toLowerCase();
+  const sev  = document.getElementById('histSevFilter').value;
+  const sort = document.getElementById('histSortFilter').value;
+
+  filteredHistory = allHistory.filter(h => {
+    if (q) {
+      const haystack = [h.label, h.scan_id, h.started_at].join(' ').toLowerCase();
+      const inIPs    = (h.results || []).some(r => (r.ip || '').includes(q));
+      if (!haystack.includes(q) && !inIPs) return false;
+    }
+    if (sev === 'critical' && !h.critical_count) return false;
+    if (sev === 'high'     && !h.high_count)     return false;
+    if (sev === 'medium'   && !h.medium_count)   return false;
+    if (sev === 'low'      && !h.low_count)       return false;
+    if (sev === 'none'     && h.total_vulns > 0)  return false;
+    return true;
+  });
+
+  filteredHistory.sort((a, b) => {
+    if (sort === 'oldest')     return new Date(a.started_at) - new Date(b.started_at);
+    if (sort === 'most_vulns') return b.total_vulns - a.total_vulns;
+    if (sort === 'most_ips')   return b.total_ips   - a.total_ips;
+    return new Date(b.started_at) - new Date(a.started_at);
+  });
+
+  currentPage = 1;
+  renderList();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  RENDER LIST
+// ════════════════════════════════════════════════════════════════
+function renderList() {
+  document.getElementById('histSkeleton').style.display = 'none';
+
+  const total = filteredHistory.length;
+  const pages = Math.max(1, Math.ceil(total / PER_PAGE));
+  currentPage = Math.min(currentPage, pages);
+  const slice = filteredHistory.slice((currentPage-1)*PER_PAGE, currentPage*PER_PAGE);
+
+  document.getElementById('histCount').textContent =
+    total === allHistory.length
+      ? `${total} session${total!==1?'s':''}`
+      : `${total} of ${allHistory.length} sessions`;
+
+  const empty  = document.getElementById('histEmpty');
+  const listEl = document.getElementById('histList');
+
+  if (!total) {
+    empty.style.display  = '';
+    listEl.innerHTML     = '';
+    document.getElementById('histPagination').style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  listEl.innerHTML = slice.map(h => cardHTML(h)).join('');
+  renderPagination(total, pages);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  CARD HTML
+// ════════════════════════════════════════════════════════════════
+function cardHTML(h) {
+  const running  = h.status === 'running';
+  const label    = h.label || `Bulk Scan — ${h.total_ips} IPs`;
+  const shortId  = '#' + String(h.scan_id || h.id).slice(0, 10);
+  const scanDate = fmtDate(h.started_at);
+  const scanTime = fmtTime(h.started_at);
+  const dur      = h.duration_seconds != null ? fmtDur(h.duration_seconds) : (running ? '…' : '—');
+
+  const sevLabel = h.critical_count ? 'Critical'
+                 : h.high_count     ? 'High'
+                 : h.medium_count   ? 'Medium'
+                 : h.low_count      ? 'Low'
+                 : 'Clean';
+  const sevCls   = sevLabel.toLowerCase();
+
+  const offCount = (h.offline_count != null) ? h.offline_count : Math.max(0, h.total_ips - h.online_count);
+
+  const statusBadge = running
+    ? `<span class="hc-status running"><i class="fa-solid fa-spinner fa-spin" style="font-size:.5rem;"></i> Running</span>`
+    : `<span class="hc-status done"><i class="fa-solid fa-circle-check"></i> Done</span>`;
+
+  const modHtml = (h.modules||[]).length
+    ? h.modules.map(m => `<span class="hc-mod">${esc(m)}</span>`).join('')
+    : '<span class="hc-mod" style="opacity:.4;">default</span>';
+
+  return `
+<div class="hist-card" id="hcard-${h.id}">
+  <div class="hc-header" onclick="toggleCard(${h.id})">
+    <div class="hc-left">
+      <div class="hc-icon"><i class="fa-solid fa-network-wired"></i></div>
+      <div class="hc-meta">
+        <div class="hc-title">${esc(label)} <span class="hc-id">${esc(shortId)}</span> ${statusBadge}</div>
+        <div class="hc-sub">
+          <span><i class="fa-regular fa-calendar"></i> ${scanDate}</span>
+          <span><i class="fa-regular fa-clock"></i> ${scanTime}</span>
+          <span><i class="fa-solid fa-stopwatch"></i> ${dur}</span>
+          <span><i class="fa-solid fa-layer-group"></i> ${esc(h.port_depth||'full')}</span>
+        </div>
+      </div>
+    </div>
+    <div class="hc-right">
+      <span class="mini-status online"><i class="fa-solid fa-circle" style="font-size:.35rem;"></i>${h.online_count} Online</span>
+      <span class="mini-status offline"><i class="fa-solid fa-circle" style="font-size:.35rem;"></i>${offCount} Off</span>
+      <span class="mini-sev ${sevCls}">${h.total_vulns} Vulns</span>
+      <span class="mini-sev ${sevCls}">${sevLabel}</span>
+      <div class="hc-actions" onclick="event.stopPropagation()">
+        <button class="hc-btn primary" onclick="rerunScan(${h.id})"><i class="fa-solid fa-rotate"></i> Re-run</button>
+        <button class="hc-btn" onclick="exportSession(${h.id},'json')"><i class="fa-solid fa-file-code"></i> Export</button>
+        <button class="hc-btn danger" onclick="openDeleteModal(${h.id})"><i class="fa-solid fa-trash"></i></button>
+        <i class="fa-solid fa-chevron-down hc-chevron" id="chev-${h.id}" style="transition:transform .2s;color:var(--text-muted);font-size:.75rem;"></i>
+      </div>
+    </div>
+  </div>
+
+  <div class="hc-body" id="hcbody-${h.id}" style="display:none;">
+    <div class="hd-grid">
+      <div class="hd-card">
+        <div class="hd-card-title"><i class="fa-solid fa-circle-info"></i> Scan Info</div>
+        <div class="hd-row"><span>Scan ID</span><span class="mono" style="font-size:.7rem;">${esc(h.scan_id||'')}</span></div>
+        <div class="hd-row"><span>Started</span><span>${esc(h.started_at||'—')}</span></div>
+        <div class="hd-row"><span>Finished</span><span>${esc(h.finished_at||(running?'Still running…':'—'))}</span></div>
+        <div class="hd-row"><span>Duration</span><span>${dur}</span></div>
+        <div class="hd-row"><span>Port Depth</span><span>${esc(h.port_depth||'full')}</span></div>
+        <div class="hd-row"><span>Modules</span><span>${modHtml}</span></div>
+      </div>
+      <div class="hd-card">
+        <div class="hd-card-title"><i class="fa-solid fa-chart-pie"></i> Results Summary</div>
+        <div class="hd-row"><span>Total IPs</span><span>${h.total_ips}</span></div>
+        <div class="hd-row"><span>Online</span><span style="color:#22c55e;font-weight:600;">${h.online_count}</span></div>
+        <div class="hd-row"><span>Offline</span><span style="color:var(--text-muted);">${offCount}</span></div>
+        <div class="hd-row"><span>Open Ports</span><span>${h.open_ports}</span></div>
+        <div class="hd-row"><span>Vulns</span><span style="color:#ef4444;font-weight:600;">${h.total_vulns}</span></div>
+        <div class="hd-row" style="border-bottom:none;"><span>By Severity</span>
+          <span>
+            ${h.critical_count?`<span class="mini-sev critical">${h.critical_count}C</span> `:''}
+            ${h.high_count    ?`<span class="mini-sev high">${h.high_count}H</span> `:''}
+            ${h.medium_count  ?`<span class="mini-sev medium">${h.medium_count}M</span> `:''}
+            ${h.low_count     ?`<span class="mini-sev low">${h.low_count}L</span>`:''}
+            ${(!h.critical_count&&!h.high_count&&!h.medium_count&&!h.low_count)?'<span style="color:var(--text-muted)">Clean</span>':''}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- IP table lazy loaded -->
+    <div id="hcips-${h.id}">
+      <div style="text-align:center;padding:.75rem;color:var(--text-muted);font-size:.8rem;">
+        <i class="fa-solid fa-spinner fa-spin"></i> Loading IP results…
+      </div>
+    </div>
+
+    <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.75rem;">
+      <button class="hc-btn primary" onclick="exportSession(${h.id},'xlsx')"><i class="fa-solid fa-file-excel"></i> Excel</button>
+      <button class="hc-btn" onclick="exportSession(${h.id},'json')"><i class="fa-solid fa-file-code"></i> JSON</button>
+      <button class="hc-btn" onclick="exportSession(${h.id},'csv')"><i class="fa-solid fa-file-csv"></i> CSV</button>
+      <button class="hc-btn" onclick="rerunScan(${h.id})"><i class="fa-solid fa-rotate"></i> Re-run</button>
+    </div>
+  </div>
+</div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  TOGGLE EXPAND + LAZY LOAD IPs
+// ════════════════════════════════════════════════════════════════
+async function toggleCard(id) {
+  const body = document.getElementById('hcbody-' + id);
+  const chev = document.getElementById('chev-'   + id);
+  if (!body) return;
+  const open = body.style.display !== 'none';
+
+  // Close all
+  document.querySelectorAll('.hc-body').forEach(b => b.style.display = 'none');
+  document.querySelectorAll('.hc-chevron').forEach(c => c.style.transform = '');
+
+  if (!open) {
+    body.style.display = '';
+    if (chev) chev.style.transform = 'rotate(180deg)';
+    if (!_loadedIPs.has(id)) { _loadedIPs.add(id); loadIPTable(id); }
+  }
+}
+
+async function loadIPTable(id) {
+  const el = document.getElementById('hcips-' + id);
+  if (!el) return;
+  try {
+    const res  = await fetch(`/api/bulk/history/${id}`, { credentials: 'same-origin' });
+    const data = await res.json();
+    const rows = (data.session && data.session.results) || [];
+    if (!rows.length) {
+      el.innerHTML = '<div style="padding:.75rem;color:var(--text-muted);font-size:.78rem;">No IP results stored for this session.</div>';
+      return;
+    }
+    const trows = rows.slice(0, 50).map(r => `<tr>
+      <td class="mono">${esc(r.ip||'')}</td>
+      <td><span class="mini-status ${r.status||'offline'}"><i class="fa-solid fa-circle" style="font-size:.35rem;"></i>${r.status==='online'?'Online':'Offline'}</span></td>
+      <td style="font-size:.7rem;color:var(--text-muted);">${esc(r.hostname||'-')}</td>
+      <td style="font-size:.7rem;">${(r.ports||[]).length}p</td>
+      <td><span class="mini-sev ${r.severity||'none'}">${(r.severity||'none').toUpperCase()}</span></td>
+      <td style="font-size:.7rem;color:var(--text-muted);">${(r.vulnerabilities||[]).length}v</td>
+    </tr>`).join('');
+    el.innerHTML = `
+      <div style="font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:.75rem 0 .4rem;">
+        <i class="fa-solid fa-server" style="color:var(--blue)"></i> IP Results
+      </div>
+      <div class="hd-ip-tbl-wrap">
+        <table class="hd-ip-tbl">
+          <thead><tr><th>IP</th><th>Status</th><th>Hostname</th><th>Ports</th><th>Severity</th><th>Vulns</th></tr></thead>
+          <tbody>${trows}</tbody>
+        </table>
+        ${rows.length>50?`<div style="padding:.4rem .75rem;font-size:.72rem;color:var(--text-muted);">Showing first 50 of ${rows.length} IPs</div>`:''}
+      </div>`;
+  } catch(e) {
+    el.innerHTML = '<div style="color:var(--red);font-size:.78rem;padding:.5rem;">Failed to load IP results.</div>';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  PAGINATION
+// ════════════════════════════════════════════════════════════════
+function renderPagination(total, pages) {
+  const pagEl  = document.getElementById('histPagination');
+  if (pages <= 1) { pagEl.style.display = 'none'; return; }
+  pagEl.style.display = '';
+  const start = (currentPage-1)*PER_PAGE+1;
+  const end   = Math.min(currentPage*PER_PAGE, total);
+  document.getElementById('pagInfo').textContent = `Showing ${start}–${end} of ${total}`;
+  let html = `<button class="pag-btn" onclick="goPage(${currentPage-1})" ${currentPage===1?'disabled':''}>‹</button>`;
+  for (let p=1; p<=pages; p++) {
+    if (pages>7 && Math.abs(p-currentPage)>2 && p!==1 && p!==pages) {
+      if (p===2||p===pages-1) html += '<span style="padding:0 .25rem;color:var(--text-muted)">…</span>';
+      continue;
+    }
+    html += `<button class="pag-btn${p===currentPage?' active':''}" onclick="goPage(${p})">${p}</button>`;
+  }
+  html += `<button class="pag-btn" onclick="goPage(${currentPage+1})" ${currentPage===pages?'disabled':''}>›</button>`;
+  document.getElementById('pagBtns').innerHTML = html;
+}
+
+function goPage(p) {
+  const pages = Math.max(1, Math.ceil(filteredHistory.length/PER_PAGE));
+  currentPage = Math.max(1, Math.min(p, pages));
+  renderList();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  REFRESH BUTTON
+// ════════════════════════════════════════════════════════════════
+async function refreshHistory() {
+  const btn  = document.getElementById('refreshBtn');
+  const icon = btn.querySelector('i');
+  icon.classList.add('fa-spin');
+  btn.disabled = true;
+  if (liveTimer) clearTimeout(liveTimer);
+  await loadHistory(false);
+  icon.classList.remove('fa-spin');
+  btn.disabled = false;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  EXPORT
+// ════════════════════════════════════════════════════════════════
+async function exportSession(id, fmt) {
+  if (fmt === 'xlsx') { window.open(`/scan/report/${id}?format=xlsx`, '_blank'); return; }
+  try {
+    const res  = await fetch(`/api/bulk/history/${id}`, { credentials: 'same-origin' });
+    const data = await res.json();
+    const h    = data.session;
+    if (!h) return;
+    if (fmt === 'json') {
+      triggerDownload(new Blob([JSON.stringify(h,null,2)],{type:'application/json'}), `bulk-scan-${h.scan_id||id}.json`);
+    } else {
+      const hdrs = ['IP','Hostname','OS','Status','Ports','Vulns','Severity'];
+      const csvRows = (h.results||[]).map(r=>[r.ip,r.hostname||'-',r.os||'-',r.status,(r.ports||[]).map(p=>p.port).join(';'),(r.vulnerabilities||[]).map(v=>v.name).join(';'),r.severity||'none']);
+      const csv = [hdrs,...csvRows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+      triggerDownload(new Blob([csv],{type:'text/csv'}),`bulk-scan-${h.scan_id||id}.csv`);
+    }
+  } catch(e) { alert('Export failed: ' + e.message); }
+}
+
+async function exportAllHistory() {
+  triggerDownload(new Blob([JSON.stringify(allHistory,null,2)],{type:'application/json'}),'vapt-bulk-history-all.json');
+}
+
+function triggerDownload(blob, filename) {
+  const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download=filename; a.click(); URL.revokeObjectURL(url);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  RE-RUN
+// ════════════════════════════════════════════════════════════════
+async function rerunScan(id) {
+  try {
+    const res  = await fetch(`/api/bulk/history/${id}`, { credentials: 'same-origin' });
+    const data = await res.json();
+    const h    = data.session;
+    if (h) {
+      const ips = (h.results||[]).map(r=>r.ip).join('\n');
+      try { localStorage.setItem('vapt_bulk_prefill', JSON.stringify({ips, port_depth:h.port_depth||'full', modules:h.modules||[]})); } catch(e){}
+    }
+  } catch(e){}
+  window.location.href = '/bulk-ip-scanning?restore=1';
+}
+
+// ════════════════════════════════════════════════════════════════
+//  DELETE
+// ════════════════════════════════════════════════════════════════
+function openDeleteModal(id) {
+  deleteTargetId = id; deleteAll = false;
+  const h = allHistory.find(s=>s.id===id);
+  document.getElementById('deleteModalTitle').textContent = 'Delete Scan?';
+  document.getElementById('deleteModalBody').textContent  = `Permanently remove "${h?h.label:'this scan'}" and all its results?`;
+  document.getElementById('deleteModal').classList.add('open');
+}
+
+function openClearAllModal() {
+  deleteAll = true; deleteTargetId = null;
+  document.getElementById('deleteModalTitle').textContent = 'Clear All History?';
+  document.getElementById('deleteModalBody').textContent  = `Delete all ${allHistory.length} scan session${allHistory.length!==1?'s':''}? This cannot be undone.`;
+  document.getElementById('deleteModal').classList.add('open');
+}
+
+function closeDeleteModal() {
+  document.getElementById('deleteModal').classList.remove('open');
+  deleteTargetId = null; deleteAll = false;
+}
+
+async function confirmDelete() {
+  closeDeleteModal();
+  try {
+    const url = deleteAll ? '/api/bulk/history' : `/api/bulk/history/${deleteTargetId}`;
+    await fetch(url, { method:'DELETE', credentials:'same-origin' });
+  } catch(e) { console.error(e); }
+  if (liveTimer) clearTimeout(liveTimer);
+  await loadHistory(false);
+}
+
+document.getElementById('deleteModal').addEventListener('click', function(e){ if(e.target===this) closeDeleteModal(); });
+
+// ════════════════════════════════════════════════════════════════
+//  HELPERS
+// ════════════════════════════════════════════════════════════════
+function fmtDate(s) {
+  if (!s) return '—';
+  try { const d=new Date(s.replace(' ','T')); return d.toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'}); }
+  catch(e){ return (s+'').split(' ')[0]; }
+}
+function fmtTime(s) {
+  if (!s) return '—';
+  try { const d=new Date(s.replace(' ','T')); return d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}); }
+  catch(e){ return (s+'').split(' ')[1]||''; }
+}
+function fmtDur(sec) {
+  if (sec==null||sec<0) return '—';
+  if (sec<60)   return sec+'s';
+  if (sec<3600) return Math.floor(sec/60)+'m '+sec%60+'s';
+  return Math.floor(sec/3600)+'h '+Math.floor(sec%3600/60)+'m';
+}
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Boot ─────────────────────────────────────────────────────
+loadHistory();
+</script>
+{% endblock %}
