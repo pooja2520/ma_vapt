@@ -633,18 +633,17 @@ async function startBulkScan() {
     activeScanId = data.scan_id;
     appendLog('ok', `Scan started. ID: ${activeScanId}`);
 
-    // Notify history DB that a scan is now running
-    fetch('/api/bulk/history/save', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        scan_id:    activeScanId,
-        status:     'running',
-        total_ips:  parsedIPs.length,
-        port_depth: document.getElementById('portDepth').value || 'full',
-        modules:    getSelectedModules(),
-      }),
-    }).catch(() => {});
+    // ── Save state to localStorage so page refresh can reconnect ────────────
+    try {
+      localStorage.setItem('vapt_active_bulk_scan', JSON.stringify({
+        scanId:      activeScanId,
+        ips:         parsedIPs,
+        portDepth:   document.getElementById('portDepth').value || 'full',
+        modules:     getSelectedModules(),
+        concurrency: parseInt(document.getElementById('concSlider').value) || 3,
+        startedAt:   Date.now(),
+      }));
+    } catch(e) {}
 
     pollBulkStatus();
   } catch(e) {
@@ -819,6 +818,8 @@ function finishScan(results) {
   isScanRunning = false;
   stopRequested = false;
   allResults    = results || allResults;
+  // Clear reconnect state — scan is done, no need to reconnect
+  try { localStorage.removeItem('vapt_active_bulk_scan'); } catch(e) {}
 
   const done   = scanQueue.filter(q => q.status !== 'error').length;
   const errors = scanQueue.filter(q => q.status === 'error').length;
@@ -887,6 +888,8 @@ async function stopBulkScan() {
   isScanRunning = false;
   setScanningUI(false, false);
   document.getElementById('bulkLogStatus').textContent = 'Stopped';
+  // Clear reconnect state — user manually stopped
+  try { localStorage.removeItem('vapt_active_bulk_scan'); } catch(e) {}
 }
 
 function newBulkScan() {
@@ -897,6 +900,8 @@ function newBulkScan() {
   allResults    = [];
   activeScanId  = null;
   if (pollTimer) clearTimeout(pollTimer);
+  // Clear reconnect state — user explicitly started fresh
+  try { localStorage.removeItem('vapt_active_bulk_scan'); } catch(e) {}
 
   clearIPs();
   clearLog();
@@ -1238,6 +1243,113 @@ function triggerDownload(blob, filename) {
     // Clean up URL
     history.replaceState({}, '', location.pathname);
   } catch (e) {}
+})();
+
+// ════════════════════════════════════════════════════════════════
+//  RECONNECT ON PAGE REFRESH
+//  If a scan was running when the page was reloaded, auto-reconnect.
+// ════════════════════════════════════════════════════════════════
+(function reconnectActiveScan() {
+  let saved;
+  try {
+    const raw = localStorage.getItem('vapt_active_bulk_scan');
+    if (!raw) return;
+    saved = JSON.parse(raw);
+  } catch(e) { return; }
+
+  if (!saved || !saved.scanId || !saved.ips || !saved.ips.length) return;
+
+  // Don't reconnect if the saved scan is older than 2 hours
+  if (saved.startedAt && (Date.now() - saved.startedAt) > 7200000) {
+    try { localStorage.removeItem('vapt_active_bulk_scan'); } catch(e) {}
+    return;
+  }
+
+  // Check if backend still has this scan
+  fetch('/scan/result/' + saved.scanId)
+    .then(r => r.ok ? r.json() : Promise.reject('gone'))
+    .then(data => {
+      if (data.error || data.done) {
+        // Scan is finished or gone — clean up storage
+        try { localStorage.removeItem('vapt_active_bulk_scan'); } catch(e) {}
+        return;
+      }
+
+      // ── Reconnect: restore all state ────────────────────────────────────
+      activeScanId  = saved.scanId;
+      parsedIPs     = saved.ips;
+      isScanRunning = true;
+      isPaused      = false;
+      stopRequested = false;
+      _expansionLogged = true;
+
+      // Rebuild scanQueue from saved IPs
+      scanQueue = parsedIPs.map(ip => ({ ip, status: 'pending', result: null }));
+
+      // Fill textarea with the IPs
+      const ta = document.getElementById('ipTextarea');
+      if (ta) { ta.value = parsedIPs.join('\n'); }
+
+      // ── Restore port depth ──────────────────────────────────────────────────
+      if (saved.portDepth) {
+        const pd = document.getElementById('portDepth');
+        if (pd) { pd.value = saved.portDepth; togglePortDepthNote(saved.portDepth); }
+      }
+
+      // ── Restore modules (uncheck all first, then check saved ones) ───────
+      const modMap = {
+        ping:'optPing', ports:'optPorts', services:'optServices',
+        os:'optOS', vuln:'optVuln', nikto:'optNikto',
+      };
+      if (Array.isArray(saved.modules) && saved.modules.length) {
+        // Uncheck all
+        Object.values(modMap).forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.checked = false;
+        });
+        // Check only the saved ones
+        saved.modules.forEach(m => {
+          const el = document.getElementById(modMap[m]);
+          if (el) el.checked = true;
+        });
+      }
+
+      // ── Restore concurrency slider ───────────────────────────────────────
+      if (saved.concurrency) {
+        const slider = document.getElementById('concSlider');
+        const valEl  = document.getElementById('concVal');
+        if (slider) { slider.value = saved.concurrency; }
+        if (valEl)  { valEl.textContent = saved.concurrency; }
+      }
+
+      // Apply any partial results already returned from backend
+      if (data.results && data.results.length) {
+        data.results.forEach(r => {
+          const qi = scanQueue.find(q => q.ip === r.ip);
+          if (qi) { qi.status = r.status === 'error' ? 'error' : 'done'; qi.result = r; }
+        });
+      }
+
+      // Restore UI to scanning state
+      setScanningUI(true);
+      renderQueue();
+      updateStats();
+      const done  = scanQueue.filter(q => q.status === 'done' || q.status === 'error').length;
+      const total = scanQueue.length;
+      const pct   = total ? Math.round(done / total * 100) : 0;
+      updateOverall(pct, `Reconnected — scanning ${done} / ${total}…`);
+      clearLog();
+      appendLog('info', `↩ Reconnected to scan ${activeScanId} after page reload.`);
+      appendLog('info', `${done} of ${total} IP(s) completed so far.`);
+      document.getElementById('bulkLogStatus').textContent = 'Scanning…';
+
+      // Resume polling
+      pollBulkStatus();
+    })
+    .catch(() => {
+      // Backend doesn't know about this scan (server restarted) — clean up
+      try { localStorage.removeItem('vapt_active_bulk_scan'); } catch(e) {}
+    });
 })();
 
 // ════════════════════════════════════════════════════════════════
