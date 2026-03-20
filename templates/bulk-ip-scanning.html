@@ -145,13 +145,63 @@
                 <option value="standard">Standard (top 500 ports)</option>
                 <option value="deep">Deep (top 1000 ports)</option>
                 <option value="full" selected>Full (all 65535 — every open port)</option>
+                <option value="custom">Custom Port(s)…</option>
               </select>
             </div>
             <div id="portDepthNote" class="alert alert-info" style="display:flex;margin-top:.5rem;font-size:.75rem;padding:.4rem .6rem;">
               <span>Full scan checks all 65,535 ports. May take 15–40 min per host.</span>
             </div>
-          </div>
-        </div>
+
+            <!-- Custom Port Panel: shown only when Custom is selected -->
+            <div id="customPortPanel" class="custom-port-panel" style="display:none;">
+
+              <!-- Field 1: comma-separated port input -->
+              <div class="cpp-field">
+                <label class="cpp-label">
+                  <i class="fa-solid fa-hashtag"></i> Port Numbers
+                  <span class="cpp-hint">comma-separated or ranges, e.g. 22, 80, 443, 8080-8090</span>
+                </label>
+                <div class="cpp-input-wrap">
+                  <input
+                    type="text"
+                    id="customPortInput"
+                    class="cpp-input"
+                    placeholder="22, 80, 443, 3306, 8080-8090"
+                    autocomplete="off"
+                    oninput="handleCustomPortInput(this.value)"
+                  >
+                  <span class="cpp-badge" id="customPortCount" style="display:none;"></span>
+                </div>
+                <!-- Live chip preview of entered ports -->
+                <div id="customPortChips" class="cpp-chips" style="display:none;"></div>
+              </div>
+
+              <!-- Field 2: file attachment -->
+              <div class="cpp-field cpp-file-field">
+                <label class="cpp-label">
+                  <i class="fa-solid fa-paperclip"></i> Import from File
+                  <span class="cpp-hint">.txt or .csv — one port per line or comma-separated</span>
+                </label>
+                <div class="cpp-file-row">
+                  <button type="button" class="btn btn-o cpp-attach-btn"
+                          onclick="document.getElementById('portFileInput').click()">
+                    <i class="fa-solid fa-file-arrow-up"></i> Attach File
+                  </button>
+                  <div id="portFileInfo" class="cpp-file-info" style="display:none;">
+                    <i class="fa-solid fa-file-lines" style="color:var(--green);"></i>
+                    <span id="portFileName"></span>
+                    <button type="button" class="cpp-file-remove" onclick="clearCustomPortFile()" title="Remove">
+                      <i class="fa-solid fa-xmark"></i>
+                    </button>
+                  </div>
+                </div>
+                <input type="file" id="portFileInput" accept=".txt,.csv,.text"
+                       style="display:none;" onchange="handlePortFileAttach(event)">
+              </div>
+
+            </div><!-- /customPortPanel -->
+          </div><!-- /scan-options -->
+        </div><!-- /fg Scan Modules -->
 
         <!-- Alert area -->
         <div id="bulkError"   class="alert alert-error"   style="display:none;margin-top:.625rem;"><span>⚠️</span><span id="bulkErrorTxt"></span></div>
@@ -616,13 +666,14 @@ async function startBulkScan() {
 
   // POST to backend
   try {
-    const modules = getSelectedModules();
+    const modules     = getSelectedModules();
     const concurrency = parseInt(document.getElementById('concSlider').value);
-    const portDepth = document.getElementById('portDepth').value || 'full';
+    const portDepth   = document.getElementById('portDepth').value || 'full';
+    const customPorts = getCustomPortsStr();
     const res  = await fetch('/scan/bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ips: parsedIPs, modules, concurrency, port_depth: portDepth }),
+      body: JSON.stringify({ ips: parsedIPs, modules, concurrency, port_depth: portDepth, custom_ports: customPorts }),
     });
     const data = await res.json();
     if (!res.ok || data.error) {
@@ -654,8 +705,141 @@ async function startBulkScan() {
 }
 
 function togglePortDepthNote(val) {
-  const el = document.getElementById('portDepthNote');
-  if (el) el.style.display = (val === 'full') ? 'flex' : 'none';
+  // Full-scan warning note
+  const note = document.getElementById('portDepthNote');
+  if (note) note.style.display = (val === 'full') ? 'flex' : 'none';
+  // Custom port panel
+  const panel = document.getElementById('customPortPanel');
+  if (panel) {
+    panel.style.display = (val === 'custom') ? 'block' : 'none';
+    if (val === 'custom') {
+      setTimeout(() => {
+        const inp = document.getElementById('customPortInput');
+        if (inp) inp.focus();
+      }, 60);
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  CUSTOM PORT INPUT
+// ════════════════════════════════════════════════════════════════
+let _cPorts = []; // sorted unique port integers
+
+// Parse "80" → [80]  or  "8080-8090" → [8080…8090]  (range capped at 500)
+function _parseCPortToken(t) {
+  t = t.trim();
+  const rng = t.match(/^(\d{1,5})\s*-\s*(\d{1,5})$/);
+  if (rng) {
+    const a = +rng[1], b = +rng[2];
+    if (a >= 1 && b <= 65535 && a <= b && (b - a) <= 499) {
+      const arr = [];
+      for (let p = a; p <= b; p++) arr.push(p);
+      return arr;
+    }
+    return [];
+  }
+  const n = +t;
+  return (Number.isInteger(n) && n >= 1 && n <= 65535) ? [n] : [];
+}
+
+function _addCPorts(raw) {
+  raw.split(/[,;\n\r\t]+/).forEach(t => {
+    _parseCPortToken(t).forEach(p => {
+      if (!_cPorts.includes(p)) _cPorts.push(p);
+    });
+  });
+  _cPorts.sort((a, b) => a - b);
+}
+
+// Port → service label for common ports
+const _SVC = {21:'FTP',22:'SSH',23:'Telnet',25:'SMTP',53:'DNS',80:'HTTP',
+  110:'POP3',135:'RPC',139:'NetBIOS',143:'IMAP',443:'HTTPS',445:'SMB',
+  587:'SMTPS',993:'IMAPS',995:'POP3S',1433:'MSSQL',1521:'Oracle',
+  3306:'MySQL',3389:'RDP',5432:'PgSQL',5900:'VNC',6379:'Redis',
+  8080:'HTTP-alt',8443:'HTTPS-alt',27017:'Mongo'};
+
+function _renderCPorts() {
+  const countEl = document.getElementById('customPortCount');
+  const chipsEl = document.getElementById('customPortChips');
+  const n = _cPorts.length;
+
+  if (countEl) {
+    countEl.textContent = n + (n === 1 ? ' port' : ' ports');
+    countEl.style.display = n ? 'inline-flex' : 'none';
+  }
+  if (!chipsEl) return;
+  if (!n) { chipsEl.style.display = 'none'; chipsEl.innerHTML = ''; return; }
+
+  const show  = _cPorts.slice(0, 60);
+  const extra = _cPorts.length - show.length;
+  chipsEl.style.display = 'flex';
+  chipsEl.innerHTML = show.map(p => {
+    const svc = _SVC[p] ? `<em class="cpp-chip-svc">${_SVC[p]}</em>` : '';
+    return `<span class="cpp-chip"><span class="cpp-chip-port">${p}</span>${svc}<button class="cpp-chip-rm" onclick="_removeCPort(${p})" title="Remove">×</button></span>`;
+  }).join('') + (extra > 0 ? `<span class="cpp-chip cpp-chip-more">+${extra}</span>` : '');
+}
+
+function _removeCPort(p) {
+  _cPorts = _cPorts.filter(x => x !== p);
+  _renderCPorts();
+}
+
+// Called on every keystroke — commit completed tokens (after comma/semicolon)
+function handleCustomPortInput(val) {
+  if (/[,;]/.test(val)) {
+    const parts   = val.split(/[,;]/);
+    const pending = parts.pop(); // last partial segment stays in input
+    _addCPorts(parts.join(','));
+    document.getElementById('customPortInput').value = pending;
+    _renderCPorts();
+  } else {
+    // Just update badge with preview
+    const countEl = document.getElementById('customPortCount');
+    if (countEl) {
+      const total = _cPorts.length + _parseCPortToken(val).length;
+      countEl.textContent = total + (total === 1 ? ' port' : ' ports');
+      countEl.style.display = total ? 'inline-flex' : 'none';
+    }
+  }
+}
+
+// Commit remaining text in input before starting scan
+function _flushCustomPortInput() {
+  const el = document.getElementById('customPortInput');
+  if (el && el.value.trim()) {
+    _addCPorts(el.value);
+    el.value = '';
+    _renderCPorts();
+  }
+}
+
+// File import
+function handlePortFileAttach(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    _addCPorts(ev.target.result || '');
+    _renderCPorts();
+    document.getElementById('portFileInfo').style.display = 'flex';
+    document.getElementById('portFileName').textContent =
+      `${file.name}  ·  ${_cPorts.length} port${_cPorts.length !== 1 ? 's' : ''}`;
+  };
+  reader.readAsText(file);
+}
+
+function clearCustomPortFile() {
+  document.getElementById('portFileInput').value = '';
+  document.getElementById('portFileInfo').style.display = 'none';
+  document.getElementById('portFileName').textContent = '';
+}
+
+// Called in startBulkScan — returns comma-joined string or null
+function getCustomPortsStr() {
+  if (document.getElementById('portDepth').value !== 'custom') return null;
+  _flushCustomPortInput();
+  return _cPorts.length ? _cPorts.join(',') : null;
 }
 
 function getSelectedModules() {
