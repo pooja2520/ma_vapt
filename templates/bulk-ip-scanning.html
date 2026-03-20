@@ -632,6 +632,20 @@ async function startBulkScan() {
     }
     activeScanId = data.scan_id;
     appendLog('ok', `Scan started. ID: ${activeScanId}`);
+
+    // Notify history DB that a scan is now running
+    fetch('/api/bulk/history/save', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        scan_id:    activeScanId,
+        status:     'running',
+        total_ips:  parsedIPs.length,
+        port_depth: document.getElementById('portDepth').value || 'full',
+        modules:    getSelectedModules(),
+      }),
+    }).catch(() => {});
+
     pollBulkStatus();
   } catch(e) {
     // Demo / offline mode — simulate scan
@@ -806,8 +820,8 @@ function finishScan(results) {
   stopRequested = false;
   allResults    = results || allResults;
 
-  const done     = scanQueue.filter(q => q.status !== 'error').length;
-  const errors   = scanQueue.filter(q => q.status === 'error').length;
+  const done   = scanQueue.filter(q => q.status !== 'error').length;
+  const errors = scanQueue.filter(q => q.status === 'error').length;
   updateOverall(100, `Complete — ${done} scanned${errors ? ', ' + errors + ' error(s)' : ''}`);
   document.getElementById('bulkLogStatus').textContent = 'Complete';
   appendLog('ok', `Bulk scan finished. ${done} host(s) scanned.`);
@@ -815,13 +829,39 @@ function finishScan(results) {
   setScanningUI(false, true);
   showResults(allResults);
 
-  const online = allResults.filter(r=>r.status==='online').length;
-  const vulns  = allResults.reduce((s,r)=>s+(r.vulnerabilities||[]).length, 0);
+  const online = allResults.filter(r => r.status === 'online').length;
+  const vulns  = allResults.reduce((s, r) => s + (r.vulnerabilities || []).length, 0);
   document.getElementById('reportSummaryTxt').textContent =
     `${allResults.length} hosts scanned — ${online} online, ${vulns} vulnerabilities found`;
   document.getElementById('reportActions').style.display = allResults.length ? 'flex' : 'none';
 
   showAlert('success', `Scan complete! ${online} online, ${vulns} vulnerabilities found.`);
+
+  // ── Persist to DB history ─────────────────────────────────────────────────
+  const portDepth = document.getElementById('portDepth').value || 'full';
+  const modules   = getSelectedModules();
+
+  if (activeScanId) {
+    // Real backend scan — session already created at start; just finalize it
+    fetch(`/api/bulk/history/finish/${activeScanId}`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ results: allResults }),
+    }).catch(() => {});
+  } else {
+    // Demo / offline mode — create + finalize in one call
+    fetch('/api/bulk/history/save', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        scan_id:    'demo-' + Date.now(),
+        results:    allResults,
+        port_depth: portDepth,
+        modules,
+        status:     'completed',
+      }),
+    }).catch(() => {});
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1165,6 +1205,40 @@ function triggerDownload(blob, filename) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// ════════════════════════════════════════════════════════════════
+//  RESTORE PREFILL  (re-run from history page)
+// ════════════════════════════════════════════════════════════════
+(function restorePrefill() {
+  if (!location.search.includes('restore=1')) return;
+  try {
+    const raw = localStorage.getItem('vapt_bulk_prefill');
+    if (!raw) return;
+    const p = JSON.parse(raw);
+    localStorage.removeItem('vapt_bulk_prefill');
+
+    // Fill textarea with IPs
+    const ta = document.getElementById('ipTextarea');
+    if (ta && p.ips) { ta.value = p.ips; parseIPs(); }
+
+    // Set port depth
+    const pd = document.getElementById('portDepth');
+    if (pd && p.port_depth) { pd.value = p.port_depth; togglePortDepthNote(pd.value); }
+
+    // Re-check modules
+    const modMap = {
+      ping:'optPing', ports:'optPorts', services:'optServices',
+      os:'optOS', vuln:'optVuln', nikto:'optNikto',
+    };
+    if (Array.isArray(p.modules) && p.modules.length) {
+      Object.values(modMap).forEach(id => { const el = document.getElementById(id); if (el) el.checked = false; });
+      p.modules.forEach(m => { const el = document.getElementById(modMap[m]); if (el) el.checked = true; });
+    }
+
+    // Clean up URL
+    history.replaceState({}, '', location.pathname);
+  } catch (e) {}
+})();
 
 // ════════════════════════════════════════════════════════════════
 //  LOG HELPERS
