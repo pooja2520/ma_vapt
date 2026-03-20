@@ -526,6 +526,10 @@ def scheduled():
 def bulk_ip_scanning():
     return render_template('bulk-ip-scanning.html')
 
+@app.route('/history')
+@login_required
+def history():
+    return render_template('history.html')
 
 @app.route('/features')
 @login_required
@@ -2102,7 +2106,22 @@ def bulk_scan_start():
         'results': [], 'done': False, 'total': len(ips),
         'stopped': False, 'skipped_ranges': skipped,
         'expanded_count': len(ips),
+        '_user_id': _uid(),
     }
+
+    # ── Create history session immediately (status = running) ────────────────
+    try:
+        import db as _dbb
+        _dbb.create_bulk_scan_session(
+            user_id    = _uid(),
+            scan_id    = scan_id,
+            total_ips  = len(ips),
+            port_depth = port_depth,
+            modules    = modules,
+            label      = f'Bulk Scan \u2014 {len(ips)} IP{"s" if len(ips) != 1 else ""}',
+        )
+    except Exception as _bse:
+        app.logger.warning(f'[bulk history] Could not create session: {_bse}')
 
     def _run():
         store = _bulk_scans[scan_id]
@@ -2125,6 +2144,15 @@ def bulk_scan_start():
         for t in threads:
             t.join()
         store['done'] = True
+
+        # ── Persist completed session to DB ──────────────────────────────────
+        try:
+            import db as _dbb2
+            _uid_val = _bulk_scans[scan_id].get('_user_id')
+            if _uid_val:
+                _dbb2.finish_bulk_scan_session(scan_id, _uid_val, store['results'])
+        except Exception as _bfe:
+            app.logger.warning(f'[bulk history] Could not finish session: {_bfe}')
 
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({'scan_id': scan_id, 'total': len(ips)})
@@ -2180,6 +2208,146 @@ def bulk_scan_report(scan_id):
         except Exception as e:
             return jsonify({'error': str(e)}), 500
     return jsonify({'error': 'Unsupported format. Use format=xlsx'}), 400
+
+
+# ─────────────────────────────────────────────
+#  BULK IP SCAN HISTORY API
+# ─────────────────────────────────────────────
+
+@app.route('/api/bulk/history', methods=['GET'])
+@login_required
+def api_bulk_history_list():
+    """Return paginated sessions + aggregate stats + chart data for the history page."""
+    import db
+    uid    = _uid()
+    per    = min(200, max(1, int(request.args.get('per', 200))))
+    offset = max(0, int(request.args.get('offset', 0)))
+    try:
+        sessions = db.get_bulk_scan_sessions(uid, limit=per, offset=offset)
+        stats    = db.get_bulk_scan_aggregate_stats(uid)
+    except Exception as e:
+        app.logger.error(f'[bulk history] list error: {e}')
+        return jsonify({'sessions': [], 'stats': {}, 'chart': []}), 200
+
+    # Chart: last 10 sessions oldest→newest
+    chart_src = list(reversed(sessions[:10]))
+    chart = []
+    for s in chart_src:
+        dt_str = s.get('started_at', '')
+        try:
+            dt = datetime.strptime(str(dt_str)[:19], '%Y-%m-%d %H:%M:%S')
+            label = f'{dt.month}/{dt.day}'
+        except Exception:
+            label = str(dt_str)[:5] or '?'
+        chart.append({'label': label, 'vulns': s.get('total_vulns', 0), 'online': s.get('online_count', 0)})
+
+    return jsonify({'sessions': sessions, 'stats': stats, 'chart': chart})
+
+
+@app.route('/api/bulk/history/<session_ref>', methods=['GET'])
+@login_required
+def api_bulk_history_detail(session_ref):
+    """Return single session including full results_json."""
+    import db
+    uid = _uid()
+    try:
+        s = db.get_bulk_scan_session_detail(session_ref, uid)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    if not s:
+        return jsonify({'error': 'Session not found'}), 404
+    return jsonify({'session': s})
+
+
+@app.route('/api/bulk/history/save', methods=['POST'])
+@login_required
+def api_bulk_history_save():
+    """
+    Save a bulk scan session.
+    Called at scan START with status='running' (real scans),
+    or at scan END with results (demo/offline mode).
+    Body: { scan_id, results, port_depth, modules, status, total_ips }
+    """
+    import db
+    uid  = _uid()
+    data = request.get_json(silent=True) or {}
+
+    results   = data.get('results') or []
+    scan_id   = data.get('scan_id') or ('demo-' + str(int(datetime.now().timestamp() * 1000)))
+    status    = data.get('status', 'completed')
+    total_ips = data.get('total_ips') or len(results)
+
+    try:
+        # Idempotent: only create if not already present
+        existing = db.get_bulk_scan_session_detail(scan_id, uid)
+        if not existing:
+            db.create_bulk_scan_session(
+                user_id    = uid,
+                scan_id    = scan_id,
+                total_ips  = total_ips,
+                port_depth = data.get('port_depth', 'full'),
+                modules    = data.get('modules') or [],
+                label      = f'Bulk Scan \u2014 {total_ips} IP{"s" if total_ips != 1 else ""}',
+            )
+        # Finalize only when scan is done and results are available
+        if status != 'running' and results:
+            db.finish_bulk_scan_session(scan_id, uid, results)
+    except Exception as e:
+        app.logger.error(f'[bulk history] save error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+    return jsonify({'ok': True, 'scan_id': scan_id})
+
+
+@app.route('/api/bulk/history/finish/<scan_id>', methods=['POST'])
+@login_required
+def api_bulk_history_finish(scan_id):
+    """
+    Finalize a real backend scan — called by the frontend when polling detects done=True.
+    Body: { results }
+    """
+    import db
+    uid     = _uid()
+    data    = request.get_json(silent=True) or {}
+    results = data.get('results') or []
+
+    try:
+        existing = db.get_bulk_scan_session_detail(scan_id, uid)
+        if not existing:
+            db.create_bulk_scan_session(user_id=uid, scan_id=scan_id, total_ips=len(results))
+        if results:
+            db.finish_bulk_scan_session(scan_id, uid, results)
+    except Exception as e:
+        app.logger.error(f'[bulk history] finish error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+    return jsonify({'ok': True})
+
+
+@app.route('/api/bulk/history/<int:session_id>', methods=['DELETE'])
+@login_required
+def api_bulk_history_delete(session_id):
+    """Delete a single bulk scan session."""
+    import db
+    try:
+        deleted = db.delete_bulk_scan_session(session_id, _uid())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    if not deleted:
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify({'ok': True})
+
+
+@app.route('/api/bulk/history', methods=['DELETE'])
+@login_required
+def api_bulk_history_clear():
+    """Delete all bulk scan sessions for the current user."""
+    import db
+    try:
+        count = db.delete_all_bulk_scan_sessions(_uid())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    return jsonify({'ok': True, 'deleted': count})
 
 
 @app.route('/download')
