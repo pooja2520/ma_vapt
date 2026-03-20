@@ -48,6 +48,14 @@ from .queries import (
     get_scheduled_scan_vulns,
     toggle_scheduled_vuln_fixed,
     get_scheduled_scan_stats,
+    # Bulk IP scan sessions
+    create_bulk_scan_session,
+    finish_bulk_scan_session,
+    get_bulk_scan_sessions,
+    get_bulk_scan_session_detail,
+    get_bulk_scan_aggregate_stats,
+    delete_bulk_scan_session,
+    delete_all_bulk_scan_sessions,
 )
 
 __all__ = [
@@ -99,4 +107,12 @@ __all__ = [
     'get_scheduled_scan_vulns',
     'toggle_scheduled_vuln_fixed',
     'get_scheduled_scan_stats',
+    # Bulk IP scan sessions
+    'create_bulk_scan_session',
+    'finish_bulk_scan_session',
+    'get_bulk_scan_sessions',
+    'get_bulk_scan_session_detail',
+    'get_bulk_scan_aggregate_stats',
+    'delete_bulk_scan_session',
+    'delete_all_bulk_scan_sessions',
 ]
