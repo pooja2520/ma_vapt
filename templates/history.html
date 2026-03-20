@@ -210,7 +210,9 @@ async function loadHistory(silent = false) {
   }
   // Always re-schedule poll to pick up new scans saved from the scanner tab
   if (liveTimer) clearTimeout(liveTimer);
-  liveTimer = setTimeout(() => loadHistory(true), POLL_MS);
+  // Poll every 3s while a scan is running, 8s otherwise
+  const anyRunning2 = allHistory.some(s => s.status === 'running');
+  liveTimer = setTimeout(() => loadHistory(true), anyRunning2 ? 3000 : POLL_MS);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -337,7 +339,14 @@ function cardHTML(h) {
     : '<span class="hc-mod" style="opacity:.4;">default</span>';
 
   return `
-<div class="hist-card" id="hcard-${h.id}">
+<div class="hist-card" id="hcard-${h.id}" style="${running ? 'border-color:#f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,.15);' : ''}">
+  ${running ? `<div style="background:linear-gradient(90deg,#fef3c7,#fffbeb);border-bottom:1px solid #fde68a;padding:.4rem 1rem;display:flex;align-items:center;gap:.5rem;font-size:.72rem;font-weight:700;color:#92400e;">
+    <i class="fa-solid fa-spinner fa-spin" style="font-size:.65rem;color:#d97706;"></i>
+    Scan in progress — results will update automatically
+    <a href="/bulk-ip-scanning" style="margin-left:auto;color:#1d4ed8;font-weight:700;text-decoration:none;display:flex;align-items:center;gap:.3rem;">
+      <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:.65rem;"></i> Go to Scanner
+    </a>
+  </div>` : ''}
   <div class="hc-header" onclick="toggleCard(${h.id})">
     <div class="hc-left">
       <div class="hc-icon"><i class="fa-solid fa-network-wired"></i></div>
@@ -357,8 +366,11 @@ function cardHTML(h) {
       <span class="mini-sev ${sevCls}">${h.total_vulns} Vulns</span>
       <span class="mini-sev ${sevCls}">${sevLabel}</span>
       <div class="hc-actions" onclick="event.stopPropagation()">
-        <button class="hc-btn primary" onclick="rerunScan(${h.id})"><i class="fa-solid fa-rotate"></i> Re-run</button>
-        <button class="hc-btn" onclick="exportSession(${h.id},'json')"><i class="fa-solid fa-file-code"></i> Export</button>
+        ${running
+          ? `<a href="/bulk-ip-scanning" class="hc-btn primary"><i class="fa-solid fa-arrow-up-right-from-square"></i> Resume Scan</a>`
+          : `<button class="hc-btn primary" onclick="rerunScan(${h.id})"><i class="fa-solid fa-rotate"></i> Re-run</button>`
+        }
+        <button class="hc-btn" onclick="exportSession(${h.id},'json')" ${running ? 'disabled style="opacity:.4"' : ''}><i class="fa-solid fa-file-code"></i> Export</button>
         <button class="hc-btn danger" onclick="openDeleteModal(${h.id})"><i class="fa-solid fa-trash"></i></button>
         <i class="fa-solid fa-chevron-down hc-chevron" id="chev-${h.id}" style="transition:transform .2s;color:var(--text-muted);font-size:.75rem;"></i>
       </div>
