@@ -658,6 +658,175 @@ def scan_completion_transaction(target, raw_results, filename, scan_time, severi
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# BULK IP SCAN SESSIONS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def create_bulk_scan_session(user_id, scan_id, total_ips, port_depth='full', modules=None, label=None):
+    """Create a new bulk scan session row (status=running). Returns new row id."""
+    from datetime import datetime
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO bulk_ip_scan_sessions
+                (user_id, scan_id, label, status, total_ips, port_depth, modules_json, started_at)
+            VALUES (%s, %s, %s, 'running', %s, %s, %s, %s)
+        """, (
+            user_id,
+            scan_id[:64],
+            (label or f'Bulk Scan \u2014 {total_ips} IP{"s" if total_ips != 1 else ""}')[:255],
+            total_ips,
+            (port_depth or 'full')[:20],
+            json.dumps(modules or []),
+            datetime.now(),
+        ))
+        return cur.lastrowid
+
+
+def finish_bulk_scan_session(scan_id, user_id, results):
+    """Mark session completed and store aggregated counts + full results JSON."""
+    from datetime import datetime
+    online  = sum(1 for r in results if r.get('status') == 'online')
+    offline = len(results) - online
+    total_v = sum(len(r.get('vulnerabilities') or []) for r in results)
+    total_p = sum(len(r.get('ports') or []) for r in results)
+
+    def _sev(sev):
+        return sum(
+            1 for r in results
+            for v in (r.get('vulnerabilities') or [])
+            if (v.get('severity') or '').lower() == sev
+        )
+
+    now = datetime.now()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE bulk_ip_scan_sessions SET
+                status          = 'completed',
+                online_count    = %s,
+                offline_count   = %s,
+                total_vulns     = %s,
+                open_ports      = %s,
+                critical_count  = %s,
+                high_count      = %s,
+                medium_count    = %s,
+                low_count       = %s,
+                results_json    = %s,
+                finished_at     = %s,
+                duration_seconds = TIMESTAMPDIFF(SECOND, started_at, %s)
+            WHERE scan_id = %s AND user_id = %s
+        """, (
+            online, offline, total_v, total_p,
+            _sev('critical'), _sev('high'), _sev('medium'), _sev('low'),
+            json.dumps(results),
+            now, now,
+            scan_id, user_id,
+        ))
+
+
+def get_bulk_scan_sessions(user_id, limit=200, offset=0):
+    """Return sessions for a user, newest first. results_json excluded for speed."""
+    with get_connection() as conn:
+        cur = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT id, scan_id, label, status, total_ips,
+                   online_count, offline_count, total_vulns, open_ports,
+                   critical_count, high_count, medium_count, low_count,
+                   port_depth, modules_json,
+                   started_at, finished_at, duration_seconds, created_at
+            FROM bulk_ip_scan_sessions
+            WHERE user_id = %s
+            ORDER BY started_at DESC
+            LIMIT %s OFFSET %s
+        """, (user_id, limit, offset))
+        rows = cur.fetchall()
+
+    from datetime import datetime as _dt
+    result = []
+    for r in rows:
+        for col in ('started_at', 'finished_at', 'created_at'):
+            val = r.get(col)
+            if isinstance(val, _dt):
+                r[col] = val.strftime('%Y-%m-%d %H:%M:%S')
+        try:
+            r['modules'] = json.loads(r.get('modules_json') or '[]')
+        except (json.JSONDecodeError, TypeError):
+            r['modules'] = []
+        result.append(r)
+    return result
+
+
+def get_bulk_scan_session_detail(session_id, user_id):
+    """Return single session including results_json. Accepts numeric id or scan_id string."""
+    with get_connection() as conn:
+        cur = conn.cursor(dictionary=True)
+        if str(session_id).isdigit():
+            cur.execute("SELECT * FROM bulk_ip_scan_sessions WHERE id = %s AND user_id = %s",
+                        (int(session_id), user_id))
+        else:
+            cur.execute("SELECT * FROM bulk_ip_scan_sessions WHERE scan_id = %s AND user_id = %s",
+                        (str(session_id), user_id))
+        r = cur.fetchone()
+
+    if not r:
+        return None
+    from datetime import datetime as _dt
+    for col in ('started_at', 'finished_at', 'created_at', 'updated_at'):
+        val = r.get(col)
+        if isinstance(val, _dt):
+            r[col] = val.strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        r['modules'] = json.loads(r.get('modules_json') or '[]')
+    except (json.JSONDecodeError, TypeError):
+        r['modules'] = []
+    try:
+        r['results'] = json.loads(r.get('results_json') or '[]')
+    except (json.JSONDecodeError, TypeError):
+        r['results'] = []
+    return r
+
+
+def get_bulk_scan_aggregate_stats(user_id):
+    """Aggregate stats across all bulk sessions for the history summary cards."""
+    with get_connection() as conn:
+        cur = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT
+                COUNT(*)                       AS total_scans,
+                COALESCE(SUM(total_ips), 0)    AS total_ips_scanned,
+                COALESCE(SUM(total_vulns), 0)  AS total_vulns,
+                COALESCE(SUM(open_ports), 0)   AS total_open_ports,
+                COALESCE(SUM(critical_count),0) AS total_critical
+            FROM bulk_ip_scan_sessions WHERE user_id = %s
+        """, (user_id,))
+        row = cur.fetchone() or {}
+    return {
+        'total_scans':       int(row.get('total_scans') or 0),
+        'total_ips_scanned': int(row.get('total_ips_scanned') or 0),
+        'total_vulns':       int(row.get('total_vulns') or 0),
+        'total_open_ports':  int(row.get('total_open_ports') or 0),
+        'total_critical':    int(row.get('total_critical') or 0),
+    }
+
+
+def delete_bulk_scan_session(session_id, user_id):
+    """Delete a single session by numeric id. Returns True if deleted."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM bulk_ip_scan_sessions WHERE id = %s AND user_id = %s",
+                    (int(session_id), user_id))
+        return cur.rowcount > 0
+
+
+def delete_all_bulk_scan_sessions(user_id):
+    """Delete all sessions for a user. Returns count deleted."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM bulk_ip_scan_sessions WHERE user_id = %s", (user_id,))
+        return cur.rowcount
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # SCHEDULED SCANS
 # ══════════════════════════════════════════════════════════════════════════════
 
