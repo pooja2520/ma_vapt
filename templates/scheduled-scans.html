@@ -84,7 +84,7 @@
             <input
               id="schedSearch"
               type="text"
-              placeholder="Search by name or date…"
+              placeholder="Search by name…"
               oninput="renderSchedules()"
               style="padding:.3rem .6rem .3rem 1.75rem;border:1.5px solid var(--border);border-radius:7px;font-size:.75rem;font-family:'DM Sans',sans-serif;outline:none;color:var(--text);background:var(--bg);width:200px;transition:border-color .2s,width .2s;"
               onfocus="this.style.borderColor='var(--blue)';this.style.width='240px';"
@@ -94,6 +94,18 @@
           <select id="filterStatus" onchange="renderSchedules()" style="padding:.3rem .6rem;border:1.5px solid var(--border);border-radius:7px;font-size:.75rem;font-family:'DM Sans',sans-serif;outline:none;color:var(--text);">
             <option value="">All Status</option><option value="active">Active</option><option value="paused">Paused</option><option value="completed">Completed</option>
           </select>
+          <div style="position:relative;display:flex;align-items:center;">
+            <i class="fa-solid fa-calendar-days" style="position:absolute;left:.55rem;font-size:.7rem;color:var(--text-muted);pointer-events:none;z-index:1;"></i>
+            <input
+              id="schedDateFilter"
+              type="date"
+              title="Filter by next run date"
+              onchange="renderSchedules()"
+              style="padding:.3rem .6rem .3rem 1.75rem;border:1.5px solid var(--border);border-radius:7px;font-size:.75rem;font-family:'DM Sans',sans-serif;outline:none;color:var(--text);background:var(--bg);transition:border-color .2s;cursor:pointer;"
+              onfocus="this.style.borderColor='var(--blue)'"
+              onblur="this.style.borderColor='var(--border)'"
+            />
+          </div>
         </div>
       </div>
       <div class="cb" style="padding:0;" id="scheduleList">
@@ -107,7 +119,35 @@
   </div>
 
   <div id="tab-history" class="tab-content">
-    <div class="card"><div class="ch"><i class="fa-solid fa-clock-rotate-left"></i> Run History</div>
+    <div class="card"><div class="ch" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
+        <span><i class="fa-solid fa-clock-rotate-left"></i> Run History</span>
+        <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
+          <div style="position:relative;display:flex;align-items:center;">
+            <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:.55rem;font-size:.7rem;color:var(--text-muted);pointer-events:none;"></i>
+            <input
+              id="histSearch"
+              type="text"
+              placeholder="Search by name…"
+              oninput="renderHistory()"
+              style="padding:.3rem .6rem .3rem 1.75rem;border:1.5px solid var(--border);border-radius:7px;font-size:.75rem;font-family:'DM Sans',sans-serif;outline:none;color:var(--text);background:var(--bg);width:180px;transition:border-color .2s,width .2s;"
+              onfocus="this.style.borderColor='var(--blue)';this.style.width='220px';"
+              onblur="this.style.borderColor='var(--border)';this.style.width='180px';"
+            />
+          </div>
+          <div style="position:relative;display:flex;align-items:center;">
+            <i class="fa-solid fa-calendar-days" style="position:absolute;left:.55rem;font-size:.7rem;color:var(--text-muted);pointer-events:none;z-index:1;"></i>
+            <input
+              id="histDateFilter"
+              type="date"
+              title="Filter by run date"
+              onchange="renderHistory()"
+              style="padding:.3rem .6rem .3rem 1.75rem;border:1.5px solid var(--border);border-radius:7px;font-size:.75rem;font-family:'DM Sans',sans-serif;outline:none;color:var(--text);background:var(--bg);transition:border-color .2s;cursor:pointer;"
+              onfocus="this.style.borderColor='var(--blue)'"
+              onblur="this.style.borderColor='var(--border)'"
+            />
+          </div>
+        </div>
+      </div>
       <div class="cb" style="padding:0;overflow-x:auto;">
         <table class="dt"><thead><tr><th>#</th><th>Schedule</th><th>Target</th><th>Started</th><th>Duration</th><th>Findings</th><th>Crit</th><th>High</th><th>Med</th><th>Low</th><th>Result</th><th>Action</th></tr></thead>
         <tbody id="historyBody"><tr><td colspan="12" style="padding:.75rem 1rem;"><span class="skel skel-row" style="margin:0;"></span></td></tr></tbody></table>
@@ -1157,18 +1197,21 @@ function closeRhModal() {
 function renderSchedules(){
     var filter=document.getElementById('filterStatus')?document.getElementById('filterStatus').value:'';
     var searchRaw=document.getElementById('schedSearch')?document.getElementById('schedSearch').value.trim().toLowerCase():'';
+    var dateFilter=document.getElementById('schedDateFilter')?document.getElementById('schedDateFilter').value:''; // "YYYY-MM-DD"
     var list=schedules.filter(function(s){
         // Status filter
         if(filter&&s.status!==filter)return false;
-        // Search filter: match name or nextRun/time date string
+        // Search filter: match name only
         if(searchRaw){
             var nameMatch=(s.name||'').toLowerCase().indexOf(searchRaw)!==-1;
-            // Build a readable date string from nextRun or time field for matching
-            var dateStr='';
-            if(s.nextRun){try{var d=new Date(s.nextRun);if(!isNaN(d))dateStr=d.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}).toLowerCase();}catch(e){}}
-            if(!dateStr&&s.time)dateStr=s.time.toLowerCase();
-            var dateMatch=dateStr.indexOf(searchRaw)!==-1;
-            if(!nameMatch&&!dateMatch)return false;
+            if(!nameMatch)return false;
+        }
+        // Date filter: match nextRun date (or time field) against selected date
+        if(dateFilter){
+            var matched=false;
+            if(s.nextRun){try{var d=new Date(s.nextRun);if(!isNaN(d)){var yr=d.getFullYear(),mo=String(d.getMonth()+1).padStart(2,'0'),dy=String(d.getDate()).padStart(2,'0');matched=(yr+'-'+mo+'-'+dy)===dateFilter;}}catch(e){}}
+            if(!matched&&s.time){try{var parts=s.time.split(':'),td=new Date();td.setHours(parseInt(parts[0]),parseInt(parts[1]),0,0);var yr2=td.getFullYear(),mo2=String(td.getMonth()+1).padStart(2,'0'),dy2=String(td.getDate()).padStart(2,'0');matched=(yr2+'-'+mo2+'-'+dy2)===dateFilter;}catch(e){}}
+            if(!matched)return false;
         }
         return true;
     });
@@ -1231,7 +1274,15 @@ function renderSchedules(){
 function renderHistory(){
     var tbody=document.getElementById('historyBody'); document.getElementById('tcHistory').textContent=runHistory.length;
     if(!runHistory.length){tbody.innerHTML='<tr><td colspan="12" class="empty-td"><i class="fa-solid fa-clock-rotate-left"></i> No run history yet.</td></tr>';return;}
-    tbody.innerHTML=runHistory.map(function(r,i){
+    var histSearch=document.getElementById('histSearch')?document.getElementById('histSearch').value.trim().toLowerCase():'';
+    var histDate=document.getElementById('histDateFilter')?document.getElementById('histDateFilter').value:'';
+    var filtered=runHistory.filter(function(r,_i){
+        if(histSearch&&(r.scheduleName||'').toLowerCase().indexOf(histSearch)===-1)return false;
+        if(histDate){var d=new Date(r.started);if(isNaN(d))return false;var yr=d.getFullYear(),mo=String(d.getMonth()+1).padStart(2,'0'),dy=String(d.getDate()).padStart(2,'0');if((yr+'-'+mo+'-'+dy)!==histDate)return false;}
+        return true;
+    });
+    if(!filtered.length){tbody.innerHTML='<tr><td colspan="12" class="empty-td"><i class="fa-solid fa-magnifying-glass"></i> No runs match your filters.</td></tr>';return;}
+    tbody.innerHTML=filtered.map(function(r,i){
         var d=new Date(r.started),ds=isNaN(d)?'\u2014':d.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true});
         var dur=r.duration?Math.floor(r.duration/60)+'m '+(r.duration%60)+'s':'\u2014';
         // Result badge: clear labels based on severity found
@@ -1251,7 +1302,7 @@ function renderHistory(){
         var targetHost=(r.target||'').replace('https://','').replace('http://','');
         var viewBtn='<a href="/reports" class="btn btn-o btn-s" style="font-size:.7rem;white-space:nowrap;" title="View Report for '+targetHost+'"><i class="fa-regular fa-eye"></i> View</a>';
         return '<tr>'
-            +'<td style="font-size:.72rem;color:var(--text-muted);">'+(runHistory.length-i)+'</td>'
+            +'<td style="font-size:.72rem;color:var(--text-muted);">'+(runHistory.length-runHistory.indexOf(r))+'</td>'
             +'<td><strong style="font-size:.8rem;">'+r.scheduleName+'</strong></td>'
             +'<td style="font-size:.78rem;color:var(--blue);">'+targetHost+'</td>'
             +'<td style="font-size:.72rem;">'+ds+'</td>'
