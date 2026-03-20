@@ -75,11 +75,26 @@
 
   <div id="tab-schedules" class="tab-content active">
     <div class="card">
-      <div class="ch" style="display:flex;justify-content:space-between;align-items:center;">
+      <div class="ch" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
         <span><i class="fa-solid fa-list"></i> All Schedules</span>
-        <select id="filterStatus" onchange="renderSchedules()" style="padding:.3rem .6rem;border:1.5px solid var(--border);border-radius:7px;font-size:.75rem;font-family:'DM Sans',sans-serif;outline:none;color:var(--text);">
-          <option value="">All Status</option><option value="active">Active</option><option value="paused">Paused</option><option value="completed">Completed</option>
-        </select>
+        <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
+          <!-- Search bar -->
+          <div style="position:relative;display:flex;align-items:center;">
+            <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:.55rem;font-size:.7rem;color:var(--text-muted);pointer-events:none;"></i>
+            <input
+              id="schedSearch"
+              type="text"
+              placeholder="Search by name or date…"
+              oninput="renderSchedules()"
+              style="padding:.3rem .6rem .3rem 1.75rem;border:1.5px solid var(--border);border-radius:7px;font-size:.75rem;font-family:'DM Sans',sans-serif;outline:none;color:var(--text);background:var(--bg);width:200px;transition:border-color .2s,width .2s;"
+              onfocus="this.style.borderColor='var(--blue)';this.style.width='240px';"
+              onblur="this.style.borderColor='var(--border)';this.style.width='200px';"
+            />
+          </div>
+          <select id="filterStatus" onchange="renderSchedules()" style="padding:.3rem .6rem;border:1.5px solid var(--border);border-radius:7px;font-size:.75rem;font-family:'DM Sans',sans-serif;outline:none;color:var(--text);">
+            <option value="">All Status</option><option value="active">Active</option><option value="paused">Paused</option><option value="completed">Completed</option>
+          </select>
+        </div>
       </div>
       <div class="cb" style="padding:0;" id="scheduleList">
         <div id="schedSkeleton" style="padding:1rem;">
@@ -1140,9 +1155,30 @@ function closeRhModal() {
 }
 
 function renderSchedules(){
-    var filter=document.getElementById('filterStatus')?document.getElementById('filterStatus').value:'',list=filter?schedules.filter(function(s){return s.status===filter;}):schedules,con=document.getElementById('scheduleList');
+    var filter=document.getElementById('filterStatus')?document.getElementById('filterStatus').value:'';
+    var searchRaw=document.getElementById('schedSearch')?document.getElementById('schedSearch').value.trim().toLowerCase():'';
+    var list=schedules.filter(function(s){
+        // Status filter
+        if(filter&&s.status!==filter)return false;
+        // Search filter: match name or nextRun/time date string
+        if(searchRaw){
+            var nameMatch=(s.name||'').toLowerCase().indexOf(searchRaw)!==-1;
+            // Build a readable date string from nextRun or time field for matching
+            var dateStr='';
+            if(s.nextRun){try{var d=new Date(s.nextRun);if(!isNaN(d))dateStr=d.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}).toLowerCase();}catch(e){}}
+            if(!dateStr&&s.time)dateStr=s.time.toLowerCase();
+            var dateMatch=dateStr.indexOf(searchRaw)!==-1;
+            if(!nameMatch&&!dateMatch)return false;
+        }
+        return true;
+    });
+    var con=document.getElementById('scheduleList');
     document.getElementById('tcSchedules').textContent=schedules.length;
-    if(!list.length){con.innerHTML='<div class="empty-state"><i class="fa-solid fa-calendar-xmark"></i><p>No schedules found.</p><button class="btn btn-p" onclick="openModal()" style="margin-top:.75rem;"><i class="fa-solid fa-plus"></i> Create Schedule</button></div>';return;}
+    if(!list.length){
+        var emptyMsg=searchRaw?'No schedules match your search.':'No schedules found.';
+        var emptyBtn=searchRaw?'':'<button class="btn btn-p" onclick="openModal()" style="margin-top:.75rem;"><i class="fa-solid fa-plus"></i> Create Schedule</button>';
+        con.innerHTML='<div class="empty-state"><i class="fa-solid fa-'+(searchRaw?'magnifying-glass':'calendar-xmark')+'"></i><p>'+emptyMsg+'</p>'+emptyBtn+'</div>';return;
+    }
     var fl={once:'One-time','6h':'Every 6h','12h':'Every 12h',daily:'Daily',weekly:'Weekly',monthly:'Monthly','247':'24/7'},fi={once:'fa-circle-dot','6h':'fa-rotate','12h':'fa-rotate',daily:'fa-sun',weekly:'fa-calendar-week',monthly:'fa-calendar','247':'fa-infinity'};
     con.innerHTML=list.map(function(s){
         var isR=s.status==='running',isA=s.status==='active',isC=s.status==='completed';
