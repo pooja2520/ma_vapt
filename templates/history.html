@@ -303,12 +303,12 @@
 
 /* ── Expanded detail panel ──────────────────────────────────── */
 .h-detail {
-  background: #f8faff;
-  border-top: 1px solid var(--border, #e5e7eb);
-  padding: 1rem;
+  background: #ffffff;
+  border-top: 1.5px solid var(--border, #e5e7eb);
+  padding: 1.125rem 1.125rem .875rem;
   display: none;
 }
-.h-detail[style*="block"] {
+.h-detail.user-opened {
   animation: detailSlide .18s ease;
 }
 @keyframes detailSlide {
@@ -413,6 +413,45 @@
 .h-ip-tbl td.mono { font-family: monospace; font-weight: 700; font-size: .8rem; }
 
 /* Status + severity pills in table */
+/* ── IP Table — image 3 style ───────────────────────────────── */
+.ipt-ip {
+  font-family: monospace;
+  font-weight: 700;
+  font-size: .8rem;
+  color: #111827;
+}
+.ipt-status {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .22rem .65rem;
+  border-radius: 20px;
+  font-size: .72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ipt-status i { font-size: .38rem; }
+.ipt-status.online  { background:#dcfce7; color:#15803d; }
+.ipt-status.offline { background:#f3f4f6; color:#4b5563; }
+.ipt-host   { font-size:.75rem; color:#4b5563; }
+.ipt-ports  { font-size:.75rem; color:#374151; font-weight:600; }
+.ipt-vulns  { font-size:.75rem; color:#4b5563; font-weight:500; }
+.ipt-sev {
+  display: inline-flex;
+  padding: .2rem .55rem;
+  border-radius: 5px;
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.ipt-sev.critical { background:#fee2e2; color:#991b1b; }
+.ipt-sev.high     { background:#ffedd5; color:#9a3412; }
+.ipt-sev.medium   { background:#fef3c7; color:#92400e; }
+.ipt-sev.low      { background:#dbeafe; color:#1e40af; }
+.ipt-sev.none,
+.ipt-sev.clean    { background:#f3f4f6; color:#6b7280; }
+
 .ip-status {
   display: inline-flex; align-items: center; gap: .25rem;
   padding: .18rem .5rem; border-radius: 5px;
@@ -479,6 +518,8 @@ let delTarget    = null;
 let delAll       = false;
 let liveTimer    = null;
 const loadedIPs  = new Set();
+const ipTableCache = {};   // cache rendered IP table HTML per scan id
+let expandedRowId = null;  // track which row is open so re-render can restore it
 
 // ════════════════════════════════════════════════════════════════
 //  LOAD
@@ -600,6 +641,26 @@ function renderList() {
   empty.style.display = 'none';
   listEl.innerHTML = slice.map(h => rowHTML(h)).join('');
   renderPagination(total, pages);
+
+  // Restore the previously expanded row after DOM rebuild (e.g. from polling)
+  if (expandedRowId != null) {
+    const detail = document.getElementById('hdetail-' + expandedRowId);
+    const chev   = document.getElementById('chev-'    + expandedRowId);
+    const row    = document.getElementById('hrow-'    + expandedRowId);
+    if (detail) {
+      detail.style.display = 'block';
+      if (chev) chev.style.transform = 'rotate(180deg)';
+      if (row)  row.classList.add('expanded');
+      // Restore cached IP table HTML instantly (no blink/loading flash)
+      const ipEl = document.getElementById('hipips-' + expandedRowId);
+      if (ipEl && ipTableCache[expandedRowId]) {
+        ipEl.innerHTML = ipTableCache[expandedRowId];
+      } else if (!loadedIPs.has(expandedRowId)) {
+        loadedIPs.add(expandedRowId);
+        loadIPTable(expandedRowId);
+      }
+    }
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -771,10 +832,17 @@ async function toggleRow(id) {
   document.querySelectorAll('.h-row').forEach(r => r.classList.remove('expanded'));
 
   if (!isOpen) {
+    // Opening a row
+    expandedRowId = id;
     detail.style.display = 'block';
+    detail.classList.add('user-opened');   // triggers slide-in animation
     if (chev) chev.style.transform = 'rotate(180deg)';
     if (row)  row.classList.add('expanded');
     if (!loadedIPs.has(id)) { loadedIPs.add(id); loadIPTable(id); }
+  } else {
+    // Closing — clear tracked id and animation class
+    expandedRowId = null;
+    detail.classList.remove('user-opened');
   }
 }
 
@@ -786,7 +854,9 @@ async function loadIPTable(id) {
     const data = await res.json();
     const rows = (data.session && data.session.results) || [];
     if (!rows.length) {
-      el.innerHTML = '<div style="padding:.75rem 0;color:var(--text-muted);font-size:.78rem;">No IP results stored.</div>';
+      const noRowsHtml = '<div style="padding:.75rem 0;color:var(--text-muted);font-size:.78rem;">No IP results stored.</div>';
+      el.innerHTML = noRowsHtml;
+      ipTableCache[id] = noRowsHtml;
       return;
     }
     const trows = rows.slice(0, 100).map(r => {
@@ -794,13 +864,14 @@ async function loadIPTable(id) {
       const vulnCount = (r.vulnerabilities || []).length;
       const sev = (r.severity || 'none').toLowerCase();
       const hostname = r.hostname && r.hostname !== '-' ? esc(r.hostname) : 'Unknown';
+      const isOnline = r.status === 'online';
       return `<tr>
-        <td class="mono">${esc(r.ip||'')}</td>
-        <td><span class="ip-status ${r.status||'offline'}"><i class="fa-solid fa-circle" style="font-size:.3rem;"></i>${r.status==='online'?'Online':'Offline'}</span></td>
-        <td style="font-size:.75rem;color:#4b5563;">${hostname}</td>
-        <td style="font-size:.75rem;">${portCount} port${portCount!==1?'s':''}</td>
-        <td><span class="ip-sev ${sev}">${sev.toUpperCase()}</span></td>
-        <td style="font-size:.75rem;color:#4b5563;">${vulnCount} vuln${vulnCount!==1?'s':''}</td>
+        <td><span class="ipt-ip">${esc(r.ip||'')}</span></td>
+        <td><span class="ipt-status ${isOnline?'online':'offline'}"><i class="fa-solid fa-circle"></i>${isOnline?'Online':'Offline'}</span></td>
+        <td class="ipt-host">${hostname}</td>
+        <td class="ipt-ports">${portCount} port${portCount!==1?'s':''}</td>
+        <td><span class="ipt-sev ${sev}">${sev === 'none' ? 'NONE' : sev.toUpperCase()}</span></td>
+        <td class="ipt-vulns">${vulnCount} vuln${vulnCount!==1?'s':''}</td>
       </tr>`;
     }).join('');
     el.innerHTML = `
@@ -814,6 +885,7 @@ async function loadIPTable(id) {
         </table>
         ${rows.length > 100 ? `<div style="padding:.4rem .875rem;font-size:.72rem;color:var(--text-muted);">Showing first 100 of ${rows.length} IPs — export for full results</div>` : ''}
       </div>`;
+    ipTableCache[id] = el.innerHTML;  // cache after successful render
   } catch(e) {
     el.innerHTML = '<div style="color:#dc2626;font-size:.78rem;padding:.5rem;">Failed to load IP results.</div>';
   }
