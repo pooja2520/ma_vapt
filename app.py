@@ -2182,7 +2182,15 @@ def bulk_scan_stop(scan_id):
     store = _bulk_scans.get(scan_id)
     if store:
         store['stopped'] = True
-        store['done'] = True
+        store['done']    = True
+        # Persist whatever results were collected so history page reflects the stop
+        try:
+            import db as _dbs
+            _uid_val = store.get('_user_id') or _uid()
+            if _uid_val:
+                _dbs.finish_bulk_scan_session(scan_id, _uid_val, store.get('results', []))
+        except Exception as _se:
+            app.logger.warning(f'[bulk history] stop finalize error: {_se}')
     return jsonify({'status': 'stopped'})
 
 
