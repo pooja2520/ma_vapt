@@ -563,6 +563,34 @@ function updateStatCards(s) {
 // ════════════════════════════════════════════════════════════════
 //  CHART (uses .chart-bar-wrap + .chart-bar + .chart-lbl from history.css)
 // ════════════════════════════════════════════════════════════════
+function fmtChartLabel(raw) {
+  // raw may be "3/20" (M/D), a full ISO date, or a datetime string
+  if (!raw) return '—';
+  try {
+    // If it looks like M/D or M/D/YYYY without time, we can't get time — show "Mar 20"
+    const shortMatch = String(raw).match(/^(\d{1,2})\/(\d{1,2})(\/(\d{4}))?$/);
+    if (shortMatch) {
+      const month = parseInt(shortMatch[1], 10) - 1;
+      const day   = parseInt(shortMatch[2], 10);
+      const year  = shortMatch[4] ? parseInt(shortMatch[4], 10) : new Date().getFullYear();
+      const d = new Date(year, month, day);
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    }
+    // Otherwise parse as a full date/datetime
+    const d = new Date(String(raw).replace(' ', 'T'));
+    if (isNaN(d)) return String(raw);
+    // If it has a time component (hours/minutes are non-zero or explicit), show time too
+    const hasTime = String(raw).includes(':') || String(raw).includes('T');
+    if (hasTime) {
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+        + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    }
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  } catch {
+    return String(raw);
+  }
+}
+
 function renderChart(data) {
   const el = document.getElementById('histChartBars');
   if (!el) return;
@@ -572,11 +600,13 @@ function renderChart(data) {
   }
   const maxV = Math.max(...data.map(c => c.vulns), 1);
   el.innerHTML = data.map(c => {
-    const pct = Math.max(6, Math.round(c.vulns / maxV * 100));
-    const cls = c.vulns === 0 ? 'clean' : c.vulns < 5 ? 'low' : c.vulns < 12 ? 'medium' : c.vulns < 20 ? 'high' : 'critical';
-    return `<div class="chart-bar-wrap" title="${c.vulns} vulns — ${c.label}">
+    const pct        = Math.max(6, Math.round(c.vulns / maxV * 100));
+    const cls        = c.vulns === 0 ? 'clean' : c.vulns < 5 ? 'low' : c.vulns < 12 ? 'medium' : c.vulns < 20 ? 'high' : 'critical';
+    const displayLbl = fmtChartLabel(c.date || c.label);   // prefer c.date if backend sends it
+    const tooltip    = `${c.vulns} vuln${c.vulns!==1?'s':''} — ${displayLbl}`;
+    return `<div class="chart-bar-wrap" title="${tooltip}">
       <div class="chart-bar ${cls}" style="height:${pct}%;"></div>
-      <div class="chart-lbl">${esc(c.label)}</div>
+      <div class="chart-lbl">${esc(displayLbl)}</div>
     </div>`;
   }).join('');
 }
@@ -668,7 +698,13 @@ function renderList() {
 // ════════════════════════════════════════════════════════════════
 function rowHTML(h) {
   const running  = h.status === 'running';
-  const label    = h.label || `Bulk Scan — ${h.total_ips} IPs`;
+  const ipCount  = h.total_ips || (h.results || []).length || 0;
+  // Override server-side label for single-IP scans (server always calls them "Bulk Scan")
+  const isSingle = ipCount === 1;
+  const serverLabelIsBulk = /^bulk\s*scan/i.test(h.label || '');
+  const label = (isSingle && serverLabelIsBulk)
+    ? `Single Scan — 1 IP`
+    : (h.label || (isSingle ? `Single Scan — 1 IP` : `Bulk Scan — ${ipCount} IPs`));
   const shortId  = '#' + String(h.scan_id || h.id).slice(0, 8);
   const dur      = h.duration_seconds != null ? fmtDur(h.duration_seconds) : (running ? '…' : '—');
   const offCount = h.offline_count != null ? h.offline_count : Math.max(0, h.total_ips - h.online_count);
@@ -792,7 +828,8 @@ function rowHTML(h) {
             : '<span style="color:var(--text-muted);font-size:.75rem;">No module info</span>'
           }
         </div>
-        <div class="h-detail-row"><span class="dk">Scan Type</span><span class="dv">bulk</span></div>
+        <div class="h-detail-row"><span class="dk">Scan Type</span><span class="dv">${isSingle ? 'single' : 'bulk'}</span></div>
+        <div class="h-detail-row"><span class="dk">Concurrency</span><span class="dv">${h.concurrency != null ? h.concurrency + ' threads' : (h.thread_count != null ? h.thread_count + ' threads' : (isSingle ? '1 thread' : '10 threads'))}</span></div>
       </div>
     </div>
 
