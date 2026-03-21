@@ -653,8 +653,11 @@
     // ── Init layout ───────────────────────────────────────────────────────
     window.initLayout = function (active) {
         _injectStyles();
-        document.body.insertAdjacentHTML('afterbegin', renderSidebar(active));
+        // Set CSS var BEFORE inserting DOM so there's no layout flash
+        document.documentElement.style.setProperty('--ml', '220px');
+        // Insert sidebar first, then header — both go afterbegin so header ends up on top
         document.body.insertAdjacentHTML('afterbegin', renderHeader());
+        document.body.insertAdjacentHTML('afterbegin', renderSidebar(active));
         // Inject mobile overlay
         if (!document.getElementById('sb-overlay')) {
             var ov = document.createElement('div');
@@ -663,14 +666,29 @@
             ov.onclick   = function() { closeMobileSB(); };
             document.body.appendChild(ov);
         }
-        const mEl = document.getElementById('_main');
+        // Apply .main class to the page content wrapper (#_main or #main)
+        var mEl = document.getElementById('_main') || document.getElementById('main');
         if (mEl) {
             mEl.classList.add('main');
             mEl.id = 'main';
             mEl.style.removeProperty('margin-left');
             mEl.style.removeProperty('transition');
+        } else {
+            // Fallback: wrap all non-layout body children
+            var wrapper = document.createElement('div');
+            wrapper.id = 'main';
+            wrapper.className = 'main';
+            var children = Array.from(document.body.children).filter(function(el) {
+                return !['sb', 'hdr', 'sb-overlay'].includes(el.id) &&
+                       !el.classList.contains('sb') &&
+                       !el.classList.contains('hdr') &&
+                       !el.classList.contains('sb-overlay');
+            });
+            if (children.length) {
+                document.body.insertBefore(wrapper, children[0]);
+                children.forEach(function(c) { wrapper.appendChild(c); });
+            }
         }
-        document.documentElement.style.setProperty('--ml', '220px');
         // Initial fetch + polling
         _fetch(false);
         setInterval(function(){ _fetch(true); }, _POLL_MS);
@@ -680,12 +698,14 @@
     window.toggleSB = function () {
         const s  = document.getElementById('sb');
         const i  = document.getElementById('cbI');
-        const collapsed = !s.classList.contains('col');
-        s.classList.toggle('col');
-        i.className = collapsed ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-left';
-        const ml = collapsed ? '56px' : '220px';
+        const isNowCollapsed = s.classList.toggle('col'); // true = just became collapsed
+        if (i) i.className = isNowCollapsed ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-left';
+        const ml = isNowCollapsed ? '56px' : '220px';
         document.documentElement.style.setProperty('--ml', ml);
-        setTimeout(() => window.dispatchEvent(new Event('resize')), 260);
+        // Update header position immediately
+        var hdr = document.getElementById('hdr');
+        if (hdr) hdr.style.left = ml;
+        setTimeout(function() { window.dispatchEvent(new Event('resize')); }, 260);
     };
 
     // ── Legacy toggleDrop (ud only now) ──────────────────────────────────
