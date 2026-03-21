@@ -222,6 +222,25 @@
       </div>
 
     </div><!-- /ipdm-body -->
+
+    <!-- ── Download Footer ─────────────────────────────────── -->
+    <div class="ipdm-footer">
+      <span class="ipdm-footer-label">
+        <i class="fa-solid fa-file-arrow-down" style="color:#2563eb;"></i>
+        Download report for <strong id="ipdmFooterIP">—</strong>
+      </span>
+      <div class="ipdm-footer-btns">
+        <button class="ipdm-dl-btn" onclick="downloadIPReport('json')">
+          <i class="fa-solid fa-file-code"></i> JSON
+        </button>
+        <button class="ipdm-dl-btn" onclick="downloadIPReport('csv')">
+          <i class="fa-solid fa-file-csv"></i> CSV
+        </button>
+        <button class="ipdm-dl-btn primary" onclick="downloadIPReport('pdf')">
+          <i class="fa-solid fa-file-pdf"></i> Full PDF Report
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -798,6 +817,67 @@
   align-items: center;
   gap: .3rem;
   font-weight: 700;
+}
+
+/* ── IP Modal Download Footer ────────────────────────────────── */
+.ipdm-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .875rem 1.25rem;
+  border-top: 1.5px solid #e5e7eb;
+  background: #f9fafb;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  border-radius: 0 0 16px 16px;
+}
+.ipdm-footer-label {
+  font-size: .75rem;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+}
+.ipdm-footer-btns {
+  display: flex;
+  gap: .45rem;
+  flex-wrap: wrap;
+}
+.ipdm-dl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .38rem .9rem;
+  border-radius: 8px;
+  border: 1.5px solid #d1d5db;
+  background: #fff;
+  font-size: .72rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  color: #374151;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.ipdm-dl-btn:hover         { border-color: #2563eb; color: #2563eb; background: #eff6ff; }
+.ipdm-dl-btn.primary       { background: #2563eb; color: #fff; border-color: #2563eb; }
+.ipdm-dl-btn.primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
+.ipdm-dl-btn i             { font-size: .68rem; }
+
+/* MAC vendor chip */
+.ipdm-mac-vendor {
+  display: inline-flex;
+  align-items: center;
+  gap: .2rem;
+  padding: .15rem .5rem;
+  border-radius: 5px;
+  font-size: .65rem;
+  font-weight: 600;
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+  margin-top: .2rem;
 }
 </style>
 
@@ -1490,6 +1570,10 @@ function _renderIPModalHeader(r) {
   const hostnameStr = (r.hostname && r.hostname !== '-' && r.hostname !== 'Unknown') ? r.hostname : 'Unknown';
 
   document.getElementById('ipdmIP').textContent = r.ip || '—';
+  // Update footer label
+  const footerIP = document.getElementById('ipdmFooterIP');
+  if (footerIP) footerIP.textContent = r.ip || '—';
+
   document.getElementById('ipdmIcon').className = 'ipdm-ip-icon ' + (sev === 'none' ? 'clean' : sev);
   document.getElementById('ipdmIcon').innerHTML = sev === 'none' || sev === 'low'
     ? '<i class="fa-solid fa-server"></i>'
@@ -1908,6 +1992,294 @@ function renderIPTabNikto(r) {
 
 function emptyState(icon, msg) {
   return `<div class="ipdm-empty"><i class="fa-solid fa-${esc(icon)}"></i>${esc(msg)}</div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  MAC VENDOR LOOKUP (OUI)
+// ════════════════════════════════════════════════════════════════
+function _macVendor(mac) {
+  if (!mac) return null;
+  const oui = String(mac).replace(/[:\-\.]/g,'').toUpperCase().slice(0,6);
+  const db = {
+    '00155D':'Microsoft (Hyper-V)','000D3A':'Microsoft','0050F2':'Microsoft',
+    '28187A':'Microsoft','485073':'Microsoft','7045C4':'Microsoft',
+    '000C29':'VMware','000569':'VMware','001C14':'VMware','005056':'VMware',
+    '001451':'Apple','0017F2':'Apple','001CB3':'Apple','001E52':'Apple',
+    '001EC2':'Apple','002312':'Apple','0024C4':'Apple','0025BC':'Apple',
+    '002608':'Apple','003065':'Apple','006171':'Apple','283737':'Apple',
+    '28CF42':'Apple','3C0754':'Apple','404D7F':'Apple','485154':'Apple',
+    '60F81D':'Apple','7C6D62':'Apple','8C2937':'Apple','A4B197':'Apple',
+    'B418D1':'Apple','B8C111':'Apple','D02544':'Apple','F0B479':'Apple',
+    '001B21':'Intel','001CC0':'Intel','001E64':'Intel','001E67':'Intel',
+    '0022FB':'Intel','7085C2':'Intel','8086F2':'Intel','F8328C':'Intel',
+    '000347':'Intel','088798':'Intel','A4C3F0':'Intel',
+    '000874':'Dell','001517':'Dell','001A4B':'Dell','001EC9':'Dell',
+    '002564':'Dell','14B31F':'Dell','1C40AF':'Dell','204E71':'Dell',
+    '24B6FD':'Dell','484D7E':'Dell','F48E92':'Dell','F8BC12':'Dell',
+    '001560':'HP','001708':'HP','001B78':'HP','001E0B':'HP','002264':'HP',
+    '0024A8':'HP','3C4A92':'HP','3C98E6':'HP','40B034':'HP','5065F3':'HP',
+    '6805CA':'HP','9CB6D0':'HP','A0D3C1':'HP','B499BA':'HP',
+    '000142':'Cisco','0001C7':'Cisco','000F8F':'Cisco','001120':'Cisco',
+    '001C57':'Cisco','0050A2':'Cisco','10BEF5':'Cisco','2C3126':'Cisco',
+    '44D3CA':'Cisco','50874F':'Cisco','54781A':'Cisco','788CB5':'Cisco',
+    '84B808':'Cisco','8CB64F':'Cisco','D8B19A':'Cisco','F0B2E5':'Cisco',
+    '000AEB':'Realtek','001317':'Realtek','00E04C':'Realtek','08606E':'Realtek',
+    '0C8268':'Realtek','1062EB':'Realtek','30B49E':'Realtek','48540E':'Realtek',
+    '50E549':'Realtek','6045CB':'Realtek','7491BB':'Realtek','90FB5B':'Realtek',
+    'B06EBF':'Realtek','E882C4':'Realtek',
+    'B827EB':'Raspberry Pi','DCA632':'Raspberry Pi','E45F01':'Raspberry Pi',
+    '001D0F':'TP-Link','14CC20':'TP-Link','1C3BF3':'TP-Link','244BFE':'TP-Link',
+    '2C56DC':'TP-Link','300DB4':'TP-Link','346BD3':'TP-Link','3C84FF':'TP-Link',
+    '40A5EF':'TP-Link','50FA84':'TP-Link','54C80F':'TP-Link','647002':'TP-Link',
+    '6C5999':'TP-Link','78D7B4':'TP-Link','84163E':'TP-Link','90F652':'TP-Link',
+    '9C5C8E':'TP-Link','AC84C6':'TP-Link','D80D17':'TP-Link','E8DE27':'TP-Link',
+    '001731':'ASUS','001BFC':'ASUS','049226':'ASUS','10BF48':'ASUS',
+    '107B44':'ASUS','14DDA9':'ASUS','1C872C':'ASUS','38D547':'ASUS',
+    '3C97E1':'ASUS','40167E':'ASUS','40B076':'ASUS','48EE0C':'ASUS',
+    '5404A6':'ASUS','74D02B':'ASUS','90E6BA':'ASUS','AC220B':'ASUS',
+    'BC9746':'ASUS','D0172E':'ASUS','E03F49':'ASUS','F8322E':'ASUS',
+  };
+  return db[oui] || null;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  DOWNLOAD IP REPORT
+// ════════════════════════════════════════════════════════════════
+function downloadIPReport(fmt) {
+  const r = currentIPData;
+  if (!r) { alert('No IP data loaded yet. Please wait a moment and try again.'); return; }
+
+  const ip       = r.ip || 'unknown';
+  const hostname = (r.hostname && r.hostname !== '-') ? r.hostname : 'Unknown';
+  const sev      = (r.severity || 'none').toUpperCase();
+  const ts       = new Date().toLocaleString();
+  const ports    = r.ports || [];
+  const vulns    = r.vulnerabilities || r.vulns || [];
+  const macRaw   = r.mac || r.mac_address || r.mac_addr || r.macaddress || r.hardware_address || null;
+  const macStr   = macRaw ? String(macRaw).toUpperCase() : null;
+  const vendor   = macStr ? _macVendor(macStr.replace(/[:\-]/g,'')) : null;
+
+  // ── JSON ─────────────────────────────────────────────────────
+  if (fmt === 'json') {
+    _dlBlob(new Blob([JSON.stringify(r, null, 2)], {type:'application/json'}), `ip-report-${ip}.json`);
+    return;
+  }
+
+  // ── CSV ──────────────────────────────────────────────────────
+  if (fmt === 'csv') {
+    const csv = [
+      ['=== VAPT SCANNER — IP REPORT ==='],
+      ['Generated', ts],
+      [],
+      ['== HOST INFORMATION =='],
+      ['IP Address', ip],
+      ['Hostname', hostname],
+      ['Operating System', r.os || 'Unknown'],
+      ['MAC Address', macStr || '—'],
+      ['MAC Vendor', vendor || '—'],
+      ['Status', r.status || 'unknown'],
+      ['Latency', r.latency != null ? r.latency + ' ms' : '—'],
+      ['Severity', sev],
+      ['Scanned At', r.scanned_at || '—'],
+      ['Open Ports', ports.length],
+      ['Vulnerabilities', vulns.length],
+      [],
+      ['== OPEN PORTS =='],
+      ['Port','Protocol','State','Service','Version','Banner'],
+      ...ports.map(p => [
+        p.port, p.protocol||'tcp', p.state||'open',
+        p.service||p.name||'', [p.product,p.version].filter(Boolean).join(' '),
+        p.banner||p.extra_info||''
+      ]),
+      [],
+      ['== VULNERABILITIES =='],
+      ['Name','Severity','CVE','Port','CVSS','Published','Description'],
+      ...vulns.map(v => [
+        v.name||v.title||'Unknown',
+        v.severity||'low',
+        Array.isArray(v.cve)?v.cve.join(';'):(v.cve||v.cve_id||''),
+        v.port||v.affected_port||'',
+        v.cvss||v.cvss_score||v.score||'',
+        v.published||'',
+        (v.description||v.desc||'').replace(/\n/g,' ')
+      ]),
+    ].map(row => Array.isArray(row)
+      ? row.map(c => `"${String(c||'').replace(/"/g,'""')}"`).join(',')
+      : String(row)
+    ).join('\n');
+    _dlBlob(new Blob([csv], {type:'text/csv'}), `ip-report-${ip}.csv`);
+    return;
+  }
+
+  // ── PDF (printable HTML) ─────────────────────────────────────
+  if (fmt === 'pdf') {
+    const sevColors = {CRITICAL:'#dc2626',HIGH:'#ea580c',MEDIUM:'#d97706',LOW:'#2563eb',NONE:'#16a34a'};
+    const sevBgs    = {CRITICAL:'#fee2e2',HIGH:'#ffedd5',MEDIUM:'#fef3c7',LOW:'#dbeafe',NONE:'#dcfce7'};
+    const sevC = sevColors[sev] || '#374151';
+    const sevBg = sevBgs[sev] || '#f3f4f6';
+
+    const portsHTML = ports.length ? `
+      <table>
+        <thead><tr><th>Port</th><th>Protocol</th><th>State</th><th>Service</th><th>Version / Product</th><th>Banner</th></tr></thead>
+        <tbody>${ports.map(p => `<tr>
+          <td class="mono bl">${p.port}</td>
+          <td><span class="badge">${(p.protocol||'tcp').toUpperCase()}</span></td>
+          <td><span class="badge gr">open</span></td>
+          <td><strong>${esc(p.service||p.name||'—')}</strong></td>
+          <td class="mono">${esc([p.product,p.version].filter(Boolean).join(' ')||'—')}</td>
+          <td class="sm muted">${esc(p.banner||p.extra_info||'—')}</td>
+        </tr>`).join('')}</tbody>
+      </table>` : '<p class="muted">No open ports detected.</p>';
+
+    const vulnsHTML = vulns.length ? (() => {
+      const sevOrder = {critical:0,high:1,medium:2,low:3};
+      const sorted = [...vulns].sort((a,b)=>(sevOrder[(a.severity||'low').toLowerCase()]??3)-(sevOrder[(b.severity||'low').toLowerCase()]??3));
+      const counts = {CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0};
+      sorted.forEach(v=>{ const k=(v.severity||'low').toUpperCase(); if(counts[k]!==undefined) counts[k]++; });
+      return `<div class="sev-summary">
+        ${Object.entries(counts).map(([k,n])=>`<div class="sev-box" style="background:${sevBgs[k]};border:1px solid ${sevColors[k]}33;">
+          <div class="sev-box-lbl">${k}</div>
+          <div class="sev-box-val" style="color:${sevColors[k]};">${n}</div>
+        </div>`).join('')}
+      </div>
+      ${sorted.map(v=>{
+        const vs = (v.severity||'low').toUpperCase();
+        const vc = sevColors[vs]||'#9ca3af';
+        const vbg = sevBgs[vs]||'#f9fafb';
+        const cves = v.cve?(Array.isArray(v.cve)?v.cve:[v.cve]):(v.cves||[]);
+        const plist = v.port!=null?[v.port]:(v.ports||[]);
+        return `<div class="vuln-card" style="border-left:4px solid ${vc};">
+          <div class="vuln-hdr">
+            <span class="vuln-name">${esc(v.name||v.title||'Unknown Vulnerability')}</span>
+            <span class="sev-pill" style="background:${vbg};color:${vc};border:1px solid ${vc}33;">${vs}</span>
+          </div>
+          ${v.description||v.desc ? `<p class="vuln-desc">${esc(v.description||v.desc)}</p>` : ''}
+          <div class="tags">
+            ${cves.map(c=>`<span class="tag cve">${esc(c)}</span>`).join('')}
+            ${plist.map(p=>`<span class="tag">Port ${esc(String(p))}</span>`).join('')}
+            ${v.cvss||v.score ? `<span class="tag" style="background:${vbg};color:${vc};">CVSS ${esc(String(v.cvss||v.score))}</span>` : ''}
+            ${v.published ? `<span class="tag">Published: ${esc(v.published)}</span>` : ''}
+          </div>
+          ${v.reference||v.url ? `<a href="${esc(v.reference||v.url)}" class="ref">${esc(v.reference||v.url)}</a>` : ''}
+        </div>`;
+      }).join('')}`;
+    })() : `<div class="clean"><span>✅ No vulnerabilities found — host is clean.</span></div>`;
+
+    const nikto = r.nikto || r.nikto_results || r.nikto_output || {};
+    const niktoItems = Array.isArray(nikto)?nikto:(nikto.items||nikto.findings||nikto.results||[]);
+    const niktoHTML = niktoItems.length
+      ? niktoItems.map(it=>`<div class="nikto-row">
+          ${it.url||it.uri?`<div class="mono bl sm">${esc(it.url||it.uri)}</div>`:''}
+          <div>${esc(it.msg||it.message||it.description||String(it))}</div>
+          ${it.id||it.nikto_id?`<span class="tag sm">ID: ${esc(String(it.id||it.nikto_id))}</span>`:''}
+        </div>`).join('')
+      : '<p class="muted">No Nikto findings — '+((!ports.find(p=>[80,443,8080,8443].includes(Number(p.port))))
+          ?'no HTTP/HTTPS ports detected on this host.':'Nikto scan returned no findings.')+'</p>';
+
+    const html = `<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><title>IP Report — ${ip}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#111827;background:#fff;padding:28px 32px;}
+h1{font-size:24px;font-weight:800;color:#111827;}
+h2{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#9ca3af;
+   margin:22px 0 8px;padding-bottom:7px;border-bottom:2px solid #f3f4f6;display:flex;align-items:center;gap:6px;}
+h2 span{font-size:12px;background:#f3f4f6;color:#6b7280;padding:1px 8px;border-radius:10px;font-weight:700;text-transform:none;letter-spacing:0;}
+.page-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid #e5e7eb;}
+.page-header .sub{font-size:12px;color:#6b7280;margin-top:5px;line-height:1.6;}
+.sev-main{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:20px;font-weight:800;font-size:14px;background:${sevBg};color:${sevC};}
+.info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:4px;}
+.info-card{background:#f9fafb;border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px;}
+.info-card .lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#9ca3af;margin-bottom:4px;}
+.info-card .val{font-weight:700;font-size:13px;color:#111827;font-family:monospace;}
+.info-card .val.gr{color:#16a34a;font-family:sans-serif;} .info-card .val.rd{color:#dc2626;font-family:sans-serif;} .info-card .val.bl{color:#1d4ed8;}
+.info-card .vendor{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;font-family:sans-serif;}
+table{width:100%;border-collapse:collapse;font-size:12px;margin:4px 0 8px;}
+thead th{padding:7px 10px;text-align:left;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#9ca3af;background:#f9fafb;border-bottom:2px solid #e5e7eb;}
+tbody tr{border-bottom:1px solid #f3f4f6;} tbody tr:last-child{border-bottom:none;}
+td{padding:8px 10px;vertical-align:middle;}
+.mono{font-family:monospace;font-weight:700;} .bl{color:#1d4ed8;} .sm{font-size:11px;} .muted{color:#9ca3af;}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:#eff6ff;color:#1d4ed8;}
+.badge.gr{background:#dcfce7;color:#15803d;}
+.sev-summary{display:flex;gap:8px;margin-bottom:12px;}
+.sev-box{flex:1;text-align:center;padding:8px;border-radius:8px;}
+.sev-box-lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;}
+.sev-box-val{font-size:22px;font-weight:800;margin-top:2px;}
+.vuln-card{border:1px solid #e5e7eb;border-radius:9px;padding:12px;margin-bottom:8px;}
+.vuln-hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px;}
+.vuln-name{font-weight:700;font-size:13px;flex:1;}
+.vuln-desc{font-size:12px;color:#4b5563;margin-bottom:8px;line-height:1.55;}
+.tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;background:#f3f4f6;color:#374151;}
+.tag.cve{background:#eff6ff;color:#1e40af;}
+.sev-pill{display:inline-flex;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:800;flex-shrink:0;}
+.ref{display:block;font-size:11px;color:#2563eb;margin-top:7px;word-break:break-all;}
+.clean{padding:16px;background:#f0fdf4;border-radius:9px;border:1.5px solid #bbf7d0;color:#15803d;font-weight:600;text-align:center;font-size:14px;}
+.nikto-row{padding:9px 12px;background:#f9fafb;border-radius:7px;border:1px solid #e5e7eb;margin-bottom:6px;font-size:12px;line-height:1.5;}
+.footer{margin-top:28px;padding-top:14px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;display:flex;justify-content:space-between;}
+@media print{body{padding:16px;} @page{margin:1.2cm; size:A4;}}
+</style></head><body>
+
+<div class="page-header">
+  <div>
+    <h1>IP Security Report</h1>
+    <div class="sub">
+      <strong>${esc(ip)}</strong> &nbsp;·&nbsp; ${esc(hostname)} &nbsp;·&nbsp; ${esc(r.os||'Unknown OS')}<br>
+      Generated: ${ts}
+    </div>
+  </div>
+  <div class="sev-main">${sev === 'NONE' ? '✅ Clean' : '⚠ ' + sev}</div>
+</div>
+
+<h2>Host Information</h2>
+<div class="info-grid">
+  <div class="info-card"><div class="lbl">IP Address</div><div class="val bl">${esc(ip)}</div></div>
+  <div class="info-card"><div class="lbl">Hostname / rDNS</div><div class="val">${esc(hostname)}</div></div>
+  <div class="info-card"><div class="lbl">Operating System</div><div class="val" style="font-family:sans-serif;">${esc(r.os||'Unknown')}</div></div>
+  <div class="info-card">
+    <div class="lbl">MAC Address</div>
+    <div class="val">${macStr ? esc(macStr) : '<span style="color:#9ca3af;font-size:12px;font-family:sans-serif;">Not available</span>'}</div>
+    ${vendor ? `<div class="vendor">${esc(vendor)}</div>` : ''}
+  </div>
+  <div class="info-card"><div class="lbl">Status</div><div class="val ${r.status==='online'?'gr':'rd'}">${r.status==='online'?'● Online':'● Offline'}</div></div>
+  <div class="info-card"><div class="lbl">Latency</div><div class="val">${r.latency!=null?r.latency+' ms':'—'}</div></div>
+  <div class="info-card"><div class="lbl">Scanned At</div><div class="val" style="font-size:12px;">${r.scanned_at||'—'}</div></div>
+  <div class="info-card"><div class="lbl">Open Ports</div><div class="val bl">${ports.length}</div></div>
+  <div class="info-card"><div class="lbl">Vulnerabilities</div><div class="val ${vulns.length?'rd':'gr'}">${vulns.length}</div></div>
+</div>
+
+<h2>Open Ports &amp; Services <span>${ports.length} found</span></h2>
+${portsHTML}
+
+<h2>Vulnerability Scan <span>${vulns.length} found</span></h2>
+${vulnsHTML}
+
+<h2>Nikto Web Scanner <span>${niktoItems.length} findings</span></h2>
+${niktoHTML}
+
+<div class="footer">
+  <span>VAPT Scanner Pro — IP Security Report</span>
+  <span>${esc(ip)} &nbsp;|&nbsp; ${ts}</span>
+</div>
+</body></html>`;
+
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      setTimeout(() => { win.print(); }, 700);
+    } else {
+      alert('Popup blocked. Please allow popups for this site to download the PDF report.');
+    }
+  }
+}
+
+function _dlBlob(blob, name) {
+  const u = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = u; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(u), 1000);
 }
 
 loadHistory();
