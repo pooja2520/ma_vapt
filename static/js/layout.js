@@ -409,7 +409,7 @@
             ['/targets',            'fa-solid fa-crosshairs',          'Targets',         null],
             ['/scanning',           'fa-solid fa-magnifying-glass',    'Scanning',        null],
             ['/bulk-ip-scanning',   'fa-solid fa-network-wired',       'Bulk IP Scanner', 'NEW'],
-            ['/history',            'fa-solid fa-clock-rotate-left',   'History',         null],
+            ['/history',            'fa-solid fa-clock-rotate-left',   'Bulk IP Scan History',  null],
             ['/vulnerabilities',    'fa-solid fa-bug',                 'Vulnerabilities', null],
             ['/reports',            'fa-regular fa-file-lines',        'Reports',         null],
             ['/scheduled',          'fa-solid fa-calendar-check',      'Scheduled',       null],
