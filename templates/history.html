@@ -159,6 +159,7 @@
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:.5rem;">
+        <span id="ipdmRefreshTs" style="font-size:.65rem;color:#9ca3af;"></span>
         <span class="ipdm-sev-badge" id="ipdmSevBadge">—</span>
         <button class="ipdm-close" onclick="closeIPModal()"><i class="fa-solid fa-xmark"></i></button>
       </div>
@@ -1210,7 +1211,7 @@ async function loadIPTable(id) {
       const isOnline = r.status === 'online';
       return `<tr>
         <td>
-          <button class="ipt-ip-btn" onclick="openIPModal(${id},${idx})" title="View full details for ${esc(r.ip||'')}">
+          <button class="ipt-ip-btn" onclick="openIPModal(${id},'${(r.ip||'').replace(/'/g,"\\'")}' )" title="View full details for ${esc(r.ip||'')}">
             <span class="ipt-ip">${esc(r.ip||'')}</span>
             <i class="fa-solid fa-arrow-up-right-from-square ipt-ip-icon"></i>
           </button>
@@ -1400,57 +1401,119 @@ function esc(s) {
 }
 
 // ════════════════════════════════════════════════════════════════
-//  IP DETAIL MODAL
+//  IP DETAIL MODAL  — live polling + accurate field mapping
 // ════════════════════════════════════════════════════════════════
-let currentIPData = null;
+let currentIPData      = null;
+let currentIPSessionId = null;
+let currentIPAddr      = null;
+let ipModalPollTimer   = null;
+const IP_MODAL_POLL_MS = 4000;
 
-function openIPModal(sessionId, ipIndex) {
-  const results = ipResultCache[sessionId];
-  if (!results || !results[ipIndex]) return;
-  const r = results[ipIndex];
-  currentIPData = r;
+/* ── Open ─────────────────────────────────────────────────────── */
+async function openIPModal(sessionId, ipAddr) {
+  currentIPSessionId = sessionId;
+  currentIPAddr      = ipAddr;
 
-  const sev = (r.severity || 'none').toLowerCase();
+  // Show modal immediately with skeleton while we fetch
+  document.getElementById('ipDetailModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  switchIPTab('ports');
+  _ipdmShowLoading();
+
+  await _fetchAndRenderIPModal();
+
+  // Poll if the session is still running
+  const session = allHistory.find(s => s.id === sessionId);
+  if (session && session.status === 'running') {
+    if (ipModalPollTimer) clearTimeout(ipModalPollTimer);
+    ipModalPollTimer = setTimeout(_ipModalPoll, IP_MODAL_POLL_MS);
+  }
+}
+
+async function _fetchAndRenderIPModal() {
+  try {
+    const res  = await fetch(`/api/bulk/history/${currentIPSessionId}`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const results = (data.session && data.session.results) || [];
+
+    // Also refresh the cache so the IP table stays current
+    ipResultCache[currentIPSessionId] = results;
+
+    const r = results.find(x => x.ip === currentIPAddr);
+    if (!r) { _ipdmShowError('IP not found in this session.'); return; }
+    currentIPData = r;
+
+    // Update last-refreshed timestamp
+    const nowStr = new Date().toLocaleTimeString(undefined, {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    const tsEl = document.getElementById('ipdmRefreshTs');
+    if (tsEl) tsEl.textContent = 'Updated ' + nowStr;
+
+    _renderIPModalHeader(r);
+    renderIPTabPorts(r);
+    renderIPTabRecon(r, data.session);
+    renderIPTabPing(r);
+    renderIPTabPortScan(r, data.session);
+    renderIPTabServices(r);
+    renderIPTabVulns(r);
+    renderIPTabNikto(r);
+  } catch(e) {
+    _ipdmShowError('Failed to load data: ' + e.message);
+  }
+}
+
+async function _ipModalPoll() {
+  if (!document.getElementById('ipDetailModal').classList.contains('open')) return;
+  await _fetchAndRenderIPModal();
+  const session = allHistory.find(s => s.id === currentIPSessionId);
+  if (session && session.status === 'running') {
+    ipModalPollTimer = setTimeout(_ipModalPoll, IP_MODAL_POLL_MS);
+  }
+}
+
+function _ipdmShowLoading() {
+  ['ports','recon','ping','portscan','services','vulns','nikto'].forEach(tab => {
+    const el = document.getElementById('ipdm-' + tab + '-content');
+    if (el) el.innerHTML = `<div style="padding:2rem;text-align:center;color:#9ca3af;font-size:.82rem;">
+      <i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:.5rem;color:#2563eb;"></i>Loading…</div>`;
+  });
+}
+function _ipdmShowError(msg) {
+  document.getElementById('ipdm-ports-content').innerHTML =
+    `<div style="padding:1.5rem;background:#fef2f2;border-radius:10px;border:1.5px solid #fecaca;color:#dc2626;font-size:.82rem;">
+      <i class="fa-solid fa-circle-exclamation"></i> ${esc(msg)}</div>`;
+}
+
+function _renderIPModalHeader(r) {
+  const sev      = (r.severity || 'none').toLowerCase();
   const isOnline = r.status === 'online';
+  const hostnameStr = (r.hostname && r.hostname !== '-' && r.hostname !== 'Unknown') ? r.hostname : 'Unknown';
 
-  // Header
   document.getElementById('ipdmIP').textContent = r.ip || '—';
   document.getElementById('ipdmIcon').className = 'ipdm-ip-icon ' + (sev === 'none' ? 'clean' : sev);
-  const hostnameStr = (r.hostname && r.hostname !== '-') ? r.hostname : 'Unknown';
+  document.getElementById('ipdmIcon').innerHTML = sev === 'none' || sev === 'low'
+    ? '<i class="fa-solid fa-server"></i>'
+    : '<i class="fa-solid fa-circle-exclamation"></i>';
+
   document.getElementById('ipdmMeta').innerHTML =
-    `<span class="ipt-status ${isOnline?'online':'offline'}" style="display:inline-flex;align-items:center;gap:.25rem;padding:.1rem .4rem;border-radius:4px;font-size:.7rem;font-weight:700;">
-       <i class="fa-solid fa-circle" style="font-size:.35rem;"></i>${isOnline?'Online':'Offline'}
-     </span>&nbsp;&nbsp;
-     <i class="fa-solid fa-desktop" style="font-size:.6rem;"></i> ${esc(hostnameStr)}
-     ${r.os ? `&nbsp;&nbsp;<i class="fa-brands fa-windows" style="font-size:.6rem;"></i> ${esc(r.os)}` : ''}`;
+    `<span class="ipt-status ${isOnline?'online':'offline'}" style="display:inline-flex;align-items:center;gap:.25rem;padding:.12rem .45rem;border-radius:4px;font-size:.7rem;font-weight:700;">
+       <i class="fa-solid fa-circle" style="font-size:.32rem;"></i>${isOnline?'Online':'Offline'}
+     </span>&ensp;<i class="fa-solid fa-desktop" style="font-size:.58rem;color:#9ca3af;"></i> ${esc(hostnameStr)}
+     ${r.os ? `&ensp;<i class="fa-brands fa-windows" style="font-size:.58rem;color:#9ca3af;"></i> ${esc(r.os)}` : ''}`;
 
   const badge = document.getElementById('ipdmSevBadge');
   badge.className = 'ipdm-sev-badge ' + (sev === 'none' ? 'clean' : sev);
-  badge.innerHTML = (sev === 'none' ? '<i class="fa-solid fa-circle-check"></i> Clean'
-    : sev === 'critical' ? '<i class="fa-solid fa-circle-exclamation"></i> Critical'
-    : sev === 'high'     ? '<i class="fa-solid fa-circle-exclamation"></i> High'
-    : sev === 'medium'   ? '<i class="fa-solid fa-triangle-exclamation"></i> Medium'
-    :                      '<i class="fa-solid fa-shield-halved"></i> Low');
-
-  // Render all tabs
-  renderIPTabPorts(r);
-  renderIPTabRecon(r);
-  renderIPTabPing(r);
-  renderIPTabPortScan(r);
-  renderIPTabServices(r);
-  renderIPTabVulns(r);
-  renderIPTabNikto(r);
-
-  // Show modal, reset to first tab
-  switchIPTab('ports');
-  document.getElementById('ipDetailModal').classList.add('open');
-  document.body.style.overflow = 'hidden';
+  const sevIcons = {critical:'circle-exclamation',high:'circle-exclamation',medium:'triangle-exclamation',low:'shield-halved',none:'circle-check'};
+  const sevLabels = {critical:'Critical',high:'High',medium:'Medium',low:'Low',none:'Clean'};
+  badge.innerHTML = `<i class="fa-solid fa-${sevIcons[sev]||'circle-check'}"></i> ${sevLabels[sev]||'Clean'}`;
 }
 
+/* ── Close ────────────────────────────────────────────────────── */
 function closeIPModal() {
   document.getElementById('ipDetailModal').classList.remove('open');
   document.body.style.overflow = '';
-  currentIPData = null;
+  if (ipModalPollTimer) { clearTimeout(ipModalPollTimer); ipModalPollTimer = null; }
+  currentIPData = currentIPSessionId = currentIPAddr = null;
 }
 document.getElementById('ipDetailModal').addEventListener('click', function(e) {
   if (e.target === this) closeIPModal();
@@ -1466,87 +1529,121 @@ function switchIPTab(tab) {
 
 // ── Tab renderers ────────────────────────────────────────────────
 
+/* OPEN PORTS */
 function renderIPTabPorts(r) {
-  const el = document.getElementById('ipdm-ports-content');
+  const el    = document.getElementById('ipdm-ports-content');
   const ports = r.ports || [];
-  if (!ports.length) { el.innerHTML = emptyState('fa-door-open', 'No open ports found for this IP.'); return; }
+  if (!ports.length) { el.innerHTML = emptyState('door-open', 'No open ports found for this IP.'); return; }
+  const portNums = ports.map(p => Number(p.port)||0).filter(Boolean);
   const rows = ports.map(p => {
-    const state = (p.state||'open').toLowerCase();
+    const state   = (p.state || 'open').toLowerCase();
+    const proto   = (p.protocol || p.proto || 'tcp').toUpperCase();
+    const svcName = p.service || p.name || '—';
+    // Real API: version is in p.version OR built from p.product + p.version
+    const ver     = [p.product, p.version].filter(Boolean).join(' ') || p.version || '—';
+    const banner  = p.banner || p.extra_info || p.extrainfo || '—';
     return `<tr>
       <td><span class="ipdm-port-num">${esc(String(p.port||''))}</span></td>
-      <td><span class="ipdm-proto">${esc((p.protocol||p.proto||'tcp').toUpperCase())}</span></td>
+      <td><span class="ipdm-proto">${esc(proto)}</span></td>
       <td><span class="ipdm-port-state ${state!=='open'?state:''}">${esc(state)}</span></td>
-      <td><span class="ipdm-svc-name">${esc(p.service||p.name||'—')}</span></td>
-      <td><span class="ipdm-svc-ver">${esc(p.version||p.product||'—')}</span></td>
-      <td style="font-size:.72rem;color:#6b7280;">${esc(p.banner||p.extra||'—')}</td>
+      <td><span class="ipdm-svc-name">${esc(svcName)}</span></td>
+      <td><span class="ipdm-svc-ver">${esc(ver)}</span></td>
+      <td style="font-size:.72rem;color:#6b7280;max-width:160px;word-break:break-word;">${esc(banner)}</td>
     </tr>`;
   }).join('');
   el.innerHTML = `
     <div class="ipdm-info-grid" style="margin-bottom:.875rem;">
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Total Open Ports</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-door-open" style="color:#2563eb;"></i> Total Open Ports</div>
         <div class="ipdm-info-card-val" style="color:#2563eb;">${ports.length}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Port Range</div>
-        <div class="ipdm-info-card-val">${ports.length ? Math.min(...ports.map(p=>p.port||0)) + ' – ' + Math.max(...ports.map(p=>p.port||0)) : '—'}</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-arrows-left-right" style="color:#6b7280;"></i> Port Range</div>
+        <div class="ipdm-info-card-val">${portNums.length ? Math.min(...portNums) + ' – ' + Math.max(...portNums) : '—'}</div>
       </div>
     </div>
     <div class="ipdm-port-tbl-wrap">
       <table class="ipdm-port-tbl">
-        <thead><tr><th>Port</th><th>Protocol</th><th>State</th><th>Service</th><th>Version</th><th>Banner</th></tr></thead>
+        <thead><tr><th>Port</th><th>Protocol</th><th>State</th><th>Service</th><th>Version / Product</th><th>Banner / Extra</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
 }
 
-function renderIPTabRecon(r) {
-  const el = document.getElementById('ipdm-recon-content');
+/* RECONNAISSANCE */
+function renderIPTabRecon(r, session) {
+  const el    = document.getElementById('ipdm-recon-content');
   const ports = r.ports || [];
-  const vulns = r.vulnerabilities || [];
-  const sev = (r.severity || 'none').toLowerCase();
+  const vulns = r.vulnerabilities || r.vulns || [];
+  const sev   = (r.severity || 'none').toLowerCase();
+  const hostname = (r.hostname && r.hostname !== '-') ? r.hostname : 'Unknown';
+  // scanned_at from IP result, or fallback to session started_at
+  const scannedAt = r.scanned_at || r.time || r.scan_time || (session && session.started_at) || null;
+  const latency   = r.latency != null ? r.latency + ' ms' : (r.rtt || '—');
+
   el.innerHTML = `
     <div class="ipdm-info-grid">
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">IP Address</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-network-wired" style="color:#2563eb;"></i> IP Address</div>
         <div class="ipdm-info-card-val">${esc(r.ip||'—')}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Hostname / rDNS</div>
-        <div class="ipdm-info-card-val" style="font-size:.82rem;">${esc((r.hostname&&r.hostname!=='-')?r.hostname:'Unknown')}</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-tag" style="color:#2563eb;"></i> Hostname / rDNS</div>
+        <div class="ipdm-info-card-val" style="font-size:.82rem;">${esc(hostname)}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Operating System</div>
-        <div class="ipdm-info-card-val" style="font-size:.82rem;">${esc(r.os||r.os_guess||'Unknown')}</div>
+        <div class="ipdm-info-card-title"><i class="fa-brands fa-windows" style="color:#2563eb;"></i> Operating System</div>
+        <div class="ipdm-info-card-val" style="font-size:.78rem;">${esc(r.os || r.os_guess || 'Unknown')}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">MAC Address</div>
-        <div class="ipdm-info-card-val" style="font-size:.82rem;">${esc(r.mac||r.mac_address||'—')}</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-ethernet" style="color:#2563eb;"></i> MAC Address</div>
+        <div class="ipdm-info-card-val" style="font-size:.82rem;">${esc(r.mac || r.mac_address || '—')}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Status</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-circle-dot" style="color:#2563eb;"></i> Status</div>
         <div class="ipdm-info-card-val ${r.status==='online'?'green':'red'}">${r.status==='online'?'Online':'Offline'}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Overall Severity</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-gauge" style="color:#2563eb;"></i> Latency</div>
+        <div class="ipdm-info-card-val">${esc(String(latency))}</div>
+      </div>
+      <div class="ipdm-info-card">
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-calendar-check" style="color:#2563eb;"></i> Scanned At</div>
+        <div class="ipdm-info-card-val" style="font-size:.75rem;">${scannedAt ? fmtDateFull(scannedAt) : '—'}</div>
+      </div>
+      <div class="ipdm-info-card">
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-triangle-exclamation" style="color:#2563eb;"></i> Overall Severity</div>
         <div class="ipdm-info-card-val ${sev==='critical'||sev==='high'?'red':sev==='medium'?'orange':'green'}">${sev==='none'?'Clean':sev.charAt(0).toUpperCase()+sev.slice(1)}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Open Ports</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-door-open" style="color:#2563eb;"></i> Open Ports</div>
         <div class="ipdm-info-card-val" style="color:#2563eb;">${ports.length}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Vulnerabilities Found</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-bug" style="color:#2563eb;"></i> Vulnerabilities Found</div>
         <div class="ipdm-info-card-val ${vulns.length?'red':'green'}">${vulns.length}</div>
       </div>
     </div>
+    ${ports.length ? `
+    <div class="ipdm-section-hdr" style="margin-top:1rem;"><i class="fa-solid fa-plug"></i> Open Ports &amp; Services</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:1rem;">
+      ${ports.map(p => {
+        const svc = p.service || p.name || '';
+        const ver = [p.product, p.version].filter(Boolean).join(' ') || '';
+        return `<div style="display:inline-flex;align-items:center;gap:.3rem;padding:.3rem .7rem;border-radius:7px;background:#eff6ff;border:1px solid #bfdbfe;font-size:.72rem;">
+          <span style="font-family:monospace;font-weight:800;color:#1d4ed8;">${esc(String(p.port))}</span>
+          ${svc ? `<span style="color:#374151;font-weight:600;">${esc(svc)}</span>` : ''}
+          ${ver ? `<span style="color:#6b7280;">${esc(ver)}</span>` : ''}
+        </div>`;
+      }).join('')}
+    </div>` : ''}
     ${r.traceroute && r.traceroute.length ? `
-    <div class="ipdm-section-hdr" style="margin-top:1rem;"><i class="fa-solid fa-route"></i> Traceroute</div>
+    <div class="ipdm-section-hdr" style="margin-top:.75rem;"><i class="fa-solid fa-route"></i> Traceroute</div>
     <div class="ipdm-port-tbl-wrap">
       <table class="ipdm-port-tbl">
         <thead><tr><th>Hop</th><th>IP</th><th>RTT</th><th>Hostname</th></tr></thead>
-        <tbody>${r.traceroute.map((h,i)=>`<tr>
-          <td style="font-family:monospace;font-weight:700;color:#6b7280;">${i+1}</td>
+        <tbody>${(r.traceroute||[]).map((h,i)=>`<tr>
+          <td style="font-family:monospace;font-weight:700;color:#9ca3af;">${i+1}</td>
           <td><span class="ipdm-port-num">${esc(h.ip||'*')}</span></td>
           <td style="font-family:monospace;font-size:.75rem;">${esc(h.rtt||'—')}</td>
           <td style="font-size:.75rem;color:#6b7280;">${esc(h.hostname||'—')}</td>
@@ -1555,185 +1652,257 @@ function renderIPTabRecon(r) {
     </div>` : ''}`;
 }
 
+/* PING TEST */
 function renderIPTabPing(r) {
-  const el = document.getElementById('ipdm-ping-content');
-  const ping = r.ping || r.ping_result || {};
-  const pings = ping.probes || ping.results || [];
+  const el      = document.getElementById('ipdm-ping-content');
+  const ping    = r.ping || r.ping_result || r.ping_data || {};
+  const pings   = ping.probes || ping.results || ping.replies || [];
   const isAlive = r.status === 'online';
+  const latency = r.latency != null ? r.latency + ' ms' : (r.rtt || ping.avg_rtt || ping.rtt || '—');
+
   el.innerHTML = `
-    <div class="ipdm-info-grid" style="margin-bottom:.875rem;">
+    <div class="ipdm-info-grid">
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Host Status</div>
-        <div class="ipdm-info-card-val ${isAlive?'green':'red'}">${isAlive?'Alive':'Down'}</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-circle-dot" style="color:#2563eb;"></i> Host Status</div>
+        <div class="ipdm-info-card-val ${isAlive?'green':'red'}">${isAlive ? '<i class="fa-solid fa-circle-check" style="font-size:.9rem;"></i> Alive' : '<i class="fa-solid fa-circle-xmark" style="font-size:.9rem;"></i> Down'}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Avg RTT</div>
-        <div class="ipdm-info-card-val">${esc(ping.avg_rtt||ping.rtt||r.ping_rtt||'—')}</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-gauge" style="color:#2563eb;"></i> Latency / Avg RTT</div>
+        <div class="ipdm-info-card-val">${esc(String(latency))}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Packets Sent</div>
-        <div class="ipdm-info-card-val">${ping.sent||pings.length||'—'}</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-paper-plane" style="color:#2563eb;"></i> Packets Sent</div>
+        <div class="ipdm-info-card-val">${ping.sent != null ? ping.sent : (pings.length || '—')}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Packet Loss</div>
-        <div class="ipdm-info-card-val ${ping.loss?'orange':'green'}">${ping.loss!=null?ping.loss+'%':'0%'}</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-triangle-exclamation" style="color:#2563eb;"></i> Packet Loss</div>
+        <div class="ipdm-info-card-val ${ping.loss?'orange':'green'}">${ping.loss != null ? ping.loss + '%' : '0%'}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Min RTT</div>
-        <div class="ipdm-info-card-val">${esc(ping.min_rtt||'—')}</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-arrow-down" style="color:#2563eb;"></i> Min RTT</div>
+        <div class="ipdm-info-card-val">${esc(String(ping.min_rtt || '—'))}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Max RTT</div>
-        <div class="ipdm-info-card-val">${esc(ping.max_rtt||'—')}</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-arrow-up" style="color:#2563eb;"></i> Max RTT</div>
+        <div class="ipdm-info-card-val">${esc(String(ping.max_rtt || '—'))}</div>
       </div>
     </div>
     ${pings.length ? `
-    <div class="ipdm-section-hdr"><i class="fa-solid fa-chart-line"></i> Ping Probes</div>
-    ${pings.map((p,i)=>`<div class="ipdm-ping-row ${p.success||p.status==='success'?'success':'fail'}">
+    <div class="ipdm-section-hdr" style="margin-top:1rem;"><i class="fa-solid fa-chart-line"></i> Ping Probes</div>
+    ${pings.map((p,i)=>`<div class="ipdm-ping-row ${(p.success||p.status==='success'||p.received)?'success':'fail'}">
       <span class="ipdm-ping-seq">Probe ${i+1}</span>
-      <span class="ipdm-ping-time">${esc(p.rtt||p.time||'—')}</span>
+      <span class="ipdm-ping-time">${esc(String(p.rtt||p.time||p.latency||'—'))}</span>
       <span class="ipdm-ping-ttl">TTL: ${esc(String(p.ttl||'—'))}</span>
-      <span style="font-size:.7rem;font-weight:700;${p.success||p.status==='success'?'color:#16a34a':'color:#dc2626'}">
-        ${p.success||p.status==='success'?'Success':'Timeout'}
+      <span style="font-size:.7rem;font-weight:700;${(p.success||p.status==='success'||p.received)?'color:#16a34a':'color:#dc2626'}">
+        ${(p.success||p.status==='success'||p.received)?'<i class="fa-solid fa-check"></i> Success':'<i class="fa-solid fa-times"></i> Timeout'}
       </span>
-    </div>`).join('')}` : `<div style="margin-top:.5rem;font-size:.78rem;color:#6b7280;padding:.75rem;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;">
-      <i class="fa-solid fa-info-circle" style="color:#2563eb;"></i>&nbsp;
-      Host is <strong>${isAlive?'online':'offline'}</strong>${isAlive?' — detailed ping probe data not stored in this session.':' — did not respond to ping.'}
+    </div>`).join('')}` : `
+    <div style="margin-top:.75rem;padding:.875rem 1rem;background:#f0f9ff;border-radius:10px;border:1.5px solid #bae6fd;font-size:.78rem;color:#0369a1;display:flex;align-items:flex-start;gap:.5rem;">
+      <i class="fa-solid fa-circle-info" style="margin-top:.1rem;"></i>
+      <span>Host is <strong>${isAlive ? 'online' : 'offline'}</strong>${isAlive ? ' — ICMP ping was used for discovery. Detailed per-probe data is not stored in history.' : ' — host did not respond to ICMP ping during the scan.'}</span>
     </div>`}`;
 }
 
-function renderIPTabPortScan(r) {
-  const el = document.getElementById('ipdm-portscan-content');
-  const ports = r.ports || [];
+/* PORT SCANNING */
+function renderIPTabPortScan(r, session) {
+  const el       = document.getElementById('ipdm-portscan-content');
+  const ports    = r.ports || [];
   const scanInfo = r.port_scan || r.scan_info || {};
+  const depth    = session && session.port_depth ? session.port_depth : (r.port_depth || 'standard');
+  const depthMap = { standard:'Standard (Top 1000)', full:'Full (1–65535)', deep:'Deep (All Ports)', quick:'Quick (Top 100)' };
+  const portRange = depth === 'full' ? '1 – 65535' : depth === 'standard' ? '1 – 1000 (top)' : (scanInfo.range || '—');
+
   el.innerHTML = `
-    <div class="ipdm-info-grid" style="margin-bottom:.875rem;">
+    <div class="ipdm-info-grid">
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Ports Scanned</div>
-        <div class="ipdm-info-card-val">${esc(String(scanInfo.total_scanned||r.ports_scanned||'—'))}</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-list-ol" style="color:#2563eb;"></i> Ports Scanned</div>
+        <div class="ipdm-info-card-val">${esc(String(scanInfo.total_scanned || r.ports_scanned || portRange))}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Open Ports</div>
-        <div class="ipdm-info-card-val" style="color:#16a34a;">${ports.length}</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-door-open" style="color:#16a34a;"></i> Open Ports Found</div>
+        <div class="ipdm-info-card-val green">${ports.length}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Scan Technique</div>
-        <div class="ipdm-info-card-val" style="font-size:.82rem;">${esc(scanInfo.technique||r.scan_type||'TCP SYN')}</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-wand-magic-sparkles" style="color:#2563eb;"></i> Scan Technique</div>
+        <div class="ipdm-info-card-val" style="font-size:.82rem;">${esc(scanInfo.technique || r.scan_type || 'TCP SYN')}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Scan Duration</div>
-        <div class="ipdm-info-card-val">${esc(scanInfo.duration||r.scan_duration||'—')}</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-layer-group" style="color:#2563eb;"></i> Scan Depth</div>
+        <div class="ipdm-info-card-val" style="font-size:.78rem;">${esc(depthMap[depth] || depth)}</div>
+      </div>
+      <div class="ipdm-info-card">
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-stopwatch" style="color:#2563eb;"></i> Scan Duration</div>
+        <div class="ipdm-info-card-val">${esc(String(scanInfo.duration || r.scan_duration || '—'))}</div>
+      </div>
+      <div class="ipdm-info-card">
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-arrows-left-right" style="color:#2563eb;"></i> Port Range</div>
+        <div class="ipdm-info-card-val" style="font-size:.78rem;">${esc(portRange)}</div>
       </div>
     </div>
     ${ports.length ? `
-    <div class="ipdm-section-hdr"><i class="fa-solid fa-list"></i> Discovered Ports</div>
-    <div style="display:flex;flex-wrap:wrap;gap:.375rem;margin-bottom:1rem;">
-      ${ports.map(p=>`<span style="display:inline-flex;align-items:center;gap:.25rem;padding:.25rem .65rem;border-radius:6px;background:#eff6ff;border:1px solid #bfdbfe;font-family:monospace;font-size:.75rem;font-weight:700;color:#1d4ed8;">
-        <i class="fa-solid fa-door-open" style="font-size:.55rem;"></i>${esc(String(p.port))}/${esc((p.protocol||p.proto||'tcp').toLowerCase())}
+    <div class="ipdm-section-hdr" style="margin-top:1rem;"><i class="fa-solid fa-list"></i> Discovered Ports</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:1rem;">
+      ${ports.map(p => `<span style="display:inline-flex;align-items:center;gap:.3rem;padding:.28rem .7rem;border-radius:7px;background:#eff6ff;border:1px solid #bfdbfe;font-family:monospace;font-size:.75rem;font-weight:700;color:#1d4ed8;">
+        <i class="fa-solid fa-door-open" style="font-size:.52rem;"></i>
+        ${esc(String(p.port))}/${esc((p.protocol||p.proto||'tcp').toLowerCase())}
+        ${p.service||p.name ? `<span style="font-family:sans-serif;font-size:.65rem;color:#374151;font-weight:600;">${esc(p.service||p.name)}</span>` : ''}
       </span>`).join('')}
-    </div>` : emptyState('fa-magnifying-glass','No ports discovered during scan.')}`;
+    </div>` : emptyState('magnifying-glass','No ports discovered during scan.')}`;
 }
 
+/* SERVICES & VERSIONS */
 function renderIPTabServices(r) {
-  const el = document.getElementById('ipdm-services-content');
-  const ports = (r.ports || []).filter(p => p.service || p.name || p.version || p.product);
-  if (!ports.length) { el.innerHTML = emptyState('fa-layer-group','No service or version data available.'); return; }
-  const rows = ports.map(p => `<tr>
-    <td><span class="ipdm-port-num">${esc(String(p.port||''))}</span></td>
-    <td><span class="ipdm-proto">${esc((p.protocol||p.proto||'tcp').toUpperCase())}</span></td>
-    <td><span class="ipdm-svc-name">${esc(p.service||p.name||'—')}</span></td>
-    <td><span class="ipdm-svc-ver">${esc(p.version||p.product||'—')}</span></td>
-    <td style="font-size:.72rem;color:#4b5563;">${esc(p.extra_info||p.extrainfo||p.info||'—')}</td>
-    <td style="font-size:.72rem;color:#6b7280;font-family:monospace;">${esc(p.cpe||'—')}</td>
-  </tr>`).join('');
+  const el    = document.getElementById('ipdm-services-content');
+  const ports = r.ports || [];
+  if (!ports.length) { el.innerHTML = emptyState('layer-group','No service or version data available.'); return; }
+  const rows = ports.map(p => {
+    const ver = [p.product, p.version].filter(Boolean).join(' ') || p.version || '—';
+    return `<tr>
+      <td><span class="ipdm-port-num">${esc(String(p.port||''))}</span></td>
+      <td><span class="ipdm-proto">${esc((p.protocol||p.proto||'tcp').toUpperCase())}</span></td>
+      <td><span class="ipdm-svc-name">${esc(p.service||p.name||'—')}</span></td>
+      <td><span class="ipdm-svc-ver">${esc(ver)}</span></td>
+      <td style="font-size:.72rem;color:#4b5563;max-width:120px;word-break:break-word;">${esc(p.extra_info||p.extrainfo||p.info||'—')}</td>
+      <td style="font-size:.68rem;color:#6b7280;font-family:monospace;max-width:120px;word-break:break-word;">${esc(p.cpe||'—')}</td>
+    </tr>`;
+  }).join('');
   el.innerHTML = `
     <div class="ipdm-port-tbl-wrap">
       <table class="ipdm-port-tbl">
-        <thead><tr><th>Port</th><th>Proto</th><th>Service</th><th>Version</th><th>Extra Info</th><th>CPE</th></tr></thead>
+        <thead><tr><th>Port</th><th>Proto</th><th>Service</th><th>Version / Product</th><th>Extra Info</th><th>CPE</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
 }
 
+/* VULNERABILITY SCAN — rich cards matching live scanner */
 function renderIPTabVulns(r) {
-  const el = document.getElementById('ipdm-vulns-content');
+  const el    = document.getElementById('ipdm-vulns-content');
   const vulns = r.vulnerabilities || r.vulns || [];
   if (!vulns.length) {
-    el.innerHTML = `<div style="text-align:center;padding:2rem;background:#f0fdf4;border-radius:10px;border:1.5px solid #bbf7d0;">
-      <i class="fa-solid fa-shield-check" style="font-size:2rem;color:#16a34a;margin-bottom:.5rem;display:block;"></i>
-      <div style="font-weight:700;color:#15803d;font-size:.9rem;">No Vulnerabilities Found</div>
-      <div style="font-size:.75rem;color:#4b5563;margin-top:.25rem;">This host appears clean based on current scan data.</div>
+    el.innerHTML = `<div style="text-align:center;padding:2.5rem 1rem;background:#f0fdf4;border-radius:12px;border:1.5px solid #bbf7d0;">
+      <i class="fa-solid fa-shield-check" style="font-size:2.2rem;color:#16a34a;margin-bottom:.625rem;display:block;"></i>
+      <div style="font-weight:700;color:#15803d;font-size:.95rem;">No Vulnerabilities Found</div>
+      <div style="font-size:.75rem;color:#4b5563;margin-top:.3rem;">This host appears clean based on current scan data.</div>
     </div>`;
     return;
   }
-  const sevOrder = {critical:0,high:1,medium:2,low:3};
-  const sorted = [...vulns].sort((a,b)=>(sevOrder[(a.severity||'low').toLowerCase()]||3)-(sevOrder[(b.severity||'low').toLowerCase()]||3));
+  const sevOrder = {critical:0,high:1,medium:2,low:3,info:4};
+  const sorted = [...vulns].sort((a,b) =>
+    (sevOrder[(a.severity||'low').toLowerCase()]??3) - (sevOrder[(b.severity||'low').toLowerCase()]??3)
+  );
   const counts = {critical:0,high:0,medium:0,low:0};
-  sorted.forEach(v=>{ const s=(v.severity||'low').toLowerCase(); if(counts[s]!==undefined) counts[s]++; });
+  sorted.forEach(v => { const s=(v.severity||'low').toLowerCase(); if(counts[s]!==undefined) counts[s]++; });
+
   el.innerHTML = `
-    <div class="ipdm-info-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:1rem;">
-      ${['critical','high','medium','low'].map(s=>`<div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">${s.charAt(0).toUpperCase()+s.slice(1)}</div>
-        <div class="ipdm-info-card-val ${s==='critical'||s==='high'?'red':s==='medium'?'orange':'green'}">${counts[s]}</div>
+    <div class="ipdm-info-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:1.125rem;">
+      ${['critical','high','medium','low'].map(s=>`<div class="ipdm-info-card" style="text-align:center;">
+        <div class="ipdm-info-card-title" style="justify-content:center;">${s.charAt(0).toUpperCase()+s.slice(1)}</div>
+        <div class="ipdm-info-card-val ${s==='critical'||s==='high'?'red':s==='medium'?'orange':'green'}" style="font-size:1.4rem;">${counts[s]}</div>
       </div>`).join('')}
     </div>
     ${sorted.map(v => {
-      const sev = (v.severity||'low').toLowerCase();
-      const cves = v.cve ? (Array.isArray(v.cve)?v.cve:[v.cve]) : (v.cves||[]);
-      const ports = v.port ? [v.port] : (v.ports||[]);
+      const sev       = (v.severity||'low').toLowerCase();
+      const sevColor  = {critical:'#dc2626',high:'#ea580c',medium:'#d97706',low:'#2563eb',info:'#6b7280'};
+      const sevBg     = {critical:'#fee2e2',high:'#ffedd5',medium:'#fef3c7',low:'#dbeafe',info:'#f3f4f6'};
+      // CVEs — accept v.cve (string|array), v.cves, v.cve_id
+      const rawCVEs   = v.cve ? (Array.isArray(v.cve)?v.cve:[v.cve]) : (v.cves || (v.cve_id?[v.cve_id]:[]) );
+      // Port — accept v.port, v.ports, v.affected_port
+      const portList  = v.port != null ? [v.port] : (v.ports || (v.affected_port!=null?[v.affected_port]:[]));
+      // Description
+      const desc      = v.description || v.desc || v.details || '';
+      // CVSS — accept v.cvss, v.cvss_score, v.score
+      const cvss      = v.cvss != null ? v.cvss : (v.cvss_score != null ? v.cvss_score : v.score);
+      // Published date
+      const published = v.published || v.published_at || v.date || '';
+      // Reference
+      const ref       = v.reference || v.url || v.ref || v.link || '';
+
       return `<div class="ipdm-vuln-card ${sev}">
         <div class="ipdm-vuln-header">
-          <div class="ipdm-vuln-name"><i class="fa-solid fa-bug" style="color:${sev==='critical'?'#dc2626':sev==='high'?'#ea580c':sev==='medium'?'#d97706':'#2563eb'};font-size:.75rem;"></i> ${esc(v.name||v.title||'Unknown Vulnerability')}</div>
-          <span class="ipdm-sev-badge ${sev}" style="font-size:.62rem;padding:.15rem .6rem;">${sev.toUpperCase()}</span>
+          <div class="ipdm-vuln-name">
+            <i class="fa-solid fa-triangle-exclamation" style="color:${sevColor[sev]||'#6b7280'};font-size:.75rem;"></i>
+            ${esc(v.name||v.title||'Unknown Vulnerability')}
+          </div>
+          <span class="ipdm-sev-badge ${sev}" style="font-size:.6rem;padding:.15rem .6rem;flex-shrink:0;">${(sev).toUpperCase()}</span>
         </div>
-        ${v.description||v.desc ? `<div class="ipdm-vuln-desc">${esc(v.description||v.desc)}</div>` : ''}
+        ${desc ? `<div class="ipdm-vuln-desc">${esc(desc)}</div>` : ''}
         <div class="ipdm-vuln-meta">
-          ${cves.map(c=>`<span class="ipdm-vuln-tag cve"><i class="fa-solid fa-circle-info"></i>${esc(c)}</span>`).join('')}
-          ${ports.map(p=>`<span class="ipdm-vuln-tag port"><i class="fa-solid fa-door-open"></i>Port ${esc(String(p))}</span>`).join('')}
-          ${v.cvss||v.score ? `<span class="ipdm-vuln-tag"><i class="fa-solid fa-gauge-high"></i>CVSS: ${esc(String(v.cvss||v.score))}</span>` : ''}
-          ${v.plugin_id||v.id ? `<span class="ipdm-vuln-tag"><i class="fa-solid fa-hashtag"></i>${esc(String(v.plugin_id||v.id))}</span>` : ''}
+          ${rawCVEs.map(c => {
+            const cveStr = String(c);
+            const cveLink = cveStr.match(/CVE-\d{4}-\d+/i)
+              ? `<a href="https://nvd.nist.gov/vuln/detail/${cveStr}" target="_blank" style="color:inherit;text-decoration:none;">${esc(cveStr)} <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:.5rem;"></i></a>`
+              : esc(cveStr);
+            return `<span class="ipdm-vuln-tag cve"><i class="fa-solid fa-circle-info"></i>${cveLink}</span>`;
+          }).join('')}
+          ${portList.map(p => `<span class="ipdm-vuln-tag port"><i class="fa-solid fa-door-open"></i>Port ${esc(String(p))}</span>`).join('')}
+          ${cvss != null ? `<span class="ipdm-vuln-tag" style="background:${sevBg[sev]};color:${sevColor[sev]};border:1px solid ${sevColor[sev]}33;">
+            <i class="fa-solid fa-gauge-high"></i>CVSS: ${esc(String(cvss))}
+          </span>` : ''}
+          ${published ? `<span class="ipdm-vuln-tag"><i class="fa-regular fa-calendar"></i>Published: ${esc(published)}</span>` : ''}
         </div>
+        ${ref ? `<div style="margin-top:.5rem;">
+          <a href="${esc(ref)}" target="_blank" style="font-size:.7rem;color:#2563eb;text-decoration:none;display:inline-flex;align-items:center;gap:.3rem;font-weight:600;">
+            <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:.55rem;"></i>View Reference
+          </a>
+        </div>` : ''}
       </div>`;
     }).join('')}`;
 }
 
+/* NIKTO */
 function renderIPTabNikto(r) {
-  const el = document.getElementById('ipdm-nikto-content');
-  const nikto = r.nikto || r.nikto_results || r.nikto_output || {};
-  const items = nikto.items || nikto.findings || nikto.results || (Array.isArray(nikto)?nikto:[]);
+  const el    = document.getElementById('ipdm-nikto-content');
+  const nikto = r.nikto || r.nikto_results || r.nikto_output || r.nikto_data || {};
+  const items = Array.isArray(nikto) ? nikto
+    : (nikto.items || nikto.findings || nikto.results || nikto.vulnerabilities || []);
+  const hasHTTP = (r.ports||[]).some(p => [80,443,8080,8443,8000,8888,4443].includes(Number(p.port)));
+  const server  = nikto.server || nikto.web_server || nikto.banner || '—';
+  const target  = nikto.target || nikto.host || r.ip || '—';
+
   el.innerHTML = `
     <div class="ipdm-info-grid" style="margin-bottom:.875rem;">
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Target</div>
-        <div class="ipdm-info-card-val" style="font-size:.82rem;">${esc(nikto.target||nikto.host||r.ip||'—')}</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-crosshairs" style="color:#2563eb;"></i> Target</div>
+        <div class="ipdm-info-card-val" style="font-size:.82rem;">${esc(target)}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Web Server</div>
-        <div class="ipdm-info-card-val" style="font-size:.78rem;">${esc(nikto.server||nikto.web_server||'—')}</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-server" style="color:#2563eb;"></i> Web Server</div>
+        <div class="ipdm-info-card-val" style="font-size:.78rem;">${esc(server)}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Findings</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-bug" style="color:#2563eb;"></i> Findings</div>
         <div class="ipdm-info-card-val ${items.length?'orange':'green'}">${items.length}</div>
       </div>
       <div class="ipdm-info-card">
-        <div class="ipdm-info-card-title">Scan Duration</div>
+        <div class="ipdm-info-card-title"><i class="fa-solid fa-stopwatch" style="color:#2563eb;"></i> Scan Duration</div>
         <div class="ipdm-info-card-val">${esc(nikto.duration||nikto.scan_time||'—')}</div>
       </div>
     </div>
-    ${items.length ? items.map(it=>`<div class="ipdm-nikto-item">
-      <div class="ipdm-nikto-item-url">${esc(it.url||it.uri||it.path||'—')}</div>
-      <div class="ipdm-nikto-item-msg">${esc(it.msg||it.message||it.description||it.finding||String(it))}</div>
-      <div class="ipdm-nikto-item-meta">
-        ${it.id||it.nikto_id ? `<span class="ipdm-vuln-tag"><i class="fa-solid fa-hashtag"></i>${esc(String(it.id||it.nikto_id))}</span>` : ''}
-        ${it.method ? `<span class="ipdm-vuln-tag cve">${esc(it.method)}</span>` : ''}
-        ${it.references||it.ref ? `<span class="ipdm-vuln-tag"><i class="fa-solid fa-link"></i>${esc(it.references||it.ref)}</span>` : ''}
-      </div>
-    </div>`).join('') : `<div style="padding:1.25rem;background:#f0f9ff;border-radius:10px;border:1.5px solid #bae6fd;font-size:.78rem;color:#0369a1;">
-      <i class="fa-solid fa-circle-info" style="margin-right:.35rem;"></i>
-      ${nikto.error ? `Nikto scan error: ${esc(nikto.error)}` :
-        !r.ports || !r.ports.find(p=>p.port===80||p.port===443||p.port===8080||p.port===8443)
-        ? 'No HTTP/HTTPS ports detected on this host — Nikto scan was not performed.'
-        : 'Nikto scan was performed but returned no findings, or results were not stored in this session.'}
+    ${items.length ? items.map(it => {
+      const url  = it.url || it.uri || it.path || '';
+      const msg  = it.msg || it.message || it.description || it.finding || String(it);
+      const id   = it.id || it.nikto_id || it.osvdbid || '';
+      const meth = it.method || it.http_method || '';
+      const ref  = it.references || it.ref || it.url_ref || '';
+      const sev  = (it.severity||it.risk||'info').toLowerCase();
+      const sevColors = {high:'#ea580c',medium:'#d97706',low:'#2563eb',info:'#6b7280'};
+      return `<div class="ipdm-nikto-item" style="border-left:4px solid ${sevColors[sev]||'#e5e7eb'};">
+        ${url ? `<div class="ipdm-nikto-item-url"><i class="fa-solid fa-link" style="font-size:.55rem;color:#9ca3af;margin-right:.25rem;"></i>${esc(url)}</div>` : ''}
+        <div class="ipdm-nikto-item-msg">${esc(msg)}</div>
+        <div class="ipdm-nikto-item-meta">
+          ${id ? `<span class="ipdm-vuln-tag"><i class="fa-solid fa-hashtag"></i>${esc(String(id))}</span>` : ''}
+          ${meth ? `<span class="ipdm-vuln-tag cve">${esc(meth)}</span>` : ''}
+          ${ref ? `<a href="${esc(ref)}" target="_blank" style="display:inline-flex;align-items:center;gap:.2rem;font-size:.65rem;color:#2563eb;font-weight:600;text-decoration:none;">
+            <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:.5rem;"></i>Reference</a>` : ''}
+          ${sev && sev !== 'info' ? `<span class="ipdm-vuln-tag" style="color:${sevColors[sev]||'#6b7280'};">${sev.toUpperCase()}</span>` : ''}
+        </div>
+      </div>`;
+    }).join('') : `<div style="padding:1rem 1.25rem;background:#f0f9ff;border-radius:10px;border:1.5px solid #bae6fd;font-size:.78rem;color:#0369a1;display:flex;align-items:flex-start;gap:.5rem;">
+      <i class="fa-solid fa-circle-info" style="margin-top:.1rem;flex-shrink:0;"></i>
+      <span>${nikto.error ? `Nikto error: ${esc(nikto.error)}` :
+        !hasHTTP ? 'No HTTP/HTTPS ports (80, 443, 8080…) detected on this host — Nikto web scan was not performed.' :
+        'Nikto scan was run but returned no findings, or results were not stored for this session.'}</span>
     </div>`}`;
 }
 
