@@ -25,7 +25,7 @@ body {
     font-family: 'DM Sans', sans-serif;
     background: var(--bg);
     min-height: 100vh;
-    display: flex;
+    display: block;   /* flex caused sidebar/header stacking issues when JS-injected */
     overflow-x: hidden;
 }
 
@@ -193,11 +193,11 @@ a.ni i { font-size: .9rem; width: 18px; text-align: center; flex-shrink: 0; }
 .main {
     margin-left: var(--ml);
     padding-top: var(--hh);
-    flex: 1;
     min-height: 100vh;
-    width: calc(100% - var(--ml));
+    width: auto;
     max-width: 100%;
     overflow-x: hidden;
+    box-sizing: border-box;
 }
 .content { padding: 1.25rem; }
 .pt { margin-bottom: 1.25rem; }
@@ -294,3 +294,6 @@ a.ni i { font-size: .9rem; width: 18px; text-align: center; flex-shrink: 0; }
     .srch { min-width: 100px; }
 }
 @media(max-width: 600px) { .g3 { grid-template-columns: 1fr; } .sg { grid-template-columns: 1fr 1fr; } .content { padding: .875rem; } }
+
+/* Ensure overlay covers full viewport */
+.sb-overlay { position: fixed; }
