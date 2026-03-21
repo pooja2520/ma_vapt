@@ -1023,12 +1023,37 @@ function closeDeleteModal() {
   document.getElementById('deleteModal').classList.remove('open');
   delTarget=null; delAll=false;
 }
+// async function confirmDelete() {
+//   closeDeleteModal();
+//   const url=delAll?'/api/bulk/history':`/api/bulk/history/${delTarget}`;
+//   try{ await fetch(url,{method:'DELETE',credentials:'same-origin'}); }catch(e){}
+//   if(liveTimer) clearTimeout(liveTimer);
+//   await loadHistory(false);
+// }
 async function confirmDelete() {
-  closeDeleteModal();
-  const url=delAll?'/api/bulk/history':`/api/bulk/history/${delTarget}`;
-  try{ await fetch(url,{method:'DELETE',credentials:'same-origin'}); }catch(e){}
-  if(liveTimer) clearTimeout(liveTimer);
-  await loadHistory(false);
+  const url = delAll ? '/api/bulk/history' : `/api/bulk/history/${delTarget}`;
+  const deleteBtn = document.querySelector('#deleteModal .btn[onclick="confirmDelete()"]');
+
+  // Show loading state on the delete button
+  if (deleteBtn) { deleteBtn.disabled = true; deleteBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Deleting…'; }
+
+  try {
+    const res = await fetch(url, { method: 'DELETE', credentials: 'same-origin' });
+    if (!res.ok) {
+      let msg = `Server returned ${res.status}`;
+      try { const j = await res.json(); msg = j.error || j.message || msg; } catch {}
+      throw new Error(msg);
+    }
+    // Success — close modal and reload
+    closeDeleteModal();
+    if (liveTimer) clearTimeout(liveTimer);
+    await loadHistory(false);
+  } catch (e) {
+    // Restore button and show error inside the modal
+    if (deleteBtn) { deleteBtn.disabled = false; deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i> Delete'; }
+    const body = document.getElementById('deleteModalBody');
+    if (body) body.innerHTML = `<span style="color:#ef4444;font-size:.8rem;"><i class="fa-solid fa-circle-exclamation"></i> Delete failed: ${e.message}. Check the server console.</span>`;
+  }
 }
 document.getElementById('deleteModal').addEventListener('click',e=>{ if(e.target===e.currentTarget) closeDeleteModal(); });
 
