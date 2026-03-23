@@ -1298,9 +1298,10 @@ function renderHistory(){
         } else {
             rc='bac'; rl='Clean'; ri='fa-circle-check';
         }
-        // View report link — links to reports page filtered to this target
+        // View report link — links directly to this scan's report (if available), else falls back to /reports
         var targetHost=(r.target||'').replace('https://','').replace('http://','');
-        var viewBtn='<a href="/reports" class="btn btn-o btn-s" style="font-size:.7rem;white-space:nowrap;" title="View Report for '+targetHost+'"><i class="fa-regular fa-eye"></i> View</a>';
+        var viewHref = (r.reportFilename && r.result === 'success') ? '/view-scheduled-report/' + r.id : '/reports';
+        var viewBtn='<a href="'+viewHref+'" class="btn btn-o btn-s" style="font-size:.7rem;white-space:nowrap;" title="View Report for '+targetHost+'"><i class="fa-regular fa-eye"></i> View</a>';
         return '<tr>'
             +'<td style="font-size:.72rem;color:var(--text-muted);">'+(runHistory.length-runHistory.indexOf(r))+'</td>'
             +'<td><strong style="font-size:.8rem;">'+r.scheduleName+'</strong></td>'
