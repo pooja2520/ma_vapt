@@ -347,7 +347,12 @@ function stopPolling() {
 async function pollScanState() {
     try {
         const res  = await fetch('/api/scan-logs');
+        // Session expired → the global fetch interceptor in layout.js will show
+        // the banner and redirect. Stop polling so we don't fire more requests.
+        if (res.status === 401) { stopPolling(); return; }
         const data = await res.json();
+        // Reset poll-error counter on success
+        _pollErrors = 0;
         const newLines = data.logs.slice(knownLogLen);
         if (newLines.length) {
             newLines.forEach(appendLog);
@@ -361,8 +366,19 @@ async function pollScanState() {
             updatePhaseFromLogs(data.logs);
         }
         if (!data.running) { stopPolling(); await onScanFinished(); }
-    } catch(e) {}
+    } catch(e) {
+        // Network error or JSON parse failure — back off and retry up to 5 times
+        // before giving up so a momentary blip doesn't kill the live scan view.
+        _pollErrors = (_pollErrors || 0) + 1;
+        if (_pollErrors >= 5) {
+            stopPolling();
+            const lbl = document.getElementById('phaseLabel');
+            if (lbl) lbl.textContent = '⚠️ Connection lost — refresh to reconnect';
+        }
+    }
 }
+// Track consecutive poll errors for the backoff logic above
+let _pollErrors = 0;
 
 function updateProgressFromServer(data) {
     const phase = data.phase || 1, progress = data.progress || 0, phaseName = data.phase_name || '';
@@ -405,6 +421,7 @@ function updatePhaseFromLogs(logs) {
 async function onScanFinished() {
     try {
         const res  = await fetch('/scan-status');
+        if (res.status === 401) return; // interceptor handles redirect
         const data = await res.json();
         if (data.status === 'success') {
             persistScanComplete('completed');
@@ -420,7 +437,11 @@ async function onScanFinished() {
             setScanIdleUI();
             document.getElementById('phaseLabel').textContent = '❌ Scan Failed';
         }
-    } catch(e) {}
+    } catch(e) {
+        // Surface the failure rather than silently swallowing it
+        const lbl = document.getElementById('phaseLabel');
+        if (lbl) lbl.textContent = '⚠️ Could not fetch results — refresh the page';
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -456,6 +477,7 @@ function showReconnectBanner(target) {
 async function loadTargetsIntoSelect() {
   try {
     const res = await fetch('/api/targets');
+    if (res.status === 401) return; // session expired — interceptor handles banner/redirect
     const data = await res.json();
     const sel = document.getElementById('targetSelect');
     if (!sel) return;
@@ -466,7 +488,10 @@ async function loadTargetsIntoSelect() {
       opt.textContent = `${t.name || t.url} (${t.url})`;
       sel.appendChild(opt);
     });
-  } catch(e) {}
+  } catch(e) {
+    // Network error: leave the select empty — not fatal for scanning
+    console.warn('[scanning] loadTargetsIntoSelect failed:', e.message);
+  }
 }
 
 async function detectLoginFields() {
@@ -517,6 +542,7 @@ async function loadTargetConfig() {
   if (!id) return;
   try {
     const res = await fetch(`/api/targets/${id}`);
+    if (res.status === 401) return; // interceptor handles
     const data = await res.json();
     if (data.status !== 'ok') return;
     const t = data.target;
@@ -528,7 +554,9 @@ async function loadTargetConfig() {
     };
     restoreFormConfig(prefill);
     showPrefillBanner(t.url);
-  } catch(e) {}
+  } catch(e) {
+    console.warn('[scanning] loadTargetConfig failed:', e.message);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -565,6 +593,9 @@ async function initScanPage() {
     if (!saved) {
         try {
             const res = await fetch('/api/scan-logs');
+            // 401 = session expired; clear any stale localStorage scan state so the
+            // next successful login starts with a clean page, not a phantom "running" scan.
+            if (res.status === 401) { clearScanState(); return; }
             const data = await res.json();
             if (data.running && data.target) {
                 saved = {
@@ -580,6 +611,7 @@ async function initScanPage() {
         restoreFormConfig(saved);
         try {
             const res  = await fetch('/api/scan-logs');
+            if (res.status === 401) { clearScanState(); return; }
             const data = await res.json();
             if (data.running) {
                 // Use server's logs (source of truth) — scan keeps running when you navigate away
@@ -601,6 +633,7 @@ async function initScanPage() {
             } else {
                 // Scan finished while away — fetch results and show completed state
                 const statusRes = await fetch('/scan-status');
+                if (statusRes.status === 401) { clearScanState(); return; }
                 const statusData = await statusRes.json();
                 if (statusData.status === 'success' && statusData.results) {
                     persistScanComplete('completed');

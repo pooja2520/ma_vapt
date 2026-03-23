@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1e293b">
+<!-- Prevent authenticated pages from being served from browser cache after logout.
+     The after_request hook in app.py sets Cache-Control: no-store on responses,
+     but this meta tag provides a belt-and-suspenders defence for older proxies. -->
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -47,6 +52,9 @@ img, video, iframe { max-width: 100%; }
 </style>
 </head>
 <body>
+<!-- window.__user is set server-side so layout.js can render the user name/email
+     in the header without an extra API call. It is intentionally limited to
+     non-sensitive fields (id, name, email, role) — no password hash or tokens. -->
 <script>window.__user = {{ (current_user | tojson) if current_user else 'null' }};</script>
 {% block body %}{% endblock %}
 <script src="{{ url_for('static', filename='js/layout.js') }}"></script>

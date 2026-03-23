@@ -929,6 +929,17 @@ let expandedRowId = null;  // track which row is open so re-render can restore i
 async function loadHistory(silent = false) {
   try {
     const res  = await fetch('/api/bulk/history?per=200', { credentials: 'same-origin' });
+    // 401 = session expired — stop ALL polling immediately.
+    // Without this check the catch block reschedules loadHistory every 8s,
+    // flooding the server with 401s and keeping the loop alive indefinitely.
+    // The layout.js interceptor will show the banner and redirect.
+    if (res.status === 401) {
+      if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
+      if (typeof ipModalPollTimer !== 'undefined' && ipModalPollTimer) {
+        clearTimeout(ipModalPollTimer); ipModalPollTimer = null;
+      }
+      return;
+    }
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     allHistory = data.sessions || [];
@@ -1300,6 +1311,7 @@ async function loadIPTable(id) {
   if (!el) return;
   try {
     const res  = await fetch(`/api/bulk/history/${id}`, { credentials: 'same-origin' });
+    if (res.status === 401) return; // interceptor handles
     const data = await res.json();
     const rows = (data.session && data.session.results) || [];
 
@@ -1592,6 +1604,11 @@ async function openIPModal(sessionId, ipAddr) {
 async function _fetchAndRenderIPModal() {
   try {
     const res  = await fetch(`/api/bulk/history/${currentIPSessionId}`, { credentials: 'same-origin' });
+    // 401 = session expired — stop modal polling, interceptor handles redirect
+    if (res.status === 401) {
+      if (ipModalPollTimer) { clearTimeout(ipModalPollTimer); ipModalPollTimer = null; }
+      return;
+    }
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     const results = (data.session && data.session.results) || [];

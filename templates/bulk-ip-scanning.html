@@ -675,6 +675,11 @@ async function startBulkScan() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ips: parsedIPs, modules, concurrency, port_depth: portDepth, custom_ports: customPorts }),
     });
+    // 401 = session expired — do NOT fall into demo mode, let interceptor handle it
+    if (res.status === 401) {
+      setScanningUI(false);
+      return;
+    }
     const data = await res.json();
     if (!res.ok || data.error) {
       showAlert('error', data.error || 'Failed to start scan.');
@@ -698,7 +703,7 @@ async function startBulkScan() {
 
     pollBulkStatus();
   } catch(e) {
-    // Demo / offline mode — simulate scan
+    // Demo / offline mode — simulate scan (only on genuine network failure, not on 401)
     appendLog('warn', 'Backend unreachable. Running demo simulation.');
     simulateBulkScan();
   }
@@ -863,11 +868,19 @@ function logModules() {
 // ════════════════════════════════════════════════════════════════
 let _expansionLogged = false;
 
+let _bulkPollErrors = 0; // consecutive error counter for backoff
+
 async function pollBulkStatus() {
   if (!activeScanId) return;
   try {
     const res  = await fetch(`/scan/result/${activeScanId}`);
+    // 401 = session expired — stop polling, layout.js interceptor shows banner
+    if (res.status === 401) {
+      if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+      return;
+    }
     const data = await res.json();
+    _bulkPollErrors = 0; // reset backoff on success
 
     // Log backend CIDR expansion info on first poll
     if (!_expansionLogged) {
@@ -898,8 +911,15 @@ async function pollBulkStatus() {
       pollTimer = setTimeout(pollBulkStatus, 2000);
     }
   } catch(e) {
+    _bulkPollErrors++;
     appendLog('err', 'Poll error: ' + e.message);
-    pollTimer = setTimeout(pollBulkStatus, 5000);
+    // Exponential-style backoff: 5s → 10s → 20s → give up after 5 consecutive errors
+    if (_bulkPollErrors >= 5) {
+      appendLog('err', 'Too many poll errors — stopping. Refresh the page to reconnect.');
+      if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    } else {
+      pollTimer = setTimeout(pollBulkStatus, Math.min(5000 * _bulkPollErrors, 30000));
+    }
   }
 }
 
@@ -1451,7 +1471,14 @@ function triggerDownload(blob, filename) {
 
   // Check if backend still has this scan
   fetch('/scan/result/' + saved.scanId)
-    .then(r => r.ok ? r.json() : Promise.reject('gone'))
+    .then(r => {
+      // 401 = session expired — clear stale scan state so the next login starts fresh
+      if (r.status === 401) {
+        try { localStorage.removeItem('vapt_active_bulk_scan'); } catch(e) {}
+        return Promise.reject('session_expired');
+      }
+      return r.ok ? r.json() : Promise.reject('gone');
+    })
     .then(data => {
       if (data.error || data.done) {
         // Scan is finished or gone — clean up storage
@@ -1530,8 +1557,11 @@ function triggerDownload(blob, filename) {
       // Resume polling
       pollBulkStatus();
     })
-    .catch(() => {
-      // Backend doesn't know about this scan (server restarted) — clean up
+    .catch(err => {
+      // Backend doesn't know about this scan (server restarted) or session expired — clean up
+      if (err !== 'session_expired') {
+        console.warn('[bulk] reconnect failed:', err);
+      }
       try { localStorage.removeItem('vapt_active_bulk_scan'); } catch(e) {}
     });
 })();

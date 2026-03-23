@@ -73,6 +73,21 @@ def _parse_mysql_datetime(value):
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', '929465f4cc9c6769c0d77377b820975d19bf0b5cada96422bec0608ebc4e32b5')
 
+# ── Session configuration ──────────────────────────────────────────────────
+# Without PERMANENT_SESSION_LIFETIME, permanent sessions expire at browser
+# close OR after Flask's default (31 days). We set it explicitly to 30 days.
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+app.config['SESSION_COOKIE_NAME'] = 'vapt_session_id'
+
+# Prevent session cookie from being wiped by client-side JS
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+
+# Mark cookie as Secure only when running behind HTTPS (set via env var)
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
+
+# SameSite=Lax protects against CSRF without breaking normal navigation
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
 # Initialize database on startup
 _db_initialized = False
 
@@ -96,12 +111,36 @@ def init_db():
 def ensure_db_initialized():
     """Ensure DB and tables exist before first request (handles flask run, gunicorn, etc.)."""
     init_db()
+    # Make every session permanent so the PERMANENT_SESSION_LIFETIME applies.
+    # Without this, sessions are browser-session cookies and vanish on tab/browser close.
+    session.permanent = True
     # Ensure user_id in session for logged-in users (migration for old sessions)
     if 'user_email' in session and 'user_id' not in session:
         import db
         user = db.get_user_by_email(session['user_email'])
         if user:
             session['user_id'] = user['id']
+    # Rolling session: mark the session modified on every authenticated request so
+    # Flask re-issues the cookie and resets the Max-Age/Expires to NOW + LIFETIME.
+    # Without this, a 7-day cookie issued at login will expire 7 days after login
+    # regardless of how recently the user was active (absolute timeout).
+    # With this, the expiry is pushed forward on each visit (rolling/sliding timeout).
+    if 'user_email' in session:
+        session.modified = True
+
+
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to every response."""
+    # Prevent browsers from caching authenticated pages; stale cache can serve
+    # a logged-out user a "logged-in" page state, which then fails on API calls.
+    if 'user_email' in session:
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, private'
+        response.headers['Pragma'] = 'no-cache'
+    # Clickjacking protection
+    response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    return response
 
 @app.context_processor
 def inject_current_user():
@@ -168,6 +207,37 @@ def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if 'user_email' not in session:
+            # API routes (XHR/fetch) must get a 401 JSON response — NOT a 302 redirect.
+            # A redirect to the login page returns HTML with a 200 status, which fetch()
+            # treats as a successful response. The JS code then tries to parse HTML as JSON
+            # and silently fails, causing phantom "logout" behaviour.
+            #
+            # is_api detection: use path prefix + explicit route list only.
+            # Do NOT use Accept-header sniffing — browsers send Accept: text/html,*/*
+            # for navigations but Accept: */* for fetch(), making it unreliable.
+            is_api = (
+                request.path.startswith('/api/')
+                or request.path in ('/scan-status', '/scan-progress')
+                or request.path.startswith('/scan/')   # /scan/bulk, /scan/result/*, /scan/stop/*
+            )
+            # POST /scan is a JSON API call (initiated by fetch, never by form/navigation)
+            if request.path == '/scan' and request.method == 'POST':
+                is_api = True
+            # SSE endpoint
+            if request.headers.get('Accept', '').startswith('text/event-stream'):
+                is_api = True
+
+            if is_api:
+                app.logger.warning(
+                    f"[auth] 401 session_expired → {request.method} {request.path} "
+                    f"| session keys: {list(session.keys())} "
+                    f"| cookie present: {'session' in request.cookies}"
+                )
+                return jsonify({
+                    'status': 'error',
+                    'error': 'session_expired',
+                    'message': 'Session expired. Please sign in again.',
+                }), 401
             flash('Please sign in to access this page.', 'error')
             return redirect(url_for('index'))
         return f(*args, **kwargs)
@@ -249,6 +319,7 @@ def login():
         session['user_name'] = user['name']
         session['user_role'] = user['role']
         session.permanent = True
+        session.modified = True   # force Flask to re-issue the cookie
         return redirect(url_for('dashboard'))
     flash('Invalid email or password. Please try again.', 'error')
     return redirect(url_for('index'))
@@ -274,7 +345,11 @@ def signup_send_otp():
     import random
     otp_plain = ''.join(str(random.randint(0, 9)) for _ in range(6))
     otp_hash = generate_password_hash(otp_plain)
-    expires_at = datetime.utcnow() + timedelta(minutes=10)
+    # Use datetime.now() (local time) — NOT utcnow(). MySQL stores and returns
+    # datetimes in the server's local timezone. On IST (UTC+5:30) utcnow() is
+    # 5h30m behind, making OTPs appear expired the moment they are created.
+    # queries.py verify_*_otp() also compares with datetime.now() — must match.
+    expires_at = datetime.now() + timedelta(minutes=10)
     result = db.save_signup_otp(email, otp_hash, expires_at)
     print(f"[DEBUG] save_signup_otp result (rowcount): {result}")
     if result <= 0:
@@ -378,7 +453,8 @@ def forgot_password_send_otp():
         return jsonify({'ok': False, 'error': 'No account found with this email address.'}), 400
     otp_plain = ''.join(str(random.randint(0, 9)) for _ in range(6))
     otp_hash = generate_password_hash(otp_plain)
-    expires_at = datetime.utcnow() + timedelta(minutes=10)
+    # Use datetime.now() (local time) — see comment in signup_send_otp for rationale.
+    expires_at = datetime.now() + timedelta(minutes=10)
     result = db.save_password_reset_otp(email, otp_hash, expires_at)
     print(f"[DEBUG] save_password_reset_otp result (rowcount): {result}")
     if result <= 0:
@@ -558,6 +634,41 @@ def settings():
 # ─────────────────────────────────────────────
 #  LIVE DATA API ENDPOINTS
 # ─────────────────────────────────────────────
+
+@app.route('/api/session-ping')
+@login_required
+def api_session_ping():
+    """
+    Lightweight heartbeat endpoint called by the frontend every 10 minutes.
+    Its only job is to trigger before_request (which sets session.modified=True),
+    causing Flask to re-issue the session cookie with a refreshed Max-Age.
+    This prevents idle authenticated tabs from being silently logged out.
+    """
+    return jsonify({'ok': True, 'user': session.get('user_email')})
+
+
+@app.route('/api/session-status')
+def api_session_status():
+    """
+    Public debug endpoint — returns whether a valid session exists.
+    Safe to call without authentication. Used by the frontend to distinguish
+    'never logged in' from 'session expired' vs 'session valid'.
+    Call from browser console: fetch('/api/session-status').then(r=>r.json()).then(console.log)
+    """
+    if 'user_email' in session:
+        from datetime import timezone
+        lifetime = app.config.get('PERMANENT_SESSION_LIFETIME', timedelta(days=7))
+        return jsonify({
+            'authenticated': True,
+            'user':          session.get('user_email'),
+            'session_keys':  list(session.keys()),
+            'lifetime_days': lifetime.days if hasattr(lifetime, 'days') else None,
+        })
+    return jsonify({
+        'authenticated': False,
+        'cookie_present': 'session' in request.cookies,
+    })
+
 
 @app.route('/api/notifications')
 @login_required

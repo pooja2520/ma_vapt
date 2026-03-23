@@ -119,7 +119,12 @@ def verify_signup_otp(email, otp_plain):
     if not row:
         return False
     from datetime import datetime
-    if datetime.utcnow() > row['expires_at']:
+    # Use datetime.now() (local time) to match how expires_at is stored.
+    # app.py saves OTPs with datetime.utcnow() + 10min but MySQL connector
+    # returns datetime objects in the server's local timezone. On non-UTC
+    # servers (e.g. IST = UTC+5:30) utcnow() would be 5h30m behind local
+    # time, making every OTP appear expired immediately.
+    if datetime.now() > row['expires_at']:
         return False
     return check_password_hash(row['otp_hash'], otp_plain)
 
@@ -165,7 +170,8 @@ def verify_password_reset_otp(email, otp_plain):
     if not row:
         return False
     from datetime import datetime
-    if datetime.utcnow() > row['expires_at']:
+    # Use datetime.now() (local time) — see comment in verify_signup_otp for rationale.
+    if datetime.now() > row['expires_at']:
         return False
     return check_password_hash(row['otp_hash'], otp_plain)
 
@@ -1146,7 +1152,8 @@ def insert_scheduled_scan_vulns(scheduled_scan_id, run_id, user_id, target_url, 
     if not vuln_list:
         return
     from datetime import datetime
-    now = datetime.utcnow()
+    # Use local time — matches how all other timestamps are stored (datetime.now())
+    now = datetime.now()
     rows = []
     for v in vuln_list:
         rows.append((
@@ -1230,7 +1237,7 @@ def toggle_scheduled_vuln_fixed(vuln_id, user_id):
         if not r:
             return None
         new_fixed = 0 if r['is_fixed'] else 1
-        fixed_at = datetime.utcnow() if new_fixed else None
+        fixed_at = datetime.now() if new_fixed else None  # local time — matches DB convention
         cur.execute("""
             UPDATE scheduled_scan_vulns
             SET is_fixed = %s, fixed_at = %s, status = %s

@@ -415,6 +415,14 @@ async function loadAllDataFromAPI() {
             fetch('/api/scheduled-scan-runs'),
             fetch('/api/tracked-vulnerabilities')
         ]);
+
+        // If ANY response is 401 the session has expired.
+        // Stop all polling immediately and let the layout.js interceptor show the banner.
+        if (res1.status === 401 || res2.status === 401 || res3.status === 401) {
+            if (livePoller) { clearInterval(livePoller); livePoller = null; }
+            return;
+        }
+
         var [data1, data2, data3] = await Promise.all([res1.json(), res2.json(), res3.json()]);
 
         if (data1.status === 'ok' && Array.isArray(data1.schedules)) {
@@ -449,7 +457,7 @@ async function loadAllDataFromAPI() {
                 };
             });
         }
-        
+
         if (data2.status === 'ok' && Array.isArray(data2.runs)) {
             runHistory = data2.runs.map(function(r) {
                 return {
@@ -469,7 +477,7 @@ async function loadAllDataFromAPI() {
                 };
             });
         }
-        
+
         if (data3.status === 'ok' && Array.isArray(data3.vulnerabilities)) {
             trackedVulns = data3.vulnerabilities;
         }
@@ -477,11 +485,11 @@ async function loadAllDataFromAPI() {
         // Remove skeleton loaders on first real data load
         var sk = document.getElementById('schedSkeleton');
         if (sk) sk.remove();
-        
+
         renderAll();
     } catch (e) {
-        console.error('Failed to load data from API:', e);
-        // On error, remove skeleton and show empty state
+        console.error('[scheduled] loadAllDataFromAPI error:', e);
+        // On network error, remove skeleton and show empty state
         var sk = document.getElementById('schedSkeleton');
         if (sk) sk.remove();
         renderAll();
@@ -513,7 +521,14 @@ async function initPage() {
 
     // Live backend daemon manages scheduled run execution on the server reliably 24/7.
     // If a scan was already running when page loaded, open popup immediately
-    fetch('/api/scan-logs').then(function(r){return r.json();}).then(function(d){
+    fetch('/api/scan-logs').then(function(r){
+        // 401 = session expired; stop all polling before trying to parse as JSON
+        if (r.status === 401) {
+            if (livePoller) { clearInterval(livePoller); livePoller = null; }
+            return Promise.reject('session_expired');
+        }
+        return r.json();
+    }).then(function(d){
         if (d.running) {
             wasRunning = true;
             document.getElementById('popupSchedName').textContent = 'Scan In Progress';
@@ -525,7 +540,11 @@ async function initPage() {
             (d.logs||[]).forEach(function(l){ appendPopupLog(l); popupLogLen++; });
             openLivePopup();
         }
-    }).catch(function(){});
+    }).catch(function(err){
+        if (err !== 'session_expired') {
+            console.warn('[scheduled] initPage scan-logs fetch failed:', err);
+        }
+    });
 }
 
 function switchTab(name, btn) {
@@ -631,6 +650,12 @@ var _scanStartedAt = 0; // timestamp when runNow opened the popup — grace peri
 async function pollLiveScan() {
     try {
         var res  = await fetch('/api/scan-logs');
+        // Session expired — the global interceptor shows the banner and redirects.
+        // Stop the poller immediately so we don't flood the server with 401s.
+        if (res.status === 401) {
+            if (livePoller) { clearInterval(livePoller); livePoller = null; }
+            return;
+        }
         var data = await res.json();
 
         if (data.running) {
@@ -663,7 +688,13 @@ async function pollLiveScan() {
                 wasRunning = false; popupLogLen = 0; _scanStartedAt = 0;
                 var rs = schedules.find(function(s){ return s.status==='running'; });
                 var scanResults = null;
-                try { var sr=await fetch('/scan-status'); var sd=await sr.json(); if(sd.status==='success'&&sd.results) scanResults=sd.results; } catch(e){}
+                try {
+                    var sr=await fetch('/scan-status');
+                    if (sr.status !== 401) {
+                        var sd=await sr.json();
+                        if(sd.status==='success'&&sd.results) scanResults=sd.results;
+                    }
+                } catch(e){}
 
                 // ── Always reload from DB first so we get the real current status ──
                 await loadAllDataFromAPI();
@@ -701,7 +732,10 @@ async function pollLiveScan() {
                 document.getElementById('popupResultTitle').textContent=(dispName ? dispName+' \u2014 ' : '')+'Complete';
             }
         }
-    } catch(e) {}
+    } catch(e) {
+        // Silent for network blips — the poller will retry on the next interval tick
+        console.warn('[scheduled] pollLiveScan error:', e.message);
+    }
 }
 
 function startLivePolling() {
@@ -727,7 +761,9 @@ async function runNow(id) {
 
     // Check if already running — if so, just open popup with live data immediately (no confirm)
     try {
-        var chk = await fetch('/api/scan-logs'); var cd = await chk.json();
+        var chk = await fetch('/api/scan-logs');
+        if (chk.status === 401) return; // interceptor handles
+        var cd = await chk.json();
         if (cd.running) {
             // Populate popup with current live state then open it directly
             wasRunning = true; popupLogLen = 0; _scanStartedAt = 0;
@@ -774,6 +810,12 @@ async function runNow(id) {
 
     try {
         var res  = await fetch('/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({target:s.target,auth_type:authType,auth_data:adPayload,owasp_enabled:true, scheduled_scan_id: s.id}) });
+        // 401 here means session expired between the page load and clicking Run Now
+        if (res.status === 401) {
+            wasRunning = false; _scanStartedAt = 0;
+            closeLivePopup();
+            return; // interceptor shows the banner
+        }
         var data = await res.json();
         if (data.status==='started') {
             s.status='running'; renderSchedules(); updateStats();

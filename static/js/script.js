@@ -62,6 +62,8 @@ async function restoreStateOnLoad() {
     // ── 2. Reconnect if a scan is already actively running ──────────────────
     try {
         const r    = await fetch('/api/scan-logs');
+        // 401 = session expired — nothing to reconnect, interceptor handles redirect
+        if (r.status === 401) return;
         const data = await r.json();
 
         if (data.running) {
@@ -201,6 +203,8 @@ async function pollScanStatus() {
     if (!isScanning) return;
     try {
         const r = await fetch('/scan-status');
+        // 401 = session expired — stop polling, let interceptor handle banner/redirect
+        if (r.status === 401) { isScanning = false; return; }
         const d = await r.json();
         if      (d.status === 'running') setTimeout(pollScanStatus, 2000);
         else if (d.status === 'success') handleScanComplete(d);
@@ -213,6 +217,8 @@ async function fetchScanResults() {
     showProgress('📊 Fetching results...');
     try {
         const r = await fetch('/scan-status');
+        // 401 = session expired — stop retrying, interceptor handles redirect
+        if (r.status === 401) { isScanning = false; hideProgress(); return; }
         const d = await r.json();
         if      (d.status === 'success') handleScanComplete(d);
         else if (d.status === 'error')   handleScanError(d.message);

@@ -1,6 +1,144 @@
 /* VAPT Scanner Pro - Layout Injector (Flask version) */
 (function () {
 
+    // ── Logout guard ──────────────────────────────────────────────────────
+    // When the user deliberately clicks "Logout", the browser navigates to
+    // /logout which clears the session and redirects to /.  During those few
+    // milliseconds, ANY in-flight fetch (notification poll every 30s, live-scan
+    // poller every 2.5s, scan-state poll every 1s) can land against the now-
+    // empty session and receive a 401.  Without this guard the interceptor fires
+    // the "session expired" banner on the page the user is already leaving —
+    // which looks like a bug even though the session was intentionally cleared.
+    //
+    // Fix: capture the logout click before navigation starts, flip _isLoggingOut,
+    // and stop every known poller so no further requests are made.
+    var _isLoggingOut = false;
+    var _notifIntervalId    = null; // notification poll interval — cleared on logout
+    var _heartbeatIntervalId = null; // session heartbeat interval — cleared on logout
+
+    document.addEventListener('click', function (e) {
+        var link = e.target.closest('a[href="/logout"]');
+        if (!link) return;
+
+        // Mark intent immediately — the interceptor checks this flag
+        _isLoggingOut = true;
+
+        // Stop every known polling interval/timeout so no fetch fires
+        // after the session has been cleared server-side.
+        try {
+            if (typeof _notifIntervalId   !== 'undefined' && _notifIntervalId)   clearInterval(_notifIntervalId);
+            if (typeof _heartbeatIntervalId !== 'undefined' && _heartbeatIntervalId) clearInterval(_heartbeatIntervalId);
+            // Scheduled-scans page livePoller (2.5s interval)
+            if (typeof livePoller !== 'undefined' && livePoller) { clearInterval(livePoller); livePoller = null; }
+            // Bulk-scan page pollTimer
+            if (typeof pollTimer  !== 'undefined' && pollTimer)  { clearTimeout(pollTimer);   pollTimer  = null; }
+            // Scanning page poll (stored on window by that page)
+            if (window._scanPollTimer) { clearInterval(window._scanPollTimer); window._scanPollTimer = null; }
+        } catch (_) {}
+    }, true); // capture-phase: fires before the browser starts navigation
+
+    // ── Global session-expiry handler ─────────────────────────────────────
+    // Intercept every fetch() call made anywhere in the app.
+    // When the server returns a genuine 401 (session timed out without user
+    // action), show a non-intrusive banner and redirect to login.
+    //
+    // Three rules prevent false positives:
+    //  1. _isLoggingOut = true  → skip entirely (user chose to log out)
+    //  2. 5-second startup grace window → parallel DOMContentLoaded fetches
+    //     must not trigger the banner
+    //  3. Only act on { error: 'session_expired' } JSON body → never trigger
+    //     on 3rd-party 401s, CDN errors, or JSON parse failures
+    (function _installFetchInterceptor() {
+        var _origFetch    = window.fetch;
+        var _pageLoadedAt = Date.now();
+        var _GRACE_MS     = 12000; // 12s — covers slow connections + parallel DOMContentLoaded fetches
+
+        window.fetch = function (url, opts) {
+            if (!opts) opts = {};
+            if (!opts.credentials) opts.credentials = 'same-origin';
+
+            return _origFetch.call(this, url, opts).then(function (response) {
+                if (response.status === 401) {
+                    // Rule 1 — deliberate logout in progress
+                    if (_isLoggingOut) return response;
+                    // Rule 2 — startup grace window
+                    if ((Date.now() - _pageLoadedAt) < _GRACE_MS) return response;
+                    // Rule 3 — only act on explicit session_expired marker
+                    response.clone().json().then(function (body) {
+                        if (body && body.error === 'session_expired') {
+                            _showSessionExpiredBanner();
+                        }
+                    }).catch(function () {
+                        // JSON parse failed (non-JSON 401, CDN error, etc.) — do nothing
+                    });
+                }
+                return response;
+            });
+        };
+    })();
+
+        // ── Session-expired banner ────────────────────────────────────────────
+    var _sessionBannerShown = false;
+    function _showSessionExpiredBanner() {
+        if (_sessionBannerShown) return;
+        _sessionBannerShown = true;
+        // Stop notification polling immediately
+        if (_notifIntervalId) { clearInterval(_notifIntervalId); _notifIntervalId = null; }
+        if (_heartbeatIntervalId) { clearInterval(_heartbeatIntervalId); _heartbeatIntervalId = null; }
+
+        var banner = document.createElement('div');
+        banner.id = 'session-expired-banner';
+        banner.style.cssText = [
+            'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:99999',
+            'background:linear-gradient(90deg,#dc2626,#b91c1c)',
+            'color:#fff', 'padding:14px 24px',
+            'display:flex', 'align-items:center', 'justify-content:space-between',
+            'font-family:inherit', 'font-size:14px', 'font-weight:500',
+            'box-shadow:0 2px 12px rgba(0,0,0,.25)',
+            'animation:slideDown .3s ease'
+        ].join(';');
+        banner.innerHTML = [
+            '<div style="display:flex;align-items:center;gap:10px">',
+            '  <i class="fa-solid fa-triangle-exclamation"></i>',
+            '  <span>Your session has expired. Redirecting to sign-in…</span>',
+            '</div>',
+            '<button onclick="window.location.href=\'/\'" ',
+            '  style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);',
+            '  color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px">',
+            '  Sign in now',
+            '</button>'
+        ].join('');
+
+        // Inject keyframe if needed
+        if (!document.getElementById('_session-banner-kf')) {
+            var kf = document.createElement('style');
+            kf.id = '_session-banner-kf';
+            kf.textContent = '@keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}';
+            document.head.appendChild(kf);
+        }
+        document.body.prepend(banner);
+
+        // Auto-redirect after 4 seconds
+        setTimeout(function () {
+            window.location.href = '/';
+        }, 4000);
+    }
+
+    // ── Session heartbeat ─────────────────────────────────────────────────
+    // Ping a lightweight endpoint every 10 minutes while the tab is open.
+    // This keeps the rolling session alive for users who leave a tab open idle
+    // (e.g. on the dashboard, bulk scan history) without making any API calls.
+    // Without this, an idle tab will let the session cookie age out even though
+    // the user considers themselves "still logged in".
+    var _HEARTBEAT_MS = 10 * 60 * 1000; // 10 minutes
+    function _startHeartbeat() {
+        _heartbeatIntervalId = setInterval(function () {
+            if (document.visibilityState === 'hidden') return; // skip background tabs
+            fetch('/api/session-ping', { credentials: 'same-origin' })
+                .catch(function () {}); // silent — the interceptor handles 401
+        }, _HEARTBEAT_MS);
+    }
+
     // ── Inject notification panel styles once ─────────────────────────────
     function _injectStyles() {
         if (document.getElementById('_notif-styles')) return;
@@ -689,9 +827,11 @@
                 children.forEach(function(c) { wrapper.appendChild(c); });
             }
         }
-        // Initial fetch + polling
+        // Initial fetch + polling — store IDs so logout guard can cancel them
         _fetch(false);
-        setInterval(function(){ _fetch(true); }, _POLL_MS);
+        _notifIntervalId = setInterval(function(){ _fetch(true); }, _POLL_MS);
+        // Start session heartbeat to keep idle tabs alive
+        _startHeartbeat();
     };
 
     // ── Sidebar toggle ────────────────────────────────────────────────────
