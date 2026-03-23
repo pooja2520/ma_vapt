@@ -405,6 +405,7 @@ function isRealVuln(v) {
     return true;
 }
 var editingId = null, livePoller = null, wasRunning = false, popupOpen = false, popupLogLen = 0;
+var _dataLoaded = false; // Guard: prevent updateStats() from zeroing out skeletons before first API response
 
 // Load all data from APIs
 async function loadAllDataFromAPI() {
@@ -482,6 +483,9 @@ async function loadAllDataFromAPI() {
             trackedVulns = data3.vulnerabilities;
         }
 
+        // Mark data as loaded BEFORE removing skeletons so updateStats() is now safe
+        _dataLoaded = true;
+
         // Remove skeleton loaders on first real data load
         var sk = document.getElementById('schedSkeleton');
         if (sk) sk.remove();
@@ -489,7 +493,8 @@ async function loadAllDataFromAPI() {
         renderAll();
     } catch (e) {
         console.error('[scheduled] loadAllDataFromAPI error:', e);
-        // On network error, remove skeleton and show empty state
+        // On network error, mark loaded and remove skeleton to show empty state
+        _dataLoaded = true;
         var sk = document.getElementById('schedSkeleton');
         if (sk) sk.remove();
         renderAll();
@@ -498,15 +503,16 @@ async function loadAllDataFromAPI() {
 
 // Initialize by loading from API
 async function initPage() {
-    await loadAllDataFromAPI();
+    await loadAllDataFromAPI(); // renders all data on completion internally
     document.querySelectorAll('.day-btn').forEach(function(b){ b.addEventListener('click',function(){ b.classList.toggle('active'); updatePreview(); }); });
     document.getElementById('mTime').addEventListener('change', updatePreview);
-    renderAll();
+    // renderAll() is already called inside loadAllDataFromAPI() — no need to call again here
     startLivePolling();
     setInterval(updateStats, 30000);
 
     // ── Live countdown: update every second ──
     setInterval(function() {
+        if (!_dataLoaded) return; // don't update until first API response
         schedules.forEach(function(s) {
             if (s.status !== 'active' || !s.nextRun) return;
             var el = document.querySelector('.sched-item[data-sched-id="'+s.id+'"] .next-run-badge strong');
@@ -1473,6 +1479,8 @@ function renderPriority(){
 }
 
 function updateStats(){
+    // Don't overwrite skeleton loaders with zeros before the first API response arrives
+    if (!_dataLoaded) return;
     var realVulns=trackedVulns.filter(isRealVuln);
     var active=schedules.filter(function(s){return s.status==='active'||s.status==='running';}).length,fixed=realVulns.filter(function(v){return v.status==='fixed';}).length,priority=realVulns.filter(function(v){return v.severity==='critical'&&v.status==='open';}).length,nxt=schedules.filter(function(s){return s.status==='active'&&s.nextRun;}).sort(function(a,b){return parseLocalDT(a.nextRun)-parseLocalDT(b.nextRun);})[0];
     document.getElementById('statActive').textContent=active; document.getElementById('statCompleted').textContent=runHistory.length;
