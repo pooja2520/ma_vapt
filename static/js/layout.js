@@ -509,7 +509,6 @@
 /* ── Mobile sidebar overlay ────────────────────────────── */
 .sb-overlay {
     display: none;
-    inset: 0;
     background: rgba(0,0,0,.45);
     z-index: 1099;
     backdrop-filter: blur(2px);
