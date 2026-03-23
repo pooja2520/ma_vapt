@@ -879,6 +879,28 @@
   border: 1px solid #bbf7d0;
   margin-top: .2rem;
 }
+
+/* ── IP table pagination buttons ────────────────────────────── */
+.ipt-pag-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 .4rem;
+  border-radius: 6px;
+  border: 1.5px solid var(--border, #e5e7eb);
+  background: #fff;
+  font-size: .72rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--text-muted, #4b5563);
+  transition: all .15s;
+}
+.ipt-pag-btn:hover:not(:disabled) { border-color: #2563eb; color: #2563eb; background: #eff6ff; }
+.ipt-pag-btn.active { background: #2563eb; color: #fff; border-color: #2563eb; font-weight: 700; }
+.ipt-pag-btn:disabled { opacity: .4; cursor: not-allowed; }
 </style>
 
 {% endblock %}
@@ -1061,13 +1083,20 @@ function renderList() {
       detail.style.display = 'block';
       if (chev) chev.style.transform = 'rotate(180deg)';
       if (row)  row.classList.add('expanded');
-      // Restore cached IP table HTML instantly (no blink/loading flash)
+      // Restore IP table — use paginated renderer if data already loaded, else fetch
       const ipEl = document.getElementById('hipips-' + expandedRowId);
-      if (ipEl && ipTableCache[expandedRowId]) {
-        ipEl.innerHTML = ipTableCache[expandedRowId];
-      } else if (!loadedIPs.has(expandedRowId)) {
-        loadedIPs.add(expandedRowId);
-        loadIPTable(expandedRowId);
+      if (ipEl) {
+        if (window._ipTableRows && window._ipTableRows[expandedRowId]) {
+          // Data already in memory — re-render current page instantly (no flash)
+          renderIPTable(expandedRowId, ipEl);
+        } else if (ipTableCache[expandedRowId]) {
+          ipEl.innerHTML = ipTableCache[expandedRowId];
+        } else {
+          // Not loaded yet — fetch (clear loadedIPs flag so loadIPTable runs)
+          loadedIPs.delete(expandedRowId);
+          loadedIPs.add(expandedRowId);
+          loadIPTable(expandedRowId);
+        }
       }
     }
   }
@@ -1283,41 +1312,91 @@ async function loadIPTable(id) {
       ipTableCache[id] = noRowsHtml;
       return;
     }
-    const trows = rows.slice(0, 100).map((r, idx) => {
-      const portCount = (r.ports || []).length;
-      const vulnCount = (r.vulnerabilities || []).length;
-      const sev = (r.severity || 'none').toLowerCase();
-      const hostname = r.hostname && r.hostname !== '-' ? esc(r.hostname) : 'Unknown';
-      const isOnline = r.status === 'online';
-      return `<tr>
-        <td>
-          <button class="ipt-ip-btn" onclick="openIPModal(${id},'${(r.ip||'').replace(/'/g,"\\'")}' )" title="View full details for ${esc(r.ip||'')}">
-            <span class="ipt-ip">${esc(r.ip||'')}</span>
-            <i class="fa-solid fa-arrow-up-right-from-square ipt-ip-icon"></i>
-          </button>
-        </td>
-        <td><span class="ipt-status ${isOnline?'online':'offline'}"><i class="fa-solid fa-circle"></i>${isOnline?'Online':'Offline'}</span></td>
-        <td class="ipt-host">${hostname}</td>
-        <td class="ipt-ports">${portCount} port${portCount!==1?'s':''}</td>
-        <td><span class="ipt-sev ${sev}">${sev === 'none' ? 'NONE' : sev.toUpperCase()}</span></td>
-        <td class="ipt-vulns">${vulnCount} vuln${vulnCount!==1?'s':''}</td>
-      </tr>`;
-    }).join('');
-    el.innerHTML = `
-      <div class="h-ip-tbl-wrap">
-        <table class="h-ip-tbl">
-          <thead><tr>
-            <th>IP Address</th><th>Status</th><th>Hostname</th>
-            <th>Ports</th><th>Severity</th><th>Vulns</th>
-          </tr></thead>
-          <tbody>${trows}</tbody>
-        </table>
-        ${rows.length > 100 ? `<div style="padding:.4rem .875rem;font-size:.72rem;color:var(--text-muted);">Showing first 100 of ${rows.length} IPs — export for full results</div>` : ''}
-      </div>`;
-    ipTableCache[id] = el.innerHTML;  // cache after successful render
+    // Store full rows and set up pagination state per session
+    if (!window._ipTablePage) window._ipTablePage = {};
+    if (!window._ipTableRows) window._ipTableRows = {};
+    window._ipTableRows[id] = rows;
+    window._ipTablePage[id] = 1;
+    renderIPTable(id, el);
+    ipTableCache[id] = null; // Don't cache paginated tables
   } catch(e) {
     el.innerHTML = '<div style="color:#dc2626;font-size:.78rem;padding:.5rem;">Failed to load IP results.</div>';
   }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  IP TABLE RENDERER (paginated — shows ALL IPs)
+// ════════════════════════════════════════════════════════════════
+const IP_TBL_PER_PAGE = 50;
+
+function renderIPTable(id, el) {
+  el = el || document.getElementById('hipips-' + id);
+  if (!el) return;
+  const rows = (window._ipTableRows || {})[id] || [];
+  const curPage = (window._ipTablePage || {})[id] || 1;
+  const totalPages = Math.ceil(rows.length / IP_TBL_PER_PAGE);
+  const start = (curPage - 1) * IP_TBL_PER_PAGE;
+  const pageRows = rows.slice(start, start + IP_TBL_PER_PAGE);
+
+  const trows = pageRows.map(r => {
+    const portCount = (r.ports || []).length;
+    const vulnCount = (r.vulnerabilities || []).length;
+    const sev = (r.severity || 'none').toLowerCase();
+    const hostname = r.hostname && r.hostname !== '-' ? esc(r.hostname) : 'Unknown';
+    const isOnline = r.status === 'online';
+    return `<tr>
+      <td>
+        <button class="ipt-ip-btn" onclick="openIPModal(${id},'${(r.ip||'').replace(/'/g,"\\'")}' )" title="View full details for ${esc(r.ip||'')}">
+          <span class="ipt-ip">${esc(r.ip||'')}</span>
+          <i class="fa-solid fa-arrow-up-right-from-square ipt-ip-icon"></i>
+        </button>
+      </td>
+      <td><span class="ipt-status ${isOnline?'online':'offline'}"><i class="fa-solid fa-circle"></i>${isOnline?'Online':'Offline'}</span></td>
+      <td class="ipt-host">${hostname}</td>
+      <td class="ipt-ports">${portCount} port${portCount!==1?'s':''}</td>
+      <td><span class="ipt-sev ${sev}">${sev === 'none' ? 'NONE' : sev.toUpperCase()}</span></td>
+      <td class="ipt-vulns">${vulnCount} vuln${vulnCount!==1?'s':''}</td>
+    </tr>`;
+  }).join('');
+
+  // Build pagination controls
+  let pagHtml = '';
+  if (totalPages > 1) {
+    const s = start + 1, e = Math.min(start + IP_TBL_PER_PAGE, rows.length);
+    let btnHtml = `<button class="ipt-pag-btn" onclick="ipTblGoPage(${id},${curPage-1})" ${curPage===1?'disabled':''}>‹</button>`;
+    for (let p = 1; p <= totalPages; p++) {
+      if (totalPages > 7 && Math.abs(p - curPage) > 2 && p !== 1 && p !== totalPages) {
+        if (p === 2 || p === totalPages - 1) btnHtml += '<span style="padding:0 .25rem;color:var(--text-muted)">…</span>';
+        continue;
+      }
+      btnHtml += `<button class="ipt-pag-btn${p===curPage?' active':''}" onclick="ipTblGoPage(${id},${p})">${p}</button>`;
+    }
+    btnHtml += `<button class="ipt-pag-btn" onclick="ipTblGoPage(${id},${curPage+1})" ${curPage===totalPages?'disabled':''}>›</button>`;
+    pagHtml = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;padding:.5rem .875rem;border-top:1px solid #f3f4f6;background:#f9fafb;border-radius:0 0 9px 9px;">
+      <span style="font-size:.72rem;color:var(--text-muted);">Showing ${s}–${e} of ${rows.length} IPs</span>
+      <div style="display:flex;align-items:center;gap:.25rem;">${btnHtml}</div>
+    </div>`;
+  }
+
+  el.innerHTML = `
+    <div class="h-ip-tbl-wrap" style="border-radius:9px;">
+      <table class="h-ip-tbl">
+        <thead><tr>
+          <th>IP Address</th><th>Status</th><th>Hostname</th>
+          <th>Ports</th><th>Severity</th><th>Vulns</th>
+        </tr></thead>
+        <tbody>${trows}</tbody>
+      </table>
+      ${pagHtml}
+    </div>`;
+}
+
+function ipTblGoPage(id, p) {
+  const rows = (window._ipTableRows || {})[id] || [];
+  const totalPages = Math.ceil(rows.length / IP_TBL_PER_PAGE);
+  if (!window._ipTablePage) window._ipTablePage = {};
+  window._ipTablePage[id] = Math.max(1, Math.min(p, totalPages));
+  renderIPTable(id);
 }
 
 // ════════════════════════════════════════════════════════════════
