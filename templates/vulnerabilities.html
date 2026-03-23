@@ -392,9 +392,9 @@ function updateCharts() {
 
   const labels = Object.keys(groups).map(k=>{
     const parts = k.split(' @ ');
-    const host  = parts[0].split('.').slice(0,2).join('.').substring(0,12);
-    const dt    = (parts[1]||'').replace(/^\d{4}-/,'');   // "MM-DD HH:MM"
-    return [host, dt];
+    const host  = parts[0].split('.')[0].substring(0,10);  // first subdomain only, max 10 chars
+    const dt    = (parts[1]||'').replace(/^\d{4}-/,'').substring(0,8);  // "MM-DD HH"
+    return host + '\n' + dt;
   });
 
   const barData = {
@@ -417,7 +417,7 @@ function updateCharts() {
       options:{
         responsive: true,
         maintainAspectRatio: false,
-        layout:{ padding:{ bottom:4 } },
+        layout:{ padding:{ bottom:20, left:4, right:4 } },
         plugins:{
           legend:{
             position:'top',
@@ -428,7 +428,7 @@ function updateCharts() {
           x:{
             stacked:true,
             grid:{ display:false },
-            ticks:{ font:{size:9}, maxRotation:30, minRotation:20, autoSkip:false }
+            ticks:{ font:{size:8}, maxRotation:45, minRotation:45, autoSkip:true, maxTicksLimit:20 }
           },
           y:{
             stacked:true,
