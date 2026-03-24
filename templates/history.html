@@ -21,7 +21,7 @@
           <i class="fa-solid fa-plus"></i> New Bulk Scan
         </a>
         <button class="btn btn-o" onclick="exportAllHistory()">
-          <i class="fa-solid fa-file-export"></i> Export All
+          <i class="fa-solid fa-file-excel" style="color:#16a34a;"></i> Export All (Excel)
         </button>
         <button class="btn btn-o" onclick="openClearAllModal()" style="color:#ef4444;border-color:#fca5a5;">
           <i class="fa-solid fa-trash"></i> Clear All
@@ -247,6 +247,9 @@
         <button class="ipdm-dl-btn" onclick="downloadIPReport('csv')">
           <i class="fa-solid fa-file-csv"></i> CSV
         </button>
+        <button class="ipdm-dl-btn excel" onclick="downloadIPReport('xlsx')" title="Download styled 4-sheet Excel report">
+          <i class="fa-solid fa-file-excel"></i> Excel Report
+        </button>
         <button class="ipdm-dl-btn primary" onclick="downloadIPReport('pdf')">
           <i class="fa-solid fa-file-pdf"></i> Full PDF Report
         </button>
@@ -280,6 +283,76 @@
     50% {
       opacity: .2
     }
+  }
+
+  /* ── Export dropdown menu ───────────────────────────────────────── */
+  .h-export-menu {
+    position: fixed;
+    z-index: 9999;
+    background: #fff;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.14), 0 2px 8px rgba(0,0,0,.08);
+    padding: .35rem;
+    min-width: 170px;
+    display: none;
+    animation: exportMenuIn .12s ease;
+  }
+  .h-export-menu.open { display: block; }
+  @keyframes exportMenuIn {
+    from { opacity:0; transform:translateY(-6px) scale(.97); }
+    to   { opacity:1; transform:translateY(0) scale(1); }
+  }
+  .h-export-menu-item {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    padding: .45rem .75rem;
+    border-radius: 7px;
+    font-size: .75rem;
+    font-weight: 600;
+    cursor: pointer;
+    color: #374151;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    transition: background .12s, color .12s;
+    font-family: inherit;
+  }
+  .h-export-menu-item:hover { background: #f3f4f6; color: #111827; }
+  .h-export-menu-item.excel { color: #15803d; }
+  .h-export-menu-item.excel:hover { background: #f0fdf4; }
+  .h-export-menu-item.json  { color: #7c3aed; }
+  .h-export-menu-item.json:hover  { background: #f5f3ff; }
+  .h-export-menu-item.csv   { color: #0369a1; }
+  .h-export-menu-item.csv:hover   { background: #f0f9ff; }
+  .h-export-menu-item.pdf   { color: #dc2626; }
+  .h-export-menu-item.pdf:hover   { background: #fef2f2; }
+  .h-export-menu-sep {
+    height: 1px; background: #f3f4f6; margin: .25rem .5rem;
+  }
+  .h-export-menu-label {
+    font-size: .65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: #9ca3af;
+    padding: .35rem .75rem .1rem;
+  }
+
+  /* Excel button in IPDM footer */
+  .ipdm-dl-btn.excel {
+    background: #f0fdf4;
+    color: #15803d;
+    border: 1.5px solid #bbf7d0;
+    font-weight: 700;
+  }
+  .ipdm-dl-btn.excel:hover {
+    background: #dcfce7;
+    border-color: #86efac;
+    color: #14532d;
+    transform: translateY(-1px);
   }
 
   /* ── Session card boxes ─────────────────────────────────────── */
@@ -893,9 +966,45 @@
   /* ── Export buttons at bottom of expanded ───────────────────── */
   .h-export-row {
     display: flex;
+    align-items: center;
     gap: .4rem;
     flex-wrap: wrap;
     margin-top: .25rem;
+    padding: .75rem 0 .25rem;
+    border-top: 1px solid #f3f4f6;
+  }
+
+  .h-export-row-label {
+    font-size: .72rem;
+    font-weight: 700;
+    color: #6b7280;
+    margin-right: .25rem;
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+  }
+
+  .h-btn-excel {
+    background: #f0fdf4 !important;
+    color: #15803d !important;
+    border-color: #bbf7d0 !important;
+    font-weight: 700 !important;
+  }
+  .h-btn-excel:hover {
+    background: #dcfce7 !important;
+    border-color: #86efac !important;
+    color: #14532d !important;
+  }
+  .h-btn-pdf {
+    background: #fff1f2 !important;
+    color: #dc2626 !important;
+    border-color: #fca5a5 !important;
+    font-weight: 700 !important;
+  }
+  .h-btn-pdf:hover {
+    background: #fee2e2 !important;
+    border-color: #f87171 !important;
+    color: #991b1b !important;
   }
 
   /* ══════════════════════════════════════════════════════════════
@@ -1906,9 +2015,9 @@
       ${vulnBadge}
       ${sevBadge}
       ${actionBtn}
-      <button class="h-btn" onclick="event.stopPropagation();exportSession(${h.id},'json')"
-        title="Export" ${running ? 'disabled style="opacity:.4"' : ''}>
-        <i class="fa-solid fa-file-export"></i> Export
+      <button class="h-btn h-btn-export-wrap" onclick="event.stopPropagation();toggleExportMenu(event,${h.id})"
+        title="Export session" ${running ? 'disabled style="opacity:.4"' : ''}>
+        <i class="fa-solid fa-file-arrow-down"></i> Export <i class="fa-solid fa-caret-down" style="font-size:.6rem;margin-left:.1rem;"></i>
       </button>
       <button class="h-btn danger" onclick="event.stopPropagation();openDeleteModal(${h.id})" title="Delete">
         <i class="fa-solid fa-trash"></i>
@@ -1971,10 +2080,22 @@
 
     <!-- Export buttons -->
     <div class="h-export-row">
-      <button class="h-btn primary" onclick="exportSession(${h.id},'xlsx')"><i class="fa-solid fa-file-excel"></i> Excel</button>
-      <button class="h-btn" onclick="exportSession(${h.id},'json')"><i class="fa-solid fa-file-code"></i> JSON</button>
-      <button class="h-btn" onclick="exportSession(${h.id},'csv')"><i class="fa-solid fa-file-csv"></i> CSV</button>
-      <button class="h-btn" onclick="rerunScan(${h.id})"><i class="fa-solid fa-rotate"></i> Re-run Scan</button>
+      <span class="h-export-row-label"><i class="fa-solid fa-file-arrow-down"></i> Download Report:</span>
+      <button class="h-btn h-btn-excel" onclick="exportSession(${h.id},'xlsx')" title="4-sheet styled Excel report">
+        <i class="fa-solid fa-file-excel"></i> Excel (4-Sheet)
+      </button>
+      <button class="h-btn h-btn-pdf" onclick="_doExport(${h.id},'pdf')" title="Printable PDF report">
+        <i class="fa-solid fa-file-pdf"></i> PDF
+      </button>
+      <button class="h-btn" onclick="exportSession(${h.id},'csv')" title="CSV data export">
+        <i class="fa-solid fa-file-csv" style="color:#0369a1;"></i> CSV
+      </button>
+      <button class="h-btn" onclick="exportSession(${h.id},'json')" title="Raw JSON export">
+        <i class="fa-solid fa-file-code" style="color:#7c3aed;"></i> JSON
+      </button>
+      <button class="h-btn" style="margin-left:auto;" onclick="rerunScan(${h.id})">
+        <i class="fa-solid fa-rotate"></i> Re-run Scan
+      </button>
     </div>
   </div>
 </div>`;
@@ -2247,90 +2368,922 @@
     return { hdrs, rows };
   }
 
+  const VAPT_EXCEL_CONFIG = {
+  // ── Brand / Palette ──────────────────────────────────────────────────────
+  colors: {
+    // Backgrounds
+    navy:           '0F2D5E',   // cover / dark banner
+    blueHeader:     '1A56B0',   // Open Ports header
+    redHeader:      'DC2626',   // Vulnerability Findings header
+    rowAlt:         'F0F4FF',   // alternating row tint
+    rowWhite:       'FFFFFF',
+    rowHostAlt:     'F0F4FF',   // host info table alt row
+ 
+    // Severity fills
+    criticalFill:   'FEE2E2',
+    highFill:       'FFEDD5',
+    mediumFill:     'FEF3C7',
+    lowFill:        'DBEAFE',
+    infoFill:       'F0F4FF',
+ 
+    // Severity text
+    criticalText:   'DC2626',
+    highText:       '9A3412',
+    mediumText:     '92400E',
+    lowText:        '1E40AF',
+    infoText:       '2563EB',
+ 
+    // Status
+    openStatusFill: 'FEE2E2',
+    openStatusText: 'DC2626',
+    reviewFill:     'FEF3C7',
+    reviewText:     'D97706',
+ 
+    // Exploit
+    exploitYesFill: 'FEE2E2',
+    exploitYesText: 'DC2626',
+    exploitNoFill:  'DCFCE7',
+    exploitNoText:  '15803D',
+ 
+    // Port / state
+    portNumFill:    'EFF6FF',
+    portNumText:    '2563EB',
+    openStateFill:  'DCFCE7',
+    openStateText:  '15803D',
+ 
+    // Text shades
+    white:          'FFFFFF',
+    nearBlack:      '111827',
+    darkGray:       '374151',
+    midGray:        '6B7280',
+    lightBlueText:  '93C5FD',
+    paleBlueText:   'BFDBFE',
+    titleAccent:    '7DD3FC',
+    blueLink:       '2563EB',
+    darkBlue:       '1A56B0',
+ 
+    // Stat card fills
+    statBlueFill:   'EFF6FF',
+    statRedFill:    'FEE2E2',
+    statOrangeFill: 'FFEDD5',
+    statAmberFill:  'FEF3C7',
+    statIndigoFill: 'DBEAFE',
+  },
+ 
+  // ── Sheet names ──────────────────────────────────────────────────────────
+  sheets: {
+    cover:    'Cover',
+    vulns:    'Vulnerability Findings',
+    ports:    'Open Ports',
+    summary:  'Summary Dashboard',
+  },
+ 
+  // ── Column widths (chars) ────────────────────────────────────────────────
+  vulnCols:    [14, 18, 32, 10, 44, 20, 24, 10, 14, 18, 20, 14, 10, 14],
+  portCols:    [5, 8, 10, 10, 18, 28, 52, 14],
+  summaryCols: [22, 14, 14, 14, 24, 10, 12, 14, 16, 18],
+  coverCols:   [14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 8],
+};
+ 
+// ═══════════════════════════════════════════════════════════════════════════
+//  STYLE HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+ 
+function _font(opts = {}) {
+  return {
+    name: opts.name || 'Arial',
+    sz:   opts.sz   || 10,
+    bold: opts.bold || false,
+    color: { rgb: opts.color || VAPT_EXCEL_CONFIG.colors.nearBlack },
+  };
+}
+ 
+function _fill(rgb) {
+  if (!rgb || rgb === 'NONE') return { patternType: 'none' };
+  return { patternType: 'solid', fgColor: { rgb } };
+}
+ 
+function _align(h = 'left', v = 'center', wrap = false) {
+  return { horizontal: h, vertical: v, wrapText: wrap };
+}
+ 
+function _border(style = 'thin', color = 'E5E7EB') {
+  const s = { style, color: { rgb: color } };
+  return { top: s, bottom: s, left: s, right: s };
+}
+ 
+function _cell(value, styleOpts = {}) {
+  const { bg, fg, bold, sz, h, v, wrap, border } = styleOpts;
+  return {
+    v: value ?? '',
+    t: typeof value === 'number' ? 'n' : 's',
+    s: {
+      font:      _font({ color: fg || VAPT_EXCEL_CONFIG.colors.nearBlack, bold: bold || false, sz: sz || 10 }),
+      fill:      _fill(bg || null),
+      alignment: _align(h || 'left', v || 'center', wrap || false),
+      border:    border || _border(),
+    },
+  };
+}
+ 
+// severity → { text, bg } color pair
+function _sevColors(sev) {
+  const C = VAPT_EXCEL_CONFIG.colors;
+  const s = (sev || '').toUpperCase();
+  if (s === 'CRITICAL') return { text: C.criticalText, bg: C.criticalFill };
+  if (s === 'HIGH')     return { text: C.highText,     bg: C.highFill     };
+  if (s === 'MEDIUM')   return { text: C.mediumText,   bg: C.mediumFill   };
+  if (s === 'LOW')      return { text: C.lowText,      bg: C.lowFill      };
+  return                       { text: C.infoText,     bg: C.infoFill     };
+}
+ 
+function _overallSev(h) {
+  if (h.critical_count > 0) return 'CRITICAL';
+  if (h.high_count     > 0) return 'HIGH';
+  if (h.medium_count   > 0) return 'MEDIUM';
+  if (h.low_count      > 0) return 'LOW';
+  return 'CLEAN';
+}
+ 
+// ═══════════════════════════════════════════════════════════════════════════
+//  SHEET BUILDERS
+// ═══════════════════════════════════════════════════════════════════════════
+ 
+/**
+ * Sets a cell directly on a worksheet object.
+ * @param {object} ws   - SheetJS worksheet
+ * @param {number} r    - 0-based row
+ * @param {number} c    - 0-based col
+ * @param {object} cell - { v, t, s } cell object
+ */
+function _put(ws, r, c, cell) {
+  const ref = XLSX.utils.encode_cell({ r, c });
+  ws[ref] = cell;
+}
+ 
+/**
+ * Add a merged range and optionally write the anchor cell.
+ */
+function _merge(ws, r1, c1, r2, c2, cell) {
+  if (!ws['!merges']) ws['!merges'] = [];
+  ws['!merges'].push({ s: { r: r1, c: c1 }, e: { r: r2, c: c2 } });
+  if (cell) _put(ws, r1, c1, cell);
+}
+ 
+function _emptyWs() {
+  return { '!ref': 'A1:A1', '!merges': [], '!rows': [], '!cols': [] };
+}
+ 
+// ── fmtDate ─────────────────────────────────────────────────────────────────
+function _fmtDate(s) {
+  if (!s) return '—';
+  try { return new Date(s).toLocaleString(); } catch { return String(s); }
+}
+ 
+// ── isInternal ──────────────────────────────────────────────────────────────
+function _isInternal(ip) {
+  return /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(ip || '');
+}
+ 
+// ── fmtPortsStr ─────────────────────────────────────────────────────────────
+function _fmtPortsStr(ports) {
+  if (!ports || !ports.length) return '—';
+  return ports.map(p => `${p.port}/${(p.protocol || 'tcp').toLowerCase()}${p.service ? ` (${p.service})` : ''}`).join(', ');
+}
+ 
+// ── fmtRisk ─────────────────────────────────────────────────────────────────
+function _fmtRisk(v) {
+  const sev = (v.severity || '').toLowerCase();
+  if (sev === 'critical' || sev === 'high')   return 'High';
+  if (sev === 'medium')                        return 'Medium';
+  if (sev === 'low')                           return 'Low';
+  return v.risk || 'Info';
+}
+ 
+// ── fmtVulnPath ─────────────────────────────────────────────────────────────
+function _fmtVulnPath(v, ports) {
+  if (v.path) return v.path;
+  const port = v.port || (v.ports && v.ports[0]);
+  if (!port) return 'N/A';
+  const matchedPort = (ports || []).find(p => String(p.port) === String(port));
+  const svc = matchedPort ? matchedPort.service || '' : '';
+  return `Port ${port}${svc ? ' / ' + svc.toUpperCase() : ''}`;
+}
+ 
+// ─────────────────────────────────────────────────────────────────────────────
+//  SHEET 1 — COVER
+// ─────────────────────────────────────────────────────────────────────────────
+function _buildCover(h, generatedAt) {
+  const C   = VAPT_EXCEL_CONFIG.colors;
+  const sev = _overallSev(h);
+  const sevC = _sevColors(sev);
+  const ws  = _emptyWs();
+ 
+  const LAST_COL = 13;  // columns A–N (0–13)
+ 
+  // ── Banner rows (navy bg) ─────────────────────────────────────────────────
+  // Row 1 (idx 0): empty spacer with navy
+  _merge(ws, 0, 0, 0, LAST_COL,
+    _cell('', { bg: C.navy }));
+ 
+  // Row 2 (idx 1): brand title
+  _merge(ws, 1, 0, 1, LAST_COL,
+    _cell('  VAPT Scanner Pro  —  Security Assessment Report', {
+      bg: C.navy, fg: C.titleAccent, bold: true, sz: 10 }));
+ 
+  // Row 3 (idx 2): spacer
+  _merge(ws, 2, 0, 2, LAST_COL,
+    _cell('', { bg: C.navy }));
+ 
+  // Row 4 (idx 3): main title
+  _merge(ws, 3, 0, 3, LAST_COL,
+    _cell('  IP Security Report', {
+      bg: C.navy, fg: C.white, bold: true, sz: 30 }));
+ 
+  // Row 5 (idx 4): subtitle
+  _merge(ws, 4, 0, 4, LAST_COL,
+    _cell('  Vulnerability Assessment & Penetration Testing', {
+      bg: C.navy, fg: C.lightBlueText, sz: 13 }));
+ 
+  // Row 6 (idx 5): spacer
+  _merge(ws, 5, 0, 5, LAST_COL,
+    _cell('', { bg: C.navy }));
+ 
+  // Row 7 (idx 6): target info
+  const ips = [...new Set((h.results || []).map(r => r.ip).filter(Boolean))].join(', ') || (h.ip || '—');
+  const hostname = (h.results && h.results[0] && h.results[0].hostname) || h.hostname || '—';
+  const os       = (h.results && h.results[0] && h.results[0].os)       || h.os       || '—';
+  _merge(ws, 6, 0, 6, LAST_COL,
+    _cell(`  Target: ${ips}  ·  ${hostname}  ·  ${os}`, {
+      bg: C.navy, fg: C.paleBlueText, bold: true, sz: 11 }));
+ 
+  // Row 8 (idx 7): generated date
+  _merge(ws, 7, 0, 7, LAST_COL,
+    _cell(`  Report Generated: ${generatedAt}`, {
+      bg: C.navy, fg: C.lightBlueText, sz: 9 }));
+ 
+  // Row 9 (idx 8): spacer
+  _merge(ws, 8, 0, 8, LAST_COL,
+    _cell('', { bg: C.white }));
+ 
+  // ── Stat cards row 10–13 (idx 9–12) ──────────────────────────────────────
+  // Card 1: Overall Severity — cols A-C
+  _merge(ws, 9, 0, 12, 2,
+    _cell(sev, { bg: sevC.bg, fg: sevC.text, bold: true, sz: 22, h: 'center', v: 'center' }));
+ 
+  // "Overall\nRisk Level" label — col D
+  _put(ws, 9, 3, _cell('Overall\nRisk Level', {
+    bg: C.white, fg: C.midGray, bold: true, sz: 9, h: 'center', v: 'center', wrap: true }));
+ 
+  // Card: Open Ports — cols E-G
+  const openPortsCount = (h.results || []).reduce((s, r) => s + ((r.ports || []).length), 0) || h.open_ports || 0;
+  _merge(ws, 9, 4, 10, 6,
+    _cell(openPortsCount, { bg: C.statBlueFill, fg: C.blueLink, bold: true, sz: 18, h: 'center', v: 'center' }));
+  _merge(ws, 11, 4, 12, 6,
+    _cell('Open Ports', { bg: C.statBlueFill, fg: C.midGray, bold: true, sz: 9, h: 'center', v: 'center' }));
+ 
+  // Card: Total Vulnerabilities — cols H-J
+  const totalVulns = (h.results || []).reduce((s, r) => s + ((r.vulnerabilities || r.vulns || []).length), 0);
+  _merge(ws, 9, 7, 10, 9,
+    _cell(totalVulns, { bg: C.statRedFill, fg: C.criticalText, bold: true, sz: 18, h: 'center', v: 'center' }));
+  _merge(ws, 11, 7, 12, 9,
+    _cell('Vulnerabilities', { bg: C.statRedFill, fg: C.midGray, bold: true, sz: 9, h: 'center', v: 'center' }));
+ 
+  // Card: High — col K
+  _merge(ws, 9, 10, 10, 10,
+    _cell(h.high_count || 0, { bg: C.statOrangeFill, fg: C.highText, bold: true, sz: 18, h: 'center', v: 'center' }));
+  _merge(ws, 11, 10, 12, 10,
+    _cell('High', { bg: C.statOrangeFill, fg: C.midGray, bold: true, sz: 9, h: 'center', v: 'center' }));
+ 
+  // Card: Medium — col L
+  _merge(ws, 9, 11, 10, 11,
+    _cell(h.medium_count || 0, { bg: C.statAmberFill, fg: C.mediumText, bold: true, sz: 18, h: 'center', v: 'center' }));
+  _merge(ws, 11, 11, 12, 11,
+    _cell('Medium', { bg: C.statAmberFill, fg: C.midGray, bold: true, sz: 9, h: 'center', v: 'center' }));
+ 
+  // Card: Low — col M
+  _merge(ws, 9, 12, 10, 12,
+    _cell(h.low_count || 0, { bg: C.statIndigoFill, fg: C.lowText, bold: true, sz: 18, h: 'center', v: 'center' }));
+  _merge(ws, 11, 12, 12, 12,
+    _cell('Low', { bg: C.statIndigoFill, fg: C.midGray, bold: true, sz: 9, h: 'center', v: 'center' }));
+ 
+  // ── Spacers ───────────────────────────────────────────────────────────────
+  [13, 14, 15].forEach(ri =>
+    _merge(ws, ri, 0, ri, LAST_COL, _cell('', { bg: C.white })));
+ 
+  // ── Host Information table (rows 16–25, idx) ──────────────────────────────
+  _merge(ws, 15, 0, 15, 8,
+    _cell('    Host Information', {
+      bg: C.navy, fg: C.white, bold: true, sz: 11 }));
+  // fill remainder of header row
+  for (let c = 9; c <= LAST_COL; c++)
+    _put(ws, 15, c, _cell('', { bg: C.white }));
+ 
+  const hostRows = [
+    ['IP Address',       ips],
+    ['Hostname',         hostname],
+    ['Operating System', os],
+    ['MAC Address',      (h.results && h.results[0] && h.results[0].mac) || '—'],
+    ['Status',           'Online'],
+    ['Overall Severity', sev],
+    ['Scanned At',       (h.results && h.results[0] && h.results[0].scanned_at) || h.started_at || generatedAt],
+    ['Open Ports',       openPortsCount],
+    ['Vulnerabilities',  totalVulns],
+  ];
+ 
+  hostRows.forEach(([label, val], i) => {
+    const ri  = 16 + i;
+    const alt = i % 2 === 0;
+    const bg  = alt ? C.rowHostAlt : C.white;
+    _merge(ws, ri, 0, ri, 3, _cell(label, { bg, fg: C.midGray, bold: true, sz: 9 }));
+    // severity value gets special coloring
+    let valFg = C.nearBlack;
+    if (label === 'Overall Severity') {
+      valFg = sevC.text;
+    }
+    _merge(ws, ri, 4, ri, 8,
+      _cell(val, { bg, fg: valFg, bold: label === 'Overall Severity', sz: 9 }));
+    // fill trailing cols
+    for (let c = 9; c <= LAST_COL; c++) _put(ws, ri, c, _cell('', { bg: C.white }));
+  });
+ 
+  // ── Footer ────────────────────────────────────────────────────────────────
+  const footerRow = 16 + hostRows.length + 5;
+  _merge(ws, footerRow, 0, footerRow, LAST_COL,
+    _cell(`VAPT Scanner Pro  •  Confidential Security Report  •  For Internal Use Only  •  ${ips}`, {
+      bg: C.white, fg: C.midGray, sz: 8, h: 'center' }));
+ 
+  // ── Sheet metadata ────────────────────────────────────────────────────────
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: footerRow, c: LAST_COL } });
+  ws['!cols'] = VAPT_EXCEL_CONFIG.coverCols.map(w => ({ wch: w }));
+  ws['!rows'] = [
+    { hpt: 8 },   // row 1 spacer
+    { hpt: 18 },  // row 2 brand
+    { hpt: 8 },   // row 3 spacer
+    { hpt: 48 },  // row 4 big title
+    { hpt: 22 },  // row 5 subtitle
+    { hpt: 8 },   // row 6 spacer
+    { hpt: 20 },  // row 7 target
+    { hpt: 16 },  // row 8 date
+    { hpt: 12 },  // row 9 spacer
+    { hpt: 32 },  // row 10 stat top
+    { hpt: 32 },  // row 11 stat mid
+    { hpt: 20 },  // row 12 stat label
+    { hpt: 20 },  // row 13 stat label2
+  ];
+  return ws;
+}
+ 
+// ─────────────────────────────────────────────────────────────────────────────
+//  SHEET 2 — VULNERABILITY FINDINGS
+// ─────────────────────────────────────────────────────────────────────────────
+function _buildVulnSheet(h, generatedAt) {
+  const C    = VAPT_EXCEL_CONFIG.colors;
+  const sev  = _overallSev(h);
+  const ws   = _emptyWs();
+  const LAST = 13; // cols A-N
+ 
+  // ── Build data rows ───────────────────────────────────────────────────────
+  const dataRows = [];
+  (h.results || []).forEach(r => {
+    const scanType = _isInternal(r.ip) ? 'Internal' : 'External';
+    const portsStr = _fmtPortsStr(r.ports);
+    const vulns    = r.vulnerabilities || r.vulns || [];
+    if (vulns.length === 0) {
+      dataRows.push({ r, v: null, scanType, portsStr });
+    } else {
+      vulns.forEach(v => dataRows.push({ r, v, scanType, portsStr }));
+    }
+  });
+ 
+  const totalVulns = dataRows.filter(d => d.v).length;
+  const ips = [...new Set((h.results || []).map(r => r.ip).filter(Boolean))].join(', ') || '—';
+ 
+  // ── Title banner (row 0) ──────────────────────────────────────────────────
+  _merge(ws, 0, 0, 0, LAST,
+    _cell(`  Vulnerability Findings  —  ${ips}`, {
+      bg: C.redHeader, fg: C.white, bold: true, sz: 13 }));
+ 
+  // ── Subtitle (row 1) ──────────────────────────────────────────────────────
+  _merge(ws, 1, 0, 1, LAST,
+    _cell(`  Generated: ${generatedAt}  ·  Overall Severity: ${sev}  ·  ${totalVulns} finding${totalVulns !== 1 ? 's' : ''} on ${(h.results || []).length} target host${(h.results || []).length !== 1 ? 's' : ''}`, {
+      bg: null, fg: C.midGray, sz: 9 }));
+ 
+  // ── Header row (row 2) ────────────────────────────────────────────────────
+  const hdrs = ['Scan Type', 'Source IP', 'Finding', 'Risk',
+    'Mitigation / Remediation', 'Vulnerable Path', 'Exposed Ports / Services',
+    'Severity', 'Status', 'IP Address / URL',
+    'Affected CVEs', 'CVE Release Date', 'Exploit Available', 'Exploit Type'];
+ 
+  hdrs.forEach((h_text, ci) =>
+    _put(ws, 2, ci, _cell(h_text, {
+      bg: C.redHeader, fg: C.white, bold: true, sz: 9, h: 'center', v: 'center', wrap: true })));
+ 
+  // ── Data rows ─────────────────────────────────────────────────────────────
+  dataRows.forEach(({ r, v, scanType, portsStr }, i) => {
+    const ri  = i + 3;
+    const alt = i % 2 === 0;
+    const rowBg = alt ? C.rowAlt : C.rowWhite;
+ 
+    if (!v) {
+      // No vulnerabilities row
+      const noVulnCells = [
+        [scanType,                C.blueLink, true,   9,  rowBg],
+        [r.ip || '',              C.blueLink, true,   10, rowBg],
+        ['No vulnerabilities found', C.nearBlack, false, 10, rowBg],
+        ['Info',                  C.infoText, true,   9,  C.infoFill],
+        ['—',                     C.midGray,  false,  10, rowBg],
+        ['N/A',                   C.midGray,  false,  10, rowBg],
+        [portsStr,                C.midGray,  false,  10, rowBg],
+        ['INFO',                  C.infoText, true,   10, C.infoFill],
+        ['Closed',                C.midGray,  true,   9,  rowBg],
+        [r.ip || '',              C.blueLink, true,   10, rowBg],
+        ['—', C.midGray, false, 10, rowBg],
+        ['—', C.midGray, false, 10, rowBg],
+        ['No',                    C.exploitNoText, true, 9, C.exploitNoFill],
+        ['—', C.midGray, false, 10, rowBg],
+      ];
+      noVulnCells.forEach(([val, fg, bold, sz, bg], ci) =>
+        _put(ws, ri, ci, _cell(val, { bg, fg, bold, sz, wrap: ci === 4 })));
+      return;
+    }
+ 
+    const sevStr = (v.severity || 'Low').toUpperCase();
+    const sevC   = _sevColors(sevStr);
+    const risk   = _fmtRisk(v);
+    const path   = _fmtVulnPath(v, r.ports);
+ 
+    const rawCVEs = v.cve
+      ? (Array.isArray(v.cve) ? v.cve : [v.cve])
+      : v.cves ? (Array.isArray(v.cves) ? v.cves : [v.cves])
+      : v.cve_id ? [v.cve_id] : [];
+    const cveStr = rawCVEs.length ? rawCVEs.join('; ') : '—';
+ 
+    const status      = v.status || 'Open';
+    const exploit     = v.exploit ? 'Yes' : 'No';
+    const exploitType = v.exploit_type || v.exploit_kind || (v.exploit ? 'Remote' : '—');
+ 
+    // status color
+    const statusBg   = status === 'Open' ? C.openStatusFill
+                     : status.toLowerCase().includes('review') ? C.reviewFill : rowBg;
+    const statusFg   = status === 'Open' ? C.openStatusText
+                     : status.toLowerCase().includes('review') ? C.reviewText : C.midGray;
+ 
+    // exploit color
+    const exploitBg  = exploit === 'Yes' ? C.exploitYesFill : C.exploitNoFill;
+    const exploitFg  = exploit === 'Yes' ? C.exploitYesText : C.exploitNoText;
+ 
+    const cols = [
+      [scanType,                      C.blueLink, true,  9,  rowBg],
+      [r.ip || '',                    C.blueLink, true,  10, rowBg],
+      [v.name || v.title || 'Unknown',C.nearBlack,true,  10, rowBg],
+      [risk,                          sevC.text,  true,  9,  sevC.bg],
+      [v.mitigation || v.remediation || '—', C.darkGray, false, 10, rowBg],
+      [path,                          C.midGray,  false, 10, rowBg],
+      [portsStr,                      C.midGray,  false, 10, rowBg],
+      [sevStr,                        sevC.text,  true,  10, sevC.bg],
+      [status,                        statusFg,   true,  9,  statusBg],
+      [r.ip || '',                    C.blueLink, true,  10, rowBg],
+      [cveStr,                        C.blueLink, false, 10, rowBg],
+      [v.published || v.published_at || '—', C.midGray, false, 10, rowBg],
+      [exploit,                       exploitFg,  true,  9,  exploitBg],
+      [exploitType,                   C.midGray,  false, 10, rowBg],
+    ];
+ 
+    cols.forEach(([val, fg, bold, sz, bg], ci) =>
+      _put(ws, ri, ci, _cell(val, { bg, fg, bold, sz, wrap: ci === 4 })));
+  });
+ 
+  ws['!ref']  = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 2 + dataRows.length + 1, c: LAST } });
+  ws['!cols'] = VAPT_EXCEL_CONFIG.vulnCols.map(w => ({ wch: w }));
+  ws['!rows'] = [{ hpt: 24 }, { hpt: 16 }];
+  ws['!freeze'] = { xSplit: 0, ySplit: 3 };
+  return ws;
+}
+ 
+// ─────────────────────────────────────────────────────────────────────────────
+//  SHEET 3 — OPEN PORTS
+// ─────────────────────────────────────────────────────────────────────────────
+function _buildPortsSheet(h, generatedAt) {
+  const C    = VAPT_EXCEL_CONFIG.colors;
+  const ws   = _emptyWs();
+  const LAST = 7; // cols A-H
+ 
+  // Collect all ports across all IPs
+  const allPorts = [];
+  (h.results || []).forEach(r => {
+    (r.ports || []).forEach(p => allPorts.push({ ...p, ip: r.ip }));
+  });
+ 
+  // Sort by port number for readability
+  allPorts.sort((a, b) => (a.port || 0) - (b.port || 0));
+ 
+  const ips = [...new Set((h.results || []).map(r => r.ip).filter(Boolean))].join(', ') || '—';
+  const scanType = (h.results && h.results[0] && _isInternal(h.results[0].ip)) ? 'Internal' : 'External';
+ 
+  // ── Title banner ──────────────────────────────────────────────────────────
+  _merge(ws, 0, 0, 0, LAST,
+    _cell(`  Open Ports & Services  —  ${ips}`, {
+      bg: C.blueHeader, fg: C.white, bold: true, sz: 13 }));
+ 
+  // ── Subtitle ──────────────────────────────────────────────────────────────
+  _merge(ws, 1, 0, 1, LAST,
+    _cell(`  ${allPorts.length} open port${allPorts.length !== 1 ? 's' : ''} detected  ·  ${scanType} Scan  ·  ${generatedAt}`, {
+      bg: null, fg: C.midGray, sz: 9 }));
+ 
+  // ── Header row ────────────────────────────────────────────────────────────
+  const portHdrs = ['#', 'Port', 'Protocol', 'State', 'Service', 'Product / Version', 'Risk Notes', 'Category'];
+  portHdrs.forEach((h_text, ci) =>
+    _put(ws, 2, ci, _cell(h_text, {
+      bg: C.blueHeader, fg: C.white, bold: true, sz: 10, h: 'center', v: 'center' })));
+ 
+  // ── Data rows ─────────────────────────────────────────────────────────────
+  allPorts.forEach((p, i) => {
+    const ri  = i + 3;
+    const alt = i % 2 === 0;
+    const bg  = alt ? C.rowAlt : C.rowWhite;
+ 
+    // Determine category from service name
+    const svc = (p.service || '').toLowerCase();
+    const category =
+      /http|https|web/.test(svc) ? 'Web' :
+      /ftp/.test(svc)            ? 'FTP' :
+      /ssh/.test(svc)            ? 'SSH' :
+      /smtp|pop|imap/.test(svc)  ? 'Mail' :
+      /mysql|mssql|postgres|mongo|redis|oracle/.test(svc) ? 'Database' :
+      /smb|netbios|microsoft-ds/.test(svc) ? 'SMB' :
+      /msrpc|rpc/.test(svc)      ? 'RPC' :
+      /sip|voip/.test(svc)       ? 'VoIP' :
+      /rdp|vnc/.test(svc)        ? 'Remote' :
+      /vmrdp|virtualbox/.test(svc) ? 'Virtualization' :
+      p.category || 'Other';
+ 
+    const riskNote = p.risk_note || p.notes || _autoRiskNote(p);
+ 
+    _put(ws, ri, 0, _cell(i + 1,    { bg, fg: C.midGray,    bold: false, sz: 10 }));
+    _put(ws, ri, 1, _cell(p.port,   { bg: C.portNumFill, fg: C.portNumText, bold: true, sz: 11 }));
+    _put(ws, ri, 2, _cell((p.protocol || 'TCP').toUpperCase(), { bg, fg: C.darkBlue, bold: false, sz: 10 }));
+    _put(ws, ri, 3, _cell('Open',   { bg: C.openStateFill, fg: C.openStateText, bold: true, sz: 10 }));
+    _put(ws, ri, 4, _cell(p.service || '—', { bg, fg: C.nearBlack, bold: true, sz: 10 }));
+    _put(ws, ri, 5, _cell(p.product || p.version || 'Unknown', { bg, fg: C.midGray, bold: false, sz: 10 }));
+    _put(ws, ri, 6, _cell(riskNote, { bg, fg: C.darkGray, bold: false, sz: 10, wrap: true }));
+    _put(ws, ri, 7, _cell(category, { bg, fg: C.darkBlue, bold: false, sz: 10 }));
+  });
+ 
+  ws['!ref']  = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 2 + allPorts.length + 1, c: LAST } });
+  ws['!cols'] = VAPT_EXCEL_CONFIG.portCols.map(w => ({ wch: w }));
+  ws['!rows'] = [{ hpt: 24 }, { hpt: 16 }];
+  ws['!freeze'] = { xSplit: 0, ySplit: 3 };
+  return ws;
+}
+ 
+function _autoRiskNote(p) {
+  const port = p.port;
+  const svc  = (p.service || '').toLowerCase();
+  if (port === 80  || port === 8080) return 'Web server exposed — check misconfigurations & outdated version';
+  if (port === 443 || port === 8443) return 'HTTPS — verify TLS version, cipher suites, and certificate validity';
+  if (port === 22)  return 'SSH — restrict to key-based auth; disable root login';
+  if (port === 21)  return 'FTP — insecure plaintext protocol; migrate to SFTP/FTPS';
+  if (port === 25 || port === 587) return 'SMTP — verify relay restrictions and authentication';
+  if (port === 135) return 'MSRPC — common attack vector, restrict via firewall';
+  if (port === 139) return 'NetBIOS — legacy protocol, disable if not needed';
+  if (port === 445) return 'SMB — high-risk (EternalBlue/WannaCry); patch immediately';
+  if (port === 3306) return 'MySQL unauthorised — database exposed, restrict access';
+  if (port === 5432) return 'PostgreSQL exposed — ensure auth is enforced';
+  if (port === 3389) return 'RDP — high-risk remote access; restrict to VPN/trusted IPs';
+  if (port === 5060 || port === 5061) return 'SIP/VoIP — monitor for toll fraud and eavesdropping';
+  if (/vmrdp|vmware/.test(svc)) return 'VM RDP — restrict access to trusted hosts only';
+  return `Port ${port} — verify necessity and restrict access`;
+}
+ 
+// ─────────────────────────────────────────────────────────────────────────────
+//  SHEET 4 — SUMMARY DASHBOARD
+// ─────────────────────────────────────────────────────────────────────────────
+function _buildSummarySheet(h, generatedAt) {
+  const C    = VAPT_EXCEL_CONFIG.colors;
+  const ws   = _emptyWs();
+  const LAST = 9; // cols A-J
+ 
+  const sev        = _overallSev(h);
+  const ips        = [...new Set((h.results || []).map(r => r.ip).filter(Boolean))].join(', ') || '—';
+  const hostname   = (h.results && h.results[0] && h.results[0].hostname) || h.hostname || '—';
+  const os         = (h.results && h.results[0] && h.results[0].os) || h.os || '—';
+  const totalVulns = (h.results || []).reduce((s, r) => s + ((r.vulnerabilities || r.vulns || []).length), 0);
+  const openPorts  = (h.results || []).reduce((s, r) => s + ((r.ports || []).length), 0);
+  const critCount  = h.critical_count || 0;
+  const highCount  = h.high_count     || 0;
+  const medCount   = h.medium_count   || 0;
+  const lowCount   = h.low_count      || 0;
+ 
+  // ── Title banner ──────────────────────────────────────────────────────────
+  _merge(ws, 0, 0, 0, LAST,
+    _cell(`  Security Summary Dashboard  —  ${ips}`, {
+      bg: C.navy, fg: C.white, bold: true, sz: 13 }));
+  _merge(ws, 1, 0, 1, LAST,
+    _cell(`  ${hostname}  ·  ${os}  ·  ${generatedAt}`, {
+      bg: null, fg: C.midGray, sz: 9 }));
+ 
+  // ── KPI metric strip (rows 2–4) ───────────────────────────────────────────
+  const metricDefs = [
+    [1,         C.infoFill,     C.infoText,     'Hosts Scanned',      C.infoFill],
+    [openPorts, C.statBlueFill, C.blueLink,     'Open Ports',         C.statBlueFill],
+    [totalVulns,C.statRedFill,  C.criticalText, 'Total Vulns',        C.statRedFill],
+    [highCount, C.statOrangeFill,C.highText,    'High',               C.statOrangeFill],
+    [medCount,  C.statAmberFill,C.mediumText,   'Medium',             C.statAmberFill],
+  ];
+  // Spread across 10 cols (A-J) in pairs
+  const metricCols = [0, 2, 4, 6, 8];
+  metricDefs.forEach(([val, valBg, valFg, label, lblBg], i) => {
+    const c = metricCols[i];
+    _merge(ws, 2, c, 3, c + 1,
+      _cell(val, { bg: valBg, fg: valFg, bold: true, sz: 18, h: 'center', v: 'center' }));
+    _merge(ws, 4, c, 4, c + 1,
+      _cell(label, { bg: lblBg, fg: C.midGray, bold: true, sz: 9, h: 'center' }));
+  });
+ 
+  // ── Severity Breakdown table (rows 6+) ────────────────────────────────────
+  let ri = 6;
+  _merge(ws, ri, 0, ri, LAST,
+    _cell('  Severity Breakdown', {
+      bg: C.navy, fg: C.white, bold: true, sz: 11 }));
+  ri++;
+ 
+  const sbHdrs = ['Severity', 'Count', '% of Total', 'Risk Level', 'Remediation Timeline'];
+  sbHdrs.forEach((t, ci) =>
+    _put(ws, ri, ci, _cell(t, {
+      bg: C.navy, fg: C.white, bold: true, sz: 9, h: 'center' })));
+  // empty remaining cols in header row
+  for (let c = sbHdrs.length; c <= LAST; c++)
+    _put(ws, ri, c, _cell('', { bg: C.white }));
+  ri++;
+ 
+  const pct = (n) => totalVulns > 0 ? `${(n / totalVulns * 100).toFixed(1)}%` : '0.0%';
+  const sevRows = [
+    ['CRITICAL', critCount, pct(critCount), 'Critical', 'Immediate action — 24 hrs'],
+    ['HIGH',     highCount, pct(highCount), 'High',     'Urgent — within 7 days'],
+    ['MEDIUM',   medCount,  pct(medCount),  'Medium',   'Moderate — within 30 days'],
+    ['LOW',      lowCount,  pct(lowCount),  'Low',      'Scheduled — within 90 days'],
+  ];
+  sevRows.forEach(([s, cnt, pctStr, rl, timeline]) => {
+    const sc = _sevColors(s);
+    _put(ws, ri, 0, _cell(s,        { bg: sc.bg, fg: sc.text, bold: true,  sz: 9  }));
+    _put(ws, ri, 1, _cell(cnt,      { bg: C.white, fg: C.nearBlack, bold: false, sz: 9 }));
+    _put(ws, ri, 2, _cell(pctStr,   { bg: C.white, fg: C.midGray, bold: false, sz: 9 }));
+    _put(ws, ri, 3, _cell(rl,       { bg: sc.bg, fg: sc.text, bold: false, sz: 9 }));
+    _put(ws, ri, 4, _cell(timeline, { bg: C.white, fg: C.darkGray, bold: false, sz: 9 }));
+    for (let c = 5; c <= LAST; c++) _put(ws, ri, c, _cell('', { bg: C.white }));
+    ri++;
+  });
+ 
+  ri++;  // spacer
+ 
+  // ── All Findings at a Glance table ────────────────────────────────────────
+  _merge(ws, ri, 0, ri, LAST,
+    _cell('  All Findings at a Glance', {
+      bg: C.navy, fg: C.white, bold: true, sz: 11 }));
+  ri++;
+ 
+  const glanceHdrs = ['#', 'Finding', 'Severity', 'Port', 'CVE', 'Exploit', 'Status', 'Scan Type', 'Source IP', 'Action Required'];
+  glanceHdrs.forEach((t, ci) =>
+    _put(ws, ri, ci, _cell(t, {
+      bg: C.navy, fg: C.white, bold: true, sz: 9, h: 'center' })));
+  ri++;
+ 
+  let idx = 1;
+  (h.results || []).forEach(r => {
+    const scanType = _isInternal(r.ip) ? 'Internal' : 'External';
+    const vulns    = r.vulnerabilities || r.vulns || [];
+    vulns.forEach(v => {
+      const alt   = idx % 2 === 1;
+      const rowBg = alt ? C.rowAlt : C.rowWhite;
+      const sc    = _sevColors(v.severity || 'Low');
+      const sevStr = (v.severity || 'Low').toUpperCase();
+      const rawCVEs = v.cve ? (Array.isArray(v.cve) ? v.cve : [v.cve]) : v.cves ? (Array.isArray(v.cves) ? v.cves : [v.cves]) : v.cve_id ? [v.cve_id] : [];
+      const cveStr  = rawCVEs.length ? rawCVEs.join('; ') : '—';
+      const exploit = v.exploit ? 'Yes' : 'No';
+      const status  = v.status || 'Open';
+      const action  = sevStr === 'CRITICAL' || sevStr === 'HIGH' ? 'Patch immediately'
+                    : sevStr === 'MEDIUM' ? 'Schedule fix' : 'Monitor';
+      const exploitBg = v.exploit ? C.exploitYesFill : rowBg;
+      const exploitFg = v.exploit ? C.exploitYesText : C.midGray;
+ 
+      _put(ws, ri, 0, _cell(idx,    { bg: rowBg, fg: C.midGray, sz: 9 }));
+      _put(ws, ri, 1, _cell(v.name || v.title || 'Unknown', { bg: rowBg, fg: C.nearBlack, bold: true, sz: 9 }));
+      _put(ws, ri, 2, _cell(sevStr, { bg: sc.bg, fg: sc.text, bold: true, sz: 9 }));
+      _put(ws, ri, 3, _cell(v.port || '—', { bg: rowBg, fg: C.midGray, sz: 9 }));
+      _put(ws, ri, 4, _cell(cveStr, { bg: rowBg, fg: C.blueLink, sz: 9 }));
+      _put(ws, ri, 5, _cell(exploit, { bg: exploitBg, fg: exploitFg, bold: v.exploit, sz: 9 }));
+      _put(ws, ri, 6, _cell(status, { bg: status === 'Open' ? C.openStatusFill : rowBg, fg: status === 'Open' ? C.openStatusText : C.midGray, bold: true, sz: 9 }));
+      _put(ws, ri, 7, _cell(scanType, { bg: rowBg, fg: C.blueLink, bold: true, sz: 9 }));
+      _put(ws, ri, 8, _cell(r.ip || '', { bg: rowBg, fg: C.blueLink, bold: true, sz: 9 }));
+      _put(ws, ri, 9, _cell(action, { bg: sevStr === 'HIGH' || sevStr === 'CRITICAL' ? C.criticalFill : rowBg, fg: sevStr === 'HIGH' || sevStr === 'CRITICAL' ? C.criticalText : C.darkGray, bold: false, sz: 9 }));
+      ri++;
+      idx++;
+    });
+  });
+ 
+  ws['!ref']  = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: ri + 1, c: LAST } });
+  ws['!cols'] = VAPT_EXCEL_CONFIG.summaryCols.map(w => ({ wch: w }));
+  ws['!rows'] = [{ hpt: 24 }, { hpt: 16 }];
+  ws['!freeze'] = { xSplit: 0, ySplit: 2 };
+  return ws;
+}
+
   // ════════════════════════════════════════════════════════════════
   //  EXPORT
   // ════════════════════════════════════════════════════════════════
+  // async function exportSession(id, fmt) {
+  //   try {
+  //     const res = await fetch(`/api/bulk/history/${id}`, { credentials: 'same-origin' });
+  //     const data = await res.json(); const h = data.session; if (!h) return;
+  //     if (fmt === 'xlsx') {
+  //       const { hdrs, rows } = buildCSVRows(h.results || []);
+  //       const generatedAt = new Date().toLocaleString();
+  //       const totalVulns = rows.filter(r => r[2] !== 'No vulnerabilities found').length;
+  //       const ips = [...new Set((h.results || []).map(r => r.ip).filter(Boolean))].join(', ') || '—';
+  //       const overallSev = h.critical_count ? 'CRITICAL' : h.high_count ? 'HIGH' : h.medium_count ? 'MEDIUM' : h.low_count ? 'LOW' : 'CLEAN';
+
+  //       const wb = XLSX.utils.book_new();
+  //       const wsData = [
+  //         [`Vulnerability Findings — ${ips}`],
+  //         [`Generated: ${generatedAt}  ·  Overall Severity: ${overallSev}  ·  ${totalVulns} finding${totalVulns !== 1 ? 's' : ''} on ${(h.results || []).length} target host${(h.results || []).length !== 1 ? 's' : ''}`],
+  //         [],
+  //         hdrs,
+  //         ...rows
+  //       ];
+  //       const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  //       // Column widths
+  //       ws['!cols'] = [14,18,32,10,32,20,24,10,10,18,20,14,10,14].map(w => ({ wch: w }));
+
+  //       // Style header row (row index 3, 0-based)
+  //       const headerRowIdx = 3;
+  //       hdrs.forEach((_, ci) => {
+  //         const cellRef = XLSX.utils.encode_cell({ r: headerRowIdx, c: ci });
+  //         if (!ws[cellRef]) ws[cellRef] = { v: hdrs[ci], t: 's' };
+  //         ws[cellRef].s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E40AF' } }, alignment: { wrapText: true } };
+  //       });
+
+  //       // Freeze top 4 rows + header
+  //       ws['!freeze'] = { xSplit: 0, ySplit: headerRowIdx + 1 };
+
+  //       XLSX.utils.book_append_sheet(wb, ws, 'Vulnerabilities');
+
+  //       // Summary sheet
+  //       const sumData = [
+  //         ['Summary'],
+  //         ['IPs Scanned', ips],
+  //         ['Overall Severity', overallSev],
+  //         ['Total Vulnerabilities', totalVulns],
+  //         ['Critical', h.critical_count || 0],
+  //         ['High', h.high_count || 0],
+  //         ['Medium', h.medium_count || 0],
+  //         ['Low', h.low_count || 0],
+  //         ['Generated At', generatedAt],
+  //         ['Scan ID', h.scan_id || id],
+  //       ];
+  //       const ws2 = XLSX.utils.aoa_to_sheet(sumData);
+  //       ws2['!cols'] = [{ wch: 22 }, { wch: 40 }];
+  //       XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
+
+  //       XLSX.writeFile(wb, `bulk-scan-${h.scan_id || id}.xlsx`);
+  //       return;
+  //     }
+  //     if (fmt === 'json') {
+  //       dl(new Blob([JSON.stringify(h, null, 2)], { type: 'application/json' }), `bulk-scan-${h.scan_id || id}.json`);
+  //     } else {
+  //       const { hdrs, rows } = buildCSVRows(h.results || []);
+
+  //       // Meta header lines matching XLSX report style
+  //       const generatedAt = new Date().toLocaleString();
+  //       const totalVulns = rows.filter(r => r[2] !== 'No vulnerabilities found').length;
+  //       const ips = [...new Set((h.results || []).map(r => r.ip).filter(Boolean))].join(', ') || '—';
+  //       const meta = [
+  //         [`Vulnerability Findings — ${ips}`],
+  //         [`Generated: ${generatedAt}  ·  Overall Severity: ${(h.critical_count ? 'CRITICAL' : h.high_count ? 'HIGH' : h.medium_count ? 'MEDIUM' : h.low_count ? 'LOW' : 'CLEAN')}  ·  ${totalVulns} finding${totalVulns !== 1 ? 's' : ''} on ${(h.results || []).length} target host${(h.results || []).length !== 1 ? 's' : ''}`],
+  //         []
+  //       ];
+
+  //       const allRows = [...meta, hdrs, ...rows];
+  //       const csv = allRows.map(r => r.map(c => `"${String(c || '').replace(/"/g, '""')}"`).join(',')).join('\n');
+  //       dl(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }), `bulk-scan-${h.scan_id || id}.csv`);
+  //     }
+  //   } catch (e) { alert('Export failed: ' + e.message); }
+  // }
   async function exportSession(id, fmt) {
-    try {
-      const res = await fetch(`/api/bulk/history/${id}`, { credentials: 'same-origin' });
-      const data = await res.json(); const h = data.session; if (!h) return;
-      if (fmt === 'xlsx') {
-        const { hdrs, rows } = buildCSVRows(h.results || []);
-        const generatedAt = new Date().toLocaleString();
-        const totalVulns = rows.filter(r => r[2] !== 'No vulnerabilities found').length;
-        const ips = [...new Set((h.results || []).map(r => r.ip).filter(Boolean))].join(', ') || '—';
-        const overallSev = h.critical_count ? 'CRITICAL' : h.high_count ? 'HIGH' : h.medium_count ? 'MEDIUM' : h.low_count ? 'LOW' : 'CLEAN';
-
-        const wb = XLSX.utils.book_new();
-        const wsData = [
-          [`Vulnerability Findings — ${ips}`],
-          [`Generated: ${generatedAt}  ·  Overall Severity: ${overallSev}  ·  ${totalVulns} finding${totalVulns !== 1 ? 's' : ''} on ${(h.results || []).length} target host${(h.results || []).length !== 1 ? 's' : ''}`],
-          [],
-          hdrs,
-          ...rows
-        ];
-        const ws = XLSX.utils.aoa_to_sheet(wsData);
-
-        // Column widths
-        ws['!cols'] = [14,18,32,10,32,20,24,10,10,18,20,14,10,14].map(w => ({ wch: w }));
-
-        // Style header row (row index 3, 0-based)
-        const headerRowIdx = 3;
-        hdrs.forEach((_, ci) => {
-          const cellRef = XLSX.utils.encode_cell({ r: headerRowIdx, c: ci });
-          if (!ws[cellRef]) ws[cellRef] = { v: hdrs[ci], t: 's' };
-          ws[cellRef].s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E40AF' } }, alignment: { wrapText: true } };
-        });
-
-        // Freeze top 4 rows + header
-        ws['!freeze'] = { xSplit: 0, ySplit: headerRowIdx + 1 };
-
-        XLSX.utils.book_append_sheet(wb, ws, 'Vulnerabilities');
-
-        // Summary sheet
-        const sumData = [
-          ['Summary'],
-          ['IPs Scanned', ips],
-          ['Overall Severity', overallSev],
-          ['Total Vulnerabilities', totalVulns],
-          ['Critical', h.critical_count || 0],
-          ['High', h.high_count || 0],
-          ['Medium', h.medium_count || 0],
-          ['Low', h.low_count || 0],
-          ['Generated At', generatedAt],
-          ['Scan ID', h.scan_id || id],
-        ];
-        const ws2 = XLSX.utils.aoa_to_sheet(sumData);
-        ws2['!cols'] = [{ wch: 22 }, { wch: 40 }];
-        XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
-
-        XLSX.writeFile(wb, `bulk-scan-${h.scan_id || id}.xlsx`);
-        return;
-      }
-      if (fmt === 'json') {
-        dl(new Blob([JSON.stringify(h, null, 2)], { type: 'application/json' }), `bulk-scan-${h.scan_id || id}.json`);
-      } else {
-        const { hdrs, rows } = buildCSVRows(h.results || []);
-
-        // Meta header lines matching XLSX report style
-        const generatedAt = new Date().toLocaleString();
-        const totalVulns = rows.filter(r => r[2] !== 'No vulnerabilities found').length;
-        const ips = [...new Set((h.results || []).map(r => r.ip).filter(Boolean))].join(', ') || '—';
-        const meta = [
-          [`Vulnerability Findings — ${ips}`],
-          [`Generated: ${generatedAt}  ·  Overall Severity: ${(h.critical_count ? 'CRITICAL' : h.high_count ? 'HIGH' : h.medium_count ? 'MEDIUM' : h.low_count ? 'LOW' : 'CLEAN')}  ·  ${totalVulns} finding${totalVulns !== 1 ? 's' : ''} on ${(h.results || []).length} target host${(h.results || []).length !== 1 ? 's' : ''}`],
-          []
-        ];
-
-        const allRows = [...meta, hdrs, ...rows];
-        const csv = allRows.map(r => r.map(c => `"${String(c || '').replace(/"/g, '""')}"`).join(',')).join('\n');
-        dl(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }), `bulk-scan-${h.scan_id || id}.csv`);
-      }
-    } catch (e) { alert('Export failed: ' + e.message); }
+  try {
+    const res  = await fetch(`/api/bulk/history/${id}`, { credentials: 'same-origin' });
+    const data = await res.json();
+    const h    = data.session;
+    if (!h) { alert('No session data returned.'); return; }
+ 
+    // ── XLSX path ──────────────────────────────────────────────────────────
+    if (fmt === 'xlsx') {
+      const generatedAt = new Date().toLocaleString();
+      const wb          = XLSX.utils.book_new();
+      const CFG         = VAPT_EXCEL_CONFIG.sheets;
+ 
+      XLSX.utils.book_append_sheet(wb, _buildCover(h, generatedAt),      CFG.cover);
+      XLSX.utils.book_append_sheet(wb, _buildVulnSheet(h, generatedAt),  CFG.vulns);
+      XLSX.utils.book_append_sheet(wb, _buildPortsSheet(h, generatedAt), CFG.ports);
+      XLSX.utils.book_append_sheet(wb, _buildSummarySheet(h, generatedAt), CFG.summary);
+ 
+      XLSX.writeFile(wb, `VAPT_Report_${(h.results || []).map(r => r.ip).filter(Boolean).join('_') || h.scan_id || id}.xlsx`);
+      return;
+    }
+ 
+    // ── CSV path (unchanged logic) ─────────────────────────────────────────
+    if (fmt === 'csv') {
+      const { hdrs, rows } = buildCSVRows(h.results || []);
+      const generatedAt = new Date().toLocaleString();
+      const totalVulns  = rows.filter(r => r[2] !== 'No vulnerabilities found').length;
+      const ips         = [...new Set((h.results || []).map(r => r.ip).filter(Boolean))].join(', ') || '—';
+      const overallSev  = _overallSev(h);
+      const meta = [
+        [`Vulnerability Findings — ${ips}`],
+        [`Generated: ${generatedAt}  ·  Overall Severity: ${overallSev}  ·  ${totalVulns} finding${totalVulns !== 1 ? 's' : ''} on ${(h.results || []).length} target host${(h.results || []).length !== 1 ? 's' : ''}`],
+        [],
+      ];
+      const allRows = [...meta, hdrs, ...rows];
+      const csv = allRows.map(r => r.map(c => `"${String(c || '').replace(/"/g, '""')}"`).join(',')).join('\n');
+      dl(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }), `bulk-scan-${h.scan_id || id}.csv`);
+      return;
+    }
+ 
+    // ── JSON path (unchanged) ──────────────────────────────────────────────
+    dl(new Blob([JSON.stringify(h, null, 2)], { type: 'application/json' }), `bulk-scan-${h.scan_id || id}.json`);
+ 
+  } catch (e) {
+    alert('Export failed: ' + e.message);
+    console.error('VAPT export error:', e);
   }
-  function exportAllHistory() {
-    dl(new Blob([JSON.stringify(allHistory, null, 2)], { type: 'application/json' }), 'vapt-bulk-history-all.json');
+}
+async function exportAllHistory() {
+  if (!allHistory || allHistory.length === 0) {
+    dl(new Blob([JSON.stringify(allHistory, null, 2)], { type: 'application/json' }),
+       'vapt-bulk-history-all.json');
+    return;
   }
+  try {
+    const wb          = XLSX.utils.book_new();
+    const generatedAt = new Date().toLocaleString();
+    const C           = VAPT_EXCEL_CONFIG.colors;
+ 
+    // ── Index / Overview sheet ─────────────────────────────────────────────
+    const ws = _emptyWs();
+    _merge(ws, 0, 0, 0, 9,
+      _cell('  VAPT Scanner Pro  —  All Scan Sessions', {
+        bg: C.navy, fg: C.white, bold: true, sz: 13 }));
+    _merge(ws, 1, 0, 1, 9,
+      _cell(`  Exported: ${generatedAt}  ·  ${allHistory.length} session${allHistory.length !== 1 ? 's' : ''}`, {
+        bg: null, fg: C.midGray, sz: 9 }));
+ 
+    const idxHdrs = ['#', 'Scan ID', 'IPs', 'Label', 'Started At', 'Status',
+                     'Open Ports', 'Total Vulns', 'Highest Severity', 'Duration'];
+    idxHdrs.forEach((t, ci) =>
+      _put(ws, 2, ci, _cell(t, { bg: C.navy, fg: C.white, bold: true, sz: 9, h: 'center' })));
+ 
+    allHistory.forEach((s, i) => {
+      const ri  = i + 3;
+      const alt = i % 2 === 0;
+      const bg  = alt ? C.rowAlt : C.rowWhite;
+      const sev = _overallSev(s);
+      const sc  = _sevColors(sev);
+      const ips = [...new Set((s.results || []).map(r => r.ip).filter(Boolean))].join(', ') || s.label || '—';
+      [
+        [i + 1,             C.midGray,   false, bg],
+        [s.scan_id || s.id, C.blueLink,  false, bg],
+        [ips,               C.nearBlack, false, bg],
+        [s.label || '—',    C.nearBlack, false, bg],
+        [s.started_at ? new Date(s.started_at).toLocaleString() : '—', C.midGray, false, bg],
+        [s.status || '—',   C.midGray,   false, bg],
+        [s.open_ports || 0, C.blueLink,  false, bg],
+        [s.total_vulns || 0,C.criticalText, false, bg],
+        [sev,               sc.text,     true,  sc.bg],
+        [s.duration_seconds ? `${s.duration_seconds}s` : '—', C.midGray, false, bg],
+      ].forEach(([val, fg, bold, fillBg], ci) =>
+        _put(ws, ri, ci, _cell(val, { bg: fillBg, fg, bold, sz: 9 })));
+    });
+ 
+    ws['!ref']  = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 2 + allHistory.length + 1, c: 9 } });
+    ws['!cols'] = [5, 20, 28, 20, 20, 10, 12, 12, 14, 12].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, ws, 'All Sessions');
+ 
+    // ── Per-session Vuln sheets (first 10 to avoid huge files) ────────────
+    for (const s of allHistory.slice(0, 10)) {
+      const label = String(s.scan_id || s.id || '').slice(0, 8);
+      try {
+        XLSX.utils.book_append_sheet(wb, _buildVulnSheet(s, generatedAt), `Vulns-${label}`);
+      } catch (_) { /* skip if individual sheet fails */ }
+    }
+ 
+    XLSX.writeFile(wb, `VAPT_All_History_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  } catch (e) {
+    alert('Export all failed: ' + e.message);
+    console.error('VAPT export-all error:', e);
+  }
+}
+ 
   function dl(blob, name) { const u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = name; a.click(); URL.revokeObjectURL(u); }
 
   // ════════════════════════════════════════════════════════════════
@@ -3024,6 +3977,39 @@
       return;
     }
 
+    // ── XLSX — 4-sheet styled report ─────────────────────────────
+    if (fmt === 'xlsx') {
+      try {
+        const generatedAt = new Date().toLocaleString();
+        // Build a synthetic session object so sheet builders work
+        const syntheticSession = {
+          scan_id:        currentIPSessionId || 'manual',
+          label:          `IP Report — ${ip}`,
+          results:        [r],
+          total_ips:      1,
+          online_count:   r.status === 'online' ? 1 : 0,
+          open_ports:     ports.length,
+          total_vulns:    vulns.length,
+          critical_count: vulns.filter(v => (v.severity || '').toUpperCase() === 'CRITICAL').length,
+          high_count:     vulns.filter(v => (v.severity || '').toUpperCase() === 'HIGH').length,
+          medium_count:   vulns.filter(v => (v.severity || '').toUpperCase() === 'MEDIUM').length,
+          low_count:      vulns.filter(v => (v.severity || '').toUpperCase() === 'LOW').length,
+          started_at:     r.scanned_at || new Date().toISOString(),
+        };
+        const wb  = XLSX.utils.book_new();
+        const CFG = VAPT_EXCEL_CONFIG.sheets;
+        XLSX.utils.book_append_sheet(wb, _buildCover(syntheticSession, generatedAt),       CFG.cover);
+        XLSX.utils.book_append_sheet(wb, _buildVulnSheet(syntheticSession, generatedAt),   CFG.vulns);
+        XLSX.utils.book_append_sheet(wb, _buildPortsSheet(syntheticSession, generatedAt),  CFG.ports);
+        XLSX.utils.book_append_sheet(wb, _buildSummarySheet(syntheticSession, generatedAt),CFG.summary);
+        XLSX.writeFile(wb, `VAPT_IP_Report_${ip.replace(/\./g,'_')}.xlsx`);
+      } catch (e) {
+        alert('Excel export failed: ' + e.message);
+        console.error('VAPT xlsx error:', e);
+      }
+      return;
+    }
+
     // ── CSV ──────────────────────────────────────────────────────
     if (fmt === 'csv') {
       const { hdrs, rows } = buildCSVRows([r]);
@@ -3213,6 +4199,83 @@ ${niktoHTML}
     const a = document.createElement('a');
     a.href = u; a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(u), 1000);
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  EXPORT DROPDOWN MENU
+  // ════════════════════════════════════════════════════════════════
+  let _exportMenuEl = null;
+  let _exportMenuId = null;
+
+  function _ensureExportMenu() {
+    if (_exportMenuEl) return _exportMenuEl;
+    _exportMenuEl = document.createElement('div');
+    _exportMenuEl.className = 'h-export-menu';
+    _exportMenuEl.id = '_exportDropdown';
+    document.body.appendChild(_exportMenuEl);
+    document.addEventListener('click', e => {
+      if (_exportMenuEl && !_exportMenuEl.contains(e.target) && !e.target.closest('.h-btn-export-wrap')) {
+        _exportMenuEl.classList.remove('open');
+      }
+    }, true);
+    return _exportMenuEl;
+  }
+
+  function toggleExportMenu(e, id) {
+    e.stopPropagation();
+    const menu = _ensureExportMenu();
+    const btn  = e.currentTarget;
+    const rect = btn.getBoundingClientRect();
+
+    // If same menu already open, just close
+    if (menu.classList.contains('open') && _exportMenuId === id) {
+      menu.classList.remove('open');
+      return;
+    }
+    _exportMenuId = id;
+
+    menu.innerHTML = `
+      <div class="h-export-menu-label">Download Report</div>
+      <button class="h-export-menu-item excel" onclick="_doExport(${id},'xlsx')">
+        <i class="fa-solid fa-file-excel"></i> Excel (4-Sheet Report)
+      </button>
+      <button class="h-export-menu-item pdf" onclick="_doExport(${id},'pdf')">
+        <i class="fa-solid fa-file-pdf"></i> PDF Report
+      </button>
+      <div class="h-export-menu-sep"></div>
+      <div class="h-export-menu-label">Raw Data</div>
+      <button class="h-export-menu-item csv" onclick="_doExport(${id},'csv')">
+        <i class="fa-solid fa-file-csv"></i> CSV
+      </button>
+      <button class="h-export-menu-item json" onclick="_doExport(${id},'json')">
+        <i class="fa-solid fa-file-code"></i> JSON
+      </button>`;
+
+    // Position below button
+    const top  = rect.bottom + window.scrollY + 6;
+    const left = Math.min(rect.left + window.scrollX, window.innerWidth - 180);
+    menu.style.top  = top  + 'px';
+    menu.style.left = left + 'px';
+    menu.classList.add('open');
+  }
+
+  function _doExport(id, fmt) {
+    if (_exportMenuEl) _exportMenuEl.classList.remove('open');
+    if (fmt === 'pdf') {
+      // PDF: find and open the session's PDF report
+      const h = allHistory.find(s => s.id === id);
+      if (h && h.results && h.results.length) {
+        // Open the PDF for the first IP; for multi-IP redirect to PDF
+        const firstIP = h.results[0].ip;
+        // Reuse the downloadIPReport mechanism via a temp modal state
+        currentIPSessionId = id;
+        currentIPAddr      = firstIP;
+        currentIPData      = h.results[0];
+        downloadIPReport('pdf');
+        return;
+      }
+    }
+    exportSession(id, fmt);
   }
 
   loadHistory();
