@@ -1613,6 +1613,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="{{ url_for('static', filename='js/layout.js') }}"></script>
 <script>
   initLayout('/history');
@@ -2250,10 +2251,62 @@
   //  EXPORT
   // ════════════════════════════════════════════════════════════════
   async function exportSession(id, fmt) {
-    if (fmt === 'xlsx') { window.open(`/scan/report/${id}?format=xlsx`, '_blank'); return; }
     try {
       const res = await fetch(`/api/bulk/history/${id}`, { credentials: 'same-origin' });
       const data = await res.json(); const h = data.session; if (!h) return;
+      if (fmt === 'xlsx') {
+        const { hdrs, rows } = buildCSVRows(h.results || []);
+        const generatedAt = new Date().toLocaleString();
+        const totalVulns = rows.filter(r => r[2] !== 'No vulnerabilities found').length;
+        const ips = [...new Set((h.results || []).map(r => r.ip).filter(Boolean))].join(', ') || '—';
+        const overallSev = h.critical_count ? 'CRITICAL' : h.high_count ? 'HIGH' : h.medium_count ? 'MEDIUM' : h.low_count ? 'LOW' : 'CLEAN';
+
+        const wb = XLSX.utils.book_new();
+        const wsData = [
+          [`Vulnerability Findings — ${ips}`],
+          [`Generated: ${generatedAt}  ·  Overall Severity: ${overallSev}  ·  ${totalVulns} finding${totalVulns !== 1 ? 's' : ''} on ${(h.results || []).length} target host${(h.results || []).length !== 1 ? 's' : ''}`],
+          [],
+          hdrs,
+          ...rows
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+        // Column widths
+        ws['!cols'] = [14,18,32,10,32,20,24,10,10,18,20,14,10,14].map(w => ({ wch: w }));
+
+        // Style header row (row index 3, 0-based)
+        const headerRowIdx = 3;
+        hdrs.forEach((_, ci) => {
+          const cellRef = XLSX.utils.encode_cell({ r: headerRowIdx, c: ci });
+          if (!ws[cellRef]) ws[cellRef] = { v: hdrs[ci], t: 's' };
+          ws[cellRef].s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E40AF' } }, alignment: { wrapText: true } };
+        });
+
+        // Freeze top 4 rows + header
+        ws['!freeze'] = { xSplit: 0, ySplit: headerRowIdx + 1 };
+
+        XLSX.utils.book_append_sheet(wb, ws, 'Vulnerabilities');
+
+        // Summary sheet
+        const sumData = [
+          ['Summary'],
+          ['IPs Scanned', ips],
+          ['Overall Severity', overallSev],
+          ['Total Vulnerabilities', totalVulns],
+          ['Critical', h.critical_count || 0],
+          ['High', h.high_count || 0],
+          ['Medium', h.medium_count || 0],
+          ['Low', h.low_count || 0],
+          ['Generated At', generatedAt],
+          ['Scan ID', h.scan_id || id],
+        ];
+        const ws2 = XLSX.utils.aoa_to_sheet(sumData);
+        ws2['!cols'] = [{ wch: 22 }, { wch: 40 }];
+        XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
+
+        XLSX.writeFile(wb, `bulk-scan-${h.scan_id || id}.xlsx`);
+        return;
+      }
       if (fmt === 'json') {
         dl(new Blob([JSON.stringify(h, null, 2)], { type: 'application/json' }), `bulk-scan-${h.scan_id || id}.json`);
       } else {
