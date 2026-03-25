@@ -609,8 +609,10 @@ function renderRows(items) {
   return items.map(v => {
     const sev        = v.Severity||'Info';
     const dispStatus = v._display_status || v.Status || 'Unknown';
-    const isActionable = (v.Status||'').toLowerCase()==='vulnerable';
-    const isFixed    = (dispStatus||'').toLowerCase()==='fixed';
+    const dispStatusLower = (dispStatus||'').toLowerCase();
+    // Actionable = originally vulnerable OR currently fixed (so Unfix is always available)
+    const isActionable = (v.Status||'').toLowerCase()==='vulnerable' || dispStatusLower==='fixed';
+    const isFixed    = dispStatusLower==='fixed';
 
     // Determine if there's a real explicit path vs just the target URL
     const explicitPath = (v['Vulnerable Path'] && v['Vulnerable Path']!=='N/A' && v['Vulnerable Path'].trim()!=='' && v['Vulnerable Path'].trim()!=='—')
@@ -674,30 +676,87 @@ function toggleGroup(encodedKey, gi) {
 
 /* ─────────── TOGGLE FIX ─────────── */
 async function toggleFix(id, btn) {
+  // ── Optimistic UI: determine current state and flip it instantly ──
+  const currentlyFixed = btn.textContent.trim().toLowerCase().includes('unfix');
+  const optimisticFixed = !currentlyFixed;
+  const optimisticSt    = optimisticFixed ? 'fixed' : 'vulnerable';
+
+  // Immediately update button (no waiting for server)
+  btn.disabled  = true;
+  btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${optimisticFixed ? 'Fixing…' : 'Unfixing…'}`;
+
+  // Immediately update status badge
+  document.querySelectorAll(`#status-${id}`).forEach(el => {
+    el.innerHTML = `<span class="bx ${statClass(optimisticSt)}"><i class="fa-solid ${statIcon(optimisticSt)}"></i> ${optimisticSt.charAt(0).toUpperCase()+optimisticSt.slice(1)}</span>`;
+  });
+
+  // Patch local arrays immediately so analytics update without waiting
+  [allVulns, rawVulns].forEach(arr => {
+    const v = arr.find(x => x.id === id);
+    if (v) {
+      v._fixed = optimisticFixed;
+      v._display_status = optimisticSt;
+      if (!v._original_status) v._original_status = v.Status;
+      v.Status = v._original_status || 'vulnerable';
+    }
+  });
+  updateAnalytics();
+  updateCharts();
+
+  // ── Fire API in background, revert if it fails ──
   try {
-    btn.disabled = true;
-    const res  = await fetch(`/api/vulnerabilities/${id}/fix`, {method:'POST'});
+    const res  = await fetch(`/api/vulnerabilities/${id}/fix`, { method: 'POST' });
     const data = await res.json();
-    if(data.status==='success') {
+
+    if (data.status === 'success') {
       const isFixed = data.fixed;
       const newSt   = data.new_status;
-      // Update status cell
-      document.querySelectorAll(`#status-${id}`).forEach(el=>{
-        el.innerHTML=`<span class="bx ${statClass(newSt)}"><i class="fa-solid ${statIcon(newSt)}"></i> ${newSt}</span>`;
+
+      // Reconcile with server truth (in case server disagrees)
+      document.querySelectorAll(`#status-${id}`).forEach(el => {
+        el.innerHTML = `<span class="bx ${statClass(newSt)}"><i class="fa-solid ${statIcon(newSt)}"></i> ${newSt.charAt(0).toUpperCase()+newSt.slice(1)}</span>`;
       });
-      // Update button
-      btn.innerHTML   = `<i class="fa-solid ${isFixed?'fa-rotate-left':'fa-circle-check'}"></i> ${isFixed?'Unfix':'Mark Fixed'}`;
-      btn.className   = `btn ${isFixed?'btn-o':'btn-p'} btn-s`;
-      btn.disabled    = false;
-      // Patch local data in both arrays so analytics stay accurate
+      btn.innerHTML = `<i class="fa-solid ${isFixed ? 'fa-rotate-left' : 'fa-circle-check'}"></i> ${isFixed ? 'Unfix' : 'Mark Fixed'}`;
+      btn.className = `btn ${isFixed ? 'btn-o' : 'btn-p'} btn-s`;
+      btn.disabled  = false;
+
       [allVulns, rawVulns].forEach(arr => {
-        const v = arr.find(x=>x.id===id);
-        if(v){ v._fixed=isFixed; v._display_status=newSt; }
+        const v = arr.find(x => x.id === id);
+        if (v) {
+          v._fixed = isFixed;
+          v._display_status = newSt;
+          if (!v._original_status) v._original_status = v.Status;
+          v.Status = v._original_status || 'vulnerable';
+        }
       });
       updateAnalytics();
       updateCharts();
-    } else { btn.disabled=false; }
-  } catch(e){ console.error(e); btn.disabled=false; }
+
+    } else {
+      // Server rejected — revert optimistic update
+      _revertFix(id, btn, currentlyFixed);
+    }
+  } catch(e) {
+    console.error(e);
+    // Network error — revert optimistic update
+    _revertFix(id, btn, currentlyFixed);
+  }
+}
+
+function _revertFix(id, btn, wasFixed) {
+  const revertSt = wasFixed ? 'fixed' : 'vulnerable';
+  document.querySelectorAll(`#status-${id}`).forEach(el => {
+    el.innerHTML = `<span class="bx ${statClass(revertSt)}"><i class="fa-solid ${statIcon(revertSt)}"></i> ${revertSt.charAt(0).toUpperCase()+revertSt.slice(1)}</span>`;
+  });
+  btn.innerHTML = `<i class="fa-solid ${wasFixed ? 'fa-rotate-left' : 'fa-circle-check'}"></i> ${wasFixed ? 'Unfix' : 'Mark Fixed'}`;
+  btn.className = `btn ${wasFixed ? 'btn-o' : 'btn-p'} btn-s`;
+  btn.disabled  = false;
+  [allVulns, rawVulns].forEach(arr => {
+    const v = arr.find(x => x.id === id);
+    if (v) { v._fixed = wasFixed; v._display_status = revertSt; }
+  });
+  updateAnalytics();
+  updateCharts();
 }
 
 /* ─────────── PRE-SCAN INTELLIGENCE PANEL ─────────── */
@@ -831,6 +890,26 @@ async function loadVulnerabilities() {
     const data = await res.json();
     // rawVulns = everything → for analytics/counts matching dashboard & targets
     rawVulns = (data.vulnerabilities || []);
+    // Restore any locally-applied fix overrides that haven't been synced from server yet
+    // (prevents the 5s poll from flipping buttons back before server confirms)
+    if (allVulns && allVulns.length) {
+      const localFixMap = {};
+      allVulns.forEach(v => {
+        if (v._display_status || v._original_status) {
+          localFixMap[v.id] = { _display_status: v._display_status, _fixed: v._fixed, _original_status: v._original_status };
+        }
+      });
+      rawVulns.forEach(v => {
+        const local = localFixMap[v.id];
+        if (local) {
+          v._display_status  = local._display_status;
+          v._fixed           = local._fixed;
+          v._original_status = local._original_status || v.Status;
+          // Keep Status as original 'vulnerable' so isActionable stays true
+          v.Status = v._original_status;
+        }
+      });
+    }
     // allVulns = skip pure-noise tests (DNS/Ping/Port/Service) → for table display only
     allVulns = rawVulns.filter(v => !isSkippedTest(v));
     updateAnalytics();
