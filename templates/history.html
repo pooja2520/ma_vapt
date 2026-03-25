@@ -1762,7 +1762,7 @@
       allHistory = data.sessions || [];
       updateStatCards(data.stats || {});
       renderChart(data.chart || []);
-      applyFilters();
+      applyFilters(false);
       const anyRunning = allHistory.some(s => s.status === 'running');
       document.getElementById('liveIndicator').style.display = anyRunning ? '' : 'none';
       if (liveTimer) clearTimeout(liveTimer);
@@ -1844,7 +1844,7 @@
   // ════════════════════════════════════════════════════════════════
   //  FILTER + SORT
   // ════════════════════════════════════════════════════════════════
-  function applyFilters() {
+  function applyFilters(resetPage = true) {
     const q = (document.getElementById('histSearchInput').value || '').toLowerCase();
     const sev = document.getElementById('histSevFilter').value;
     const srt = document.getElementById('histSortFilter').value;
@@ -1870,7 +1870,7 @@
       return new Date(b.started_at) - new Date(a.started_at);
     });
 
-    page = 1;
+    if (resetPage) page = 1;
     renderList();
   }
 
