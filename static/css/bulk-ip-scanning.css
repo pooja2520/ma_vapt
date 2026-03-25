@@ -885,6 +885,106 @@
 }
 
 /* ══════════════════════════════════════════════════════════════
+   WMI Credential Panel
+   Spans full width inside the scan-options grid (grid-column: 1/-1)
+   Appears below all module cards when WMI Scan is enabled.
+   ══════════════════════════════════════════════════════════════ */
+
+.wmi-cred-panel {
+  grid-column: 1 / -1;
+  background: #fff;
+  border: 1.5px solid var(--blue, #2563eb);
+  border-radius: 10px;
+  padding: .75rem .875rem .625rem;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  animation: cppIn .16s ease;
+}
+
+.wmi-cred-header {
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--text, #374151);
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  flex-wrap: wrap;
+}
+
+.wmi-cred-sub {
+  font-size: .68rem;
+  font-weight: 400;
+  color: var(--text-muted, #9ca3af);
+}
+
+.wmi-cred-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: .5rem;
+}
+
+.wmi-field {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+}
+
+.wmi-field label {
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--text-muted, #6b7280);
+}
+
+.wmi-hint {
+  font-size: .66rem;
+  font-weight: 400;
+  color: var(--text-muted, #9ca3af);
+}
+
+.wmi-input {
+  width: 100%;
+  padding: .35rem .5rem;
+  border: 1.5px solid var(--border, #e5e7eb);
+  border-radius: 6px;
+  font-size: .78rem;
+  outline: none;
+  box-sizing: border-box;
+  color: var(--text, #111827);
+  background: #fff;
+  transition: border-color .18s, box-shadow .18s;
+}
+
+.wmi-input:focus {
+  border-color: var(--blue, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.09);
+}
+
+.wmi-cred-note {
+  font-size: .7rem;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 5px;
+  padding: .35rem .5rem;
+  display: flex;
+  align-items: flex-start;
+  gap: .35rem;
+  flex-wrap: wrap;
+  line-height: 1.5;
+}
+
+.wmi-cred-note i { flex-shrink: 0; margin-top: .15rem; }
+
+@media (max-width: 768px) {
+  .wmi-cred-fields { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 520px) {
+  .wmi-cred-fields { grid-template-columns: 1fr; }
+  .wmi-cred-sub { display: none; }
+}
+
+/* ══════════════════════════════════════════════════════════════
    Software Inventory & Drawer Tabs — added for v2 feature
    ══════════════════════════════════════════════════════════════ */
 
