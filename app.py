@@ -2203,6 +2203,11 @@ def bulk_scan_start():
     concurrency = int(data.get('concurrency', 5))
     port_depth  = data.get('port_depth', 'full')  # quick|standard|deep|full
 
+    # WMI credential bundle (only used when 'wmi' module is selected)
+    wmi_username = data.get('wmi_username', '').strip()
+    wmi_password = data.get('wmi_password', '').strip()
+    wmi_domain   = data.get('wmi_domain', '').strip()
+
     if not raw_ips:
         return jsonify({'error': 'No IPs provided.'}), 400
 
@@ -2246,7 +2251,15 @@ def bulk_scan_start():
                 if stopped():
                     store['results'].append({'ip': ip, 'status': 'error', 'error': 'Scan stopped by user'})
                     return
-                result = scan_single_ip(ip, modules=modules, stopped_callback=stopped, port_depth=port_depth)
+                result = scan_single_ip(
+                    ip,
+                    modules=modules,
+                    stopped_callback=stopped,
+                    port_depth=port_depth,
+                    wmi_username=wmi_username,
+                    wmi_password=wmi_password,
+                    wmi_domain=wmi_domain,
+                )
                 store['results'].append(result)
 
         threads = [threading.Thread(target=scan_one, args=(ip,)) for ip in ips]
