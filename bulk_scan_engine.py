@@ -1296,11 +1296,157 @@ def get_remediation_steps(vulnerability):
     return db['default']
 
 
-def scan_single_ip(ip, modules=None, stopped_callback=None, port_depth='full'):
+def get_installed_software_wmi(ip, username, password, domain=''):
+    """
+    Query installed software on a Windows host via WMI (DCOM/RPC).
+    Uses impacket if available, otherwise falls back to Win32 wmic subprocess (Windows-only).
+
+    Returns a list of software_inventory dicts compatible with the bulk scan result schema,
+    or {'error': str} on failure.
+
+    Credential format:
+      - username: 'DOMAIN\\user' or plain 'user'
+      - password: plain-text password
+      - domain:   optional NetBIOS domain (can also be embedded in username)
+
+    Note: Win32reg_AddRemovePrograms (registry) is tried first — it is faster and
+    non-invasive. Win32_Product triggers Windows Installer reconfiguration on every query.
+    """
+    # ── Prefer impacket (cross-platform, works over TCP 135 + dynamic RPC) ──
+    try:
+        from impacket.dcerpc.v5.dcom import wmi as _wmi
+        from impacket.dcerpc.v5.dcomrt import DCOMConnection
+
+        _domain = domain or ''
+        _user   = username or ''
+        if not _domain and '\\' in _user:
+            _domain, _user = _user.split('\\', 1)
+
+        dcom = DCOMConnection(
+            ip,
+            username=_user,
+            password=password,
+            domain=_domain,
+            oxidResolver=True,
+        )
+        iInterface       = dcom.CoCreateInstanceEx(_wmi.CLSID_WbemLevel1Login, _wmi.IID_IWbemLevel1Login)
+        iWbemLevel1Login = _wmi.IWbemLevel1Login(iInterface)
+        iWbemServices    = iWbemLevel1Login.NTLMLogin('//./root/cimv2', None, None)
+
+        # Registry-based query first (fast, no side-effects), fallback to Win32_Product
+        queries = [
+            'SELECT Name, Version, Vendor, InstallDate FROM Win32reg_AddRemovePrograms',
+            'SELECT Name, Version, Vendor, InstallDate FROM Win32_Product',
+        ]
+        software_list = []
+        for query in queries:
+            try:
+                iEnum = iWbemServices.ExecQuery(query)
+                while True:
+                    try:
+                        pEnum  = iEnum.Next(0xffffffff, 1)[0]
+                        record = pEnum.getProperties()
+                        name    = (record.get('Name')        or {}).get('value') or ''
+                        version = (record.get('Version')     or {}).get('value') or 'Unknown'
+                        vendor  = (record.get('Vendor')      or {}).get('value') or 'Unknown'
+                        inst_dt = (record.get('InstallDate') or {}).get('value') or ''
+                        if not name:
+                            continue
+                        software_list.append({
+                            'display_name':     name,
+                            'software_key':     name.lower().replace(' ', '_'),
+                            'detected_version': str(version),
+                            'vendor':           str(vendor),
+                            'install_date':     str(inst_dt),
+                            'category':         'Installed Software',
+                            'latest_stable':    'Unknown',
+                            'status':           'unknown',
+                            'known_cves':       [],
+                            'upgrade_url':      '',
+                            'source':           'WMI',
+                            'port':             None,
+                        })
+                    except Exception:
+                        break
+                if software_list:
+                    break  # first working query succeeded
+            except Exception:
+                continue
+
+        dcom.disconnect()
+        return software_list
+
+    except ImportError:
+        pass  # impacket not installed
+
+    except Exception as _wmi_exc:
+        _msg = str(_wmi_exc)
+        # DCE RPC 0x721 = WMI service unreachable (firewall blocking port 135)
+        if '00000721' in _msg or 'RPC_S_SERVER_UNAVAILABLE' in _msg.upper():
+            return {'error': 'WMI blocked on target — enable WMI in Windows Firewall on the target machine (port 135)'}
+        if 'STATUS_LOGON_FAILURE' in _msg or 'logon_failure' in _msg.lower():
+            return {'error': 'WMI auth failed — wrong username or password'}
+        if 'STATUS_ACCESS_DENIED' in _msg or 'access_denied' in _msg.lower():
+            return {'error': 'WMI access denied — account needs admin rights on target'}
+        return {'error': f'WMI connection error: {_msg}'} 
+
+    # ── Fallback: wmic subprocess (only works on Windows host) ────────────────
+    import platform as _platform
+    if _platform.system().lower() != 'windows':
+        return {'error': 'impacket not installed and wmic is only available on Windows.'}
+
+    try:
+        _user_arg = f'{domain}\\{username}' if domain else username
+        cmd = [
+            'wmic',
+            f'/node:{ip}',
+            f'/user:{_user_arg}',
+            f'/password:{password}',
+            'product', 'get', 'Name,Version,Vendor',
+            '/format:csv',
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        output = proc.stdout or ''
+        software_list = []
+        lines = [l for l in output.splitlines() if l.strip() and ',' in l]
+        if lines:
+            headers = [h.strip() for h in lines[0].split(',')]
+            for line in lines[1:]:
+                vals = [v.strip() for v in line.split(',')]
+                row  = dict(zip(headers, vals))
+                name = row.get('Name', '').strip()
+                if not name:
+                    continue
+                software_list.append({
+                    'display_name':     name,
+                    'software_key':     name.lower().replace(' ', '_'),
+                    'detected_version': row.get('Version', 'Unknown').strip(),
+                    'vendor':           row.get('Vendor', 'Unknown').strip(),
+                    'install_date':     '',
+                    'category':         'Installed Software',
+                    'latest_stable':    'Unknown',
+                    'status':           'unknown',
+                    'known_cves':       [],
+                    'upgrade_url':      '',
+                    'source':           'WMI',
+                    'port':             None,
+                })
+        return software_list
+    except subprocess.TimeoutExpired:
+        return {'error': f'WMI query timed out for {ip}'}
+    except FileNotFoundError:
+        return {'error': 'wmic not found — install impacket or run scanner on Windows.'}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def scan_single_ip(ip, modules=None, stopped_callback=None, port_depth='full',
+                   wmi_username='', wmi_password='', wmi_domain=''):
     """
     Perform full scan on a single IP.
     Returns dict with: ip, status ('online'|'offline'), hostname, os, ports, vulnerabilities, severity, scanned_at
     stopped_callback: callable that returns True if scan should stop
+    wmi_username / wmi_password / wmi_domain: WMI credentials for Windows software inventory
     """
     modules = modules or ['ping', 'ports', 'services']
     result = {
@@ -1377,7 +1523,42 @@ def scan_single_ip(ip, modules=None, stopped_callback=None, port_depth='full'):
         # vulnerability entries (with full remediation) for outdated/EOL software.
         result = enrich_scan_result_with_software(result)
 
-        # Severity / Risk
+        # ── WMI Software Inventory (Windows hosts) ────────────────────────────
+        # Called when the 'wmi' module is selected and credentials are supplied.
+        # Merges the WMI-discovered software list into result['software_inventory'],
+        # de-duplicating by display_name so banner-detected + WMI entries coexist.
+        if 'wmi' in modules:
+            # Use credentials passed directly as function parameters (preferred),
+            # falling back to any pre-set keys in the result dict for legacy callers.
+            _wmi_user   = wmi_username or result.get('_wmi_username', '')
+            _wmi_pass   = wmi_password if wmi_password is not None else result.get('_wmi_password', '')
+            _wmi_domain = wmi_domain   or result.get('_wmi_domain', '')
+            # Allow blank password — some machines have no password set
+            if _wmi_user:
+                log_output(f"[WMI] Querying installed software on {ip} (user: {_wmi_user})")
+                try:
+                    wmi_result = get_installed_software_wmi(ip, _wmi_user, _wmi_pass, _wmi_domain)
+                except Exception as _wmi_exc:
+                    wmi_result = {'error': str(_wmi_exc)}
+                if isinstance(wmi_result, list) and wmi_result:
+                    existing_names = {
+                        sw.get('display_name', '').lower()
+                        for sw in result.get('software_inventory', [])
+                    }
+                    merged = list(result.get('software_inventory', []))
+                    for sw in wmi_result:
+                        if sw.get('display_name', '').lower() not in existing_names:
+                            merged.append(sw)
+                            existing_names.add(sw.get('display_name', '').lower())
+                    result['software_inventory'] = merged
+                    log_output(f"[WMI] Found {len(wmi_result)} installed package(s) on {ip}")
+                elif isinstance(wmi_result, dict) and wmi_result.get('error'):
+                    log_output(f"[WMI] Error on {ip}: {wmi_result['error']}")
+                    result['wmi_error'] = wmi_result['error']
+            else:
+                log_output(f"[WMI] Skipping {ip} — no WMI username provided")
+
+
         vulns = result['vulnerabilities']
         high_sev = sum(1 for v in vulns if v.get('severity') == 'High')
         crit_sev = sum(1 for v in vulns if v.get('severity') == 'Critical')
@@ -1404,7 +1585,12 @@ def scan_single_ip(ip, modules=None, stopped_callback=None, port_depth='full'):
             result['risk'] = 'None'
 
         # Online if we got any useful data
-        if result['ports'] or ping_ok:
+        # Note: WSL ping often fails for LAN IPs due to network isolation,
+        # so also check for ports, hostname, or OS data from nmap.
+        nmap_found_something = bool(result['ports'] or
+                                    (result.get('hostname') and result['hostname'] != 'Unknown') or
+                                    (result.get('os') and result['os'] != 'Unknown'))
+        if ping_ok or nmap_found_something:
             result['status'] = 'online'
         else:
             result['status'] = 'offline'
