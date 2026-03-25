@@ -1,23 +1,579 @@
 {% extends "base.html" %}
 {% block title %}Documentation - VAPT Scanner Pro{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">{% endblock %}
-{% block body %}
-<div id="_main" style="padding-top:56px;margin-left:220px;min-height:100vh;">
-<div class="content">
-  <div class="doc-hero">
-    <small><i class="fa-solid fa-book-open"></i> DOCUMENTATION</small>
-    <h2>Learn How to Use VAPT Scanner</h2>
-    <p>Comprehensive guides and API references to help you get the most out of our security testing tools.</p>
-  </div>
-  <div class="doc-grid">
-    <div class="dc"><div class="dc-header"><i class="fa-solid fa-terminal"></i> Getting Started</div><div class="dc-body"><p>Learn how to set up and configure your first security scan.</p><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Installation</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Configuration</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> First Scan</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Authentication Setup</a></div></div>
-    <div class="dc"><div class="dc-header"><i class="fa-solid fa-code"></i> API Reference</div><div class="dc-body"><p>Complete API documentation for integrating scans into your workflow.</p><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> REST API</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Webhooks</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Rate Limits</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Error Handling</a></div></div>
-    <div class="dc"><div class="dc-header"><i class="fa-solid fa-shield-halved"></i> Security Best Practices</div><div class="dc-body"><p>Guidelines for responsible vulnerability testing.</p><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Legal Considerations</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Scope Definition</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Safe Testing</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Reporting</a></div></div>
-    <div class="dc"><div class="dc-header"><i class="fa-regular fa-file-lines"></i> Advanced Configuration</div><div class="dc-body"><p>Fine-tune your scans for specific environments and needs.</p><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Custom Rules</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Exclusions</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Scan Profiles</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Performance Tuning</a></div></div>
-    <div class="dc"><div class="dc-header"><i class="fa-solid fa-shield-halved"></i> OWASP Top 10 Mapping</div><div class="dc-body"><p>How our findings map to OWASP Top 10 categories.</p><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> A01 Broken Access Control</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> A03 Injection</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> A05 Misconfiguration</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> A07 Auth Failures</a></div></div>
-    <div class="dc"><div class="dc-header"><i class="fa-regular fa-file-lines"></i> Legal &amp; Compliance</div><div class="dc-body"><p>Understanding authorized testing and legal boundaries.</p><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Legal Usage</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Compliance Frameworks</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Audit Logs</a><a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Data Retention</a></div></div>
-  </div>
-</div>
-</div>
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
 {% endblock %}
-{% block scripts %}<script>initLayout('/documentation');</script>{% endblock %}
+{% block body %}
+<div id="_main">
+<div class="content">
+
+  <!-- ── Hero ──────────────────────────────────────────────────── -->
+  <div class="doc-hero">
+    <div class="doc-hero-eyebrow"><i class="fa-solid fa-book-open"></i> DOCUMENTATION &amp; FEATURES</div>
+    <h2>VAPT Scanner Pro — Complete Reference</h2>
+    <p>Guides, API references, scanning features, bulk IP scanner capabilities and recent scan results — all in one place.</p>
+    <div class="doc-hero-stats">
+      <span><i class="fa-solid fa-file-lines"></i> 6 Guides</span>
+      <span><i class="fa-solid fa-bolt"></i> 9 Platform Features</span>
+      <span><i class="fa-solid fa-magnifying-glass"></i> Web Scanning</span>
+      <span><i class="fa-solid fa-network-wired"></i> Bulk IP Scanner</span>
+    </div>
+  </div>
+
+  <!-- ── Sticky Section Nav ─────────────────────────────────────── -->
+  <nav class="dsn-wrap" id="docSectionNav">
+    <div class="dsn-inner">
+      <a class="dsn-tab active" data-section="sec-docs" href="#sec-docs">
+        <i class="fa-solid fa-book-open"></i><span>Documentation</span>
+      </a>
+      <a class="dsn-tab" data-section="sec-features" href="#sec-features">
+        <i class="fa-solid fa-bolt"></i><span>Features</span>
+      </a>
+      <a class="dsn-tab" data-section="sec-scanning" href="#sec-scanning">
+        <i class="fa-solid fa-magnifying-glass"></i><span>Scanning</span>
+      </a>
+      <a class="dsn-tab" data-section="sec-bulk" href="#sec-bulk">
+        <i class="fa-solid fa-network-wired"></i><span>Bulk IP Scanner</span>
+      </a>
+      <a class="dsn-tab" data-section="sec-results" href="#sec-results">
+        <i class="fa-solid fa-chart-bar"></i><span>Recent Scans</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- ════════════════════════════════════════════════════════════
+       SECTION 1 — Documentation Guides
+       ════════════════════════════════════════════════════════════ -->
+  <section id="sec-docs" class="doc-section">
+    <div class="sec-header">
+      <div class="sec-header-left">
+        <span class="sec-badge sec-badge-blue"><i class="fa-solid fa-book-open"></i></span>
+        <div>
+          <h3 class="sec-title">Documentation Guides</h3>
+          <p class="sec-sub">Setup, API reference, compliance and advanced configuration</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="doc-grid">
+      <div class="dc">
+        <div class="dc-header"><i class="fa-solid fa-terminal"></i> Getting Started</div>
+        <div class="dc-body">
+          <p>Learn how to set up and configure your first security scan.</p>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Installation</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Configuration</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> First Scan</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Authentication Setup</a>
+        </div>
+      </div>
+      <div class="dc">
+        <div class="dc-header"><i class="fa-solid fa-code"></i> API Reference</div>
+        <div class="dc-body">
+          <p>Complete API documentation for integrating scans into your workflow.</p>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> REST API</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Webhooks</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Rate Limits</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Error Handling</a>
+        </div>
+      </div>
+      <div class="dc">
+        <div class="dc-header"><i class="fa-solid fa-shield-halved"></i> Security Best Practices</div>
+        <div class="dc-body">
+          <p>Guidelines for responsible vulnerability testing.</p>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Legal Considerations</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Scope Definition</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Safe Testing</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Reporting</a>
+        </div>
+      </div>
+      <div class="dc">
+        <div class="dc-header"><i class="fa-regular fa-file-lines"></i> Advanced Configuration</div>
+        <div class="dc-body">
+          <p>Fine-tune your scans for specific environments and needs.</p>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Custom Rules</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Exclusions</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Scan Profiles</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Performance Tuning</a>
+        </div>
+      </div>
+      <div class="dc">
+        <div class="dc-header"><i class="fa-solid fa-shield-halved"></i> OWASP Top 10 Mapping</div>
+        <div class="dc-body">
+          <p>How our findings map to OWASP Top 10 categories.</p>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> A01 Broken Access Control</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> A03 Injection</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> A05 Misconfiguration</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> A07 Auth Failures</a>
+        </div>
+      </div>
+      <div class="dc">
+        <div class="dc-header"><i class="fa-regular fa-file-lines"></i> Legal &amp; Compliance</div>
+        <div class="dc-body">
+          <p>Understanding authorized testing and legal boundaries.</p>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Legal Usage</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Compliance Frameworks</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Audit Logs</a>
+          <a href="#" class="dc-link"><i class="fa-solid fa-chevron-right"></i> Data Retention</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════
+       SECTION 2 — Platform Features (from features.html)
+       ════════════════════════════════════════════════════════════ -->
+  <section id="sec-features" class="doc-section">
+    <div class="sec-header">
+      <div class="sec-header-left">
+        <span class="sec-badge sec-badge-amber"><i class="fa-solid fa-bolt"></i></span>
+        <div>
+          <h3 class="sec-title">Platform Features</h3>
+          <p class="sec-sub">Enterprise-grade security testing capabilities across all modules</p>
+        </div>
+      </div>
+      <a href="/features" class="sec-link-btn">
+        <i class="fa-solid fa-arrow-right"></i> Features Page
+      </a>
+    </div>
+
+    <div class="feat-cards">
+      <div class="fc">
+        <div class="fc-icon"><i class="fa-solid fa-network-wired"></i></div>
+        <h3>Network Security Testing</h3>
+        <p>Comprehensive network reconnaissance including DNS resolution, port scanning, and service detection.</p>
+      </div>
+      <div class="fc">
+        <div class="fc-icon"><i class="fa-solid fa-globe"></i></div>
+        <h3>Web Application Security</h3>
+        <p>Analyze security headers, SSL/TLS configuration, and server information disclosure.</p>
+      </div>
+      <div class="fc">
+        <div class="fc-icon"><i class="fa-solid fa-magnifying-glass"></i></div>
+        <h3>Automated Web Crawling</h3>
+        <p>Intelligent path discovery to find all accessible URLs, forms, and API endpoints.</p>
+      </div>
+      <div class="fc">
+        <div class="fc-icon"><i class="fa-solid fa-bug"></i></div>
+        <h3>Vulnerability Testing</h3>
+        <p>Test for SQL injection, XSS, directory listing, and other common vulnerabilities.</p>
+      </div>
+      <div class="fc">
+        <div class="fc-icon"><i class="fa-solid fa-lock"></i></div>
+        <h3>Authentication Testing</h3>
+        <p>Support for Basic, Bearer, API Key, and OAuth 2.0 authentication methods.</p>
+      </div>
+      <div class="fc">
+        <div class="fc-icon"><i class="fa-regular fa-file-lines"></i></div>
+        <h3>Detailed Reporting</h3>
+        <p>Generate comprehensive reports with remediation steps for each finding.</p>
+      </div>
+      <div class="fc">
+        <div class="fc-icon"><i class="fa-solid fa-bolt"></i></div>
+        <h3>Real-time Scanning</h3>
+        <p>Live scan logs and progress tracking with phase-by-phase status updates.</p>
+      </div>
+      <div class="fc">
+        <div class="fc-icon"><i class="fa-solid fa-link"></i></div>
+        <h3>Third-Party Integrations</h3>
+        <p>Connect with Slack, Jira, GitHub, and PagerDuty to automate your security workflow.</p>
+      </div>
+      <div class="fc">
+        <div class="fc-icon"><i class="fa-solid fa-chart-line"></i></div>
+        <h3>Trend Analytics</h3>
+        <p>Track mean time to fix, vulnerability aging, and compare against industry benchmarks.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════
+       SECTION 3 — Web Scanning Module Features (Image 1)
+       ════════════════════════════════════════════════════════════ -->
+  <section id="sec-scanning" class="doc-section">
+    <div class="sec-header">
+      <div class="sec-header-left">
+        <span class="sec-badge sec-badge-green"><i class="fa-solid fa-magnifying-glass"></i></span>
+        <div>
+          <h3 class="sec-title">Web Scanning Features</h3>
+          <p class="sec-sub">All capabilities available in the Security Scan module</p>
+        </div>
+      </div>
+      <a href="/scanning" class="sec-link-btn">
+        <i class="fa-solid fa-arrow-right"></i> Go to Scanning
+      </a>
+    </div>
+
+    <div class="fm-grid">
+      <div class="fm-card">
+        <div class="fm-head">
+          <span class="fm-icon-wrap fm-blue"><i class="fa-solid fa-network-wired"></i></span>
+          <h4 class="fm-title">Recon &amp; Detection</h4>
+        </div>
+        <ul class="fm-list">
+          <li><i class="fa-solid fa-circle-check"></i> DNS Resolution</li>
+          <li><i class="fa-solid fa-circle-check"></i> Port Scanning</li>
+          <li><i class="fa-solid fa-circle-check"></i> Service Detection</li>
+          <li><i class="fa-solid fa-circle-check"></i> WAF Detection</li>
+          <li><i class="fa-solid fa-circle-check"></i> Rate Limiting</li>
+        </ul>
+      </div>
+
+      <div class="fm-card">
+        <div class="fm-head">
+          <span class="fm-icon-wrap fm-green"><i class="fa-solid fa-shield-halved"></i></span>
+          <h4 class="fm-title">Headers &amp; Session</h4>
+        </div>
+        <ul class="fm-list">
+          <li><i class="fa-solid fa-circle-check"></i> CSP Headers</li>
+          <li><i class="fa-solid fa-circle-check"></i> Security Headers</li>
+          <li><i class="fa-solid fa-circle-check"></i> CSRF Protection</li>
+          <li><i class="fa-solid fa-circle-check"></i> Session Timeout</li>
+          <li><i class="fa-solid fa-circle-check"></i> Open Redirect</li>
+        </ul>
+      </div>
+
+      <div class="fm-card">
+        <div class="fm-head">
+          <span class="fm-icon-wrap fm-amber"><i class="fa-solid fa-magnifying-glass"></i></span>
+          <h4 class="fm-title">Intelligent Crawling</h4>
+        </div>
+        <ul class="fm-list">
+          <li><i class="fa-solid fa-circle-check"></i> URL Discovery</li>
+          <li><i class="fa-solid fa-circle-check"></i> Form Detection</li>
+          <li><i class="fa-solid fa-circle-check"></i> API Endpoint Mapping</li>
+          <li><i class="fa-solid fa-circle-check"></i> JS Analysis</li>
+          <li><i class="fa-solid fa-circle-check"></i> Sitemap Parsing</li>
+        </ul>
+      </div>
+
+      <div class="fm-card">
+        <div class="fm-head">
+          <span class="fm-icon-wrap fm-red"><i class="fa-solid fa-bug"></i></span>
+          <h4 class="fm-title">Vulnerability Testing</h4>
+        </div>
+        <ul class="fm-list">
+          <li><i class="fa-solid fa-circle-check"></i> SQL Injection</li>
+          <li><i class="fa-solid fa-circle-check"></i> XSS</li>
+          <li><i class="fa-solid fa-circle-check"></i> Command Injection</li>
+          <li><i class="fa-solid fa-circle-check"></i> SSRF</li>
+          <li><i class="fa-solid fa-circle-check"></i> XXE</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════
+       SECTION 4 — Bulk IP Scanner Features (Image 2)
+       ════════════════════════════════════════════════════════════ -->
+  <section id="sec-bulk" class="doc-section">
+    <div class="sec-header">
+      <div class="sec-header-left">
+        <span class="sec-badge sec-badge-purple"><i class="fa-solid fa-network-wired"></i></span>
+        <div>
+          <h3 class="sec-title">Bulk IP Scanner Features</h3>
+          <p class="sec-sub">All capabilities available in the Bulk IP Scanner module</p>
+        </div>
+      </div>
+      <a href="/bulk-ip-scanning" class="sec-link-btn">
+        <i class="fa-solid fa-arrow-right"></i> Go to Bulk Scanner
+      </a>
+    </div>
+
+    <!-- Row 1: 4 cards -->
+    <div class="fm-grid">
+      <div class="fm-card">
+        <div class="fm-head">
+          <span class="fm-icon-wrap fm-blue"><i class="fa-solid fa-satellite-dish"></i></span>
+          <h4 class="fm-title">Host Discovery</h4>
+        </div>
+        <ul class="fm-list">
+          <li><i class="fa-solid fa-circle-check"></i> ICMP Ping Sweep</li>
+          <li><i class="fa-solid fa-circle-check"></i> TCP SYN Discovery</li>
+          <li><i class="fa-solid fa-circle-check"></i> UDP Discovery</li>
+          <li><i class="fa-solid fa-circle-check"></i> ARP Scan (LAN)</li>
+          <li><i class="fa-solid fa-circle-check"></i> Latency Measurement</li>
+        </ul>
+      </div>
+
+      <div class="fm-card">
+        <div class="fm-head">
+          <span class="fm-icon-wrap fm-green"><i class="fa-solid fa-door-open"></i></span>
+          <h4 class="fm-title">Port &amp; Service</h4>
+        </div>
+        <ul class="fm-list">
+          <li><i class="fa-solid fa-circle-check"></i> Full Port Scan (1–65535)</li>
+          <li><i class="fa-solid fa-circle-check"></i> Service Version Detection</li>
+          <li><i class="fa-solid fa-circle-check"></i> Protocol Identification</li>
+          <li><i class="fa-solid fa-circle-check"></i> Banner Grabbing</li>
+          <li><i class="fa-solid fa-circle-check"></i> Filtered Port Detection</li>
+        </ul>
+      </div>
+
+      <div class="fm-card">
+        <div class="fm-head">
+          <span class="fm-icon-wrap fm-purple"><i class="fa-solid fa-layer-group"></i></span>
+          <h4 class="fm-title">Software Detection</h4>
+        </div>
+        <ul class="fm-list">
+          <li><i class="fa-solid fa-circle-check"></i> Installed Software Inventory</li>
+          <li><i class="fa-solid fa-circle-check"></i> Version Detection via Banners</li>
+          <li><i class="fa-solid fa-circle-check"></i> EOL / Outdated Version Check</li>
+          <li><i class="fa-solid fa-circle-check"></i> CVE Mapping per Software</li>
+          <li><i class="fa-solid fa-circle-check"></i> Actionable Upgrade Remediations</li>
+        </ul>
+      </div>
+
+      <div class="fm-card">
+        <div class="fm-head">
+          <span class="fm-icon-wrap fm-red"><i class="fa-solid fa-bug"></i></span>
+          <h4 class="fm-title">Vulnerability Scan</h4>
+        </div>
+        <ul class="fm-list">
+          <li><i class="fa-solid fa-circle-check"></i> Nmap Vuln Scripts</li>
+          <li><i class="fa-solid fa-circle-check"></i> CVE Identification</li>
+          <li><i class="fa-solid fa-circle-check"></i> Nikto Web Scanner</li>
+          <li><i class="fa-solid fa-circle-check"></i> SSL/TLS Analysis</li>
+          <li><i class="fa-solid fa-circle-check"></i> Default Credentials Check</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Row 2: Reporting card (single, left-aligned) -->
+    <div class="fm-grid fm-grid-5th" style="margin-top:.75rem;">
+      <div class="fm-card">
+        <div class="fm-head">
+          <span class="fm-icon-wrap fm-amber"><i class="fa-solid fa-file-export"></i></span>
+          <h4 class="fm-title">Reporting</h4>
+        </div>
+        <ul class="fm-list fm-list-row">
+          <li><i class="fa-solid fa-circle-check"></i> Excel (.xlsx) Export</li>
+          <li><i class="fa-solid fa-circle-check"></i> JSON Export</li>
+          <li><i class="fa-solid fa-circle-check"></i> CSV Export</li>
+          <li><i class="fa-solid fa-circle-check"></i> Per-IP Detailed Report</li>
+          <li><i class="fa-solid fa-circle-check"></i> Severity Summary</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════
+       SECTION 5 — Recent Scan Results (5 shown + View All)
+       ════════════════════════════════════════════════════════════ -->
+  <section id="sec-results" class="doc-section">
+    <div class="sec-header">
+      <div class="sec-header-left">
+        <span class="sec-badge sec-badge-blue"><i class="fa-solid fa-chart-bar"></i></span>
+        <div>
+          <h3 class="sec-title">Recent Scan Results</h3>
+          <p class="sec-sub">5 most recent scans — click Show All to see more</p>
+        </div>
+      </div>
+      <a href="/reports" class="sec-link-btn">
+        <i class="fa-solid fa-file-lines"></i> All Reports
+      </a>
+    </div>
+
+    <div class="sr-list" id="srList">
+
+      <!-- ── Visible: 5 items ──────────────────────────────── -->
+      <div class="sr-item">
+        <div class="sr-type-icon sr-web"><i class="fa-solid fa-magnifying-glass"></i></div>
+        <div class="sr-main">
+          <div class="sr-target">https://example.com</div>
+          <div class="sr-meta">
+            <span><i class="fa-regular fa-clock"></i> 2 hours ago</span>
+            <span><i class="fa-solid fa-stopwatch"></i> 4m 12s</span>
+            <span class="sr-type-label">Web Scan</span>
+          </div>
+        </div>
+        <div class="sr-stats">
+          <span class="sr-vulns">7 vulns</span>
+          <span class="sr-sev sr-critical">Critical</span>
+        </div>
+        <a href="/reports" class="sr-view-btn"><i class="fa-solid fa-eye"></i><span>View</span></a>
+      </div>
+
+      <div class="sr-item">
+        <div class="sr-type-icon sr-bulk"><i class="fa-solid fa-network-wired"></i></div>
+        <div class="sr-main">
+          <div class="sr-target">192.168.1.0/24 <span class="sr-ip-tag">256 IPs</span></div>
+          <div class="sr-meta">
+            <span><i class="fa-regular fa-clock"></i> 5 hours ago</span>
+            <span><i class="fa-solid fa-stopwatch"></i> 18m 40s</span>
+            <span class="sr-type-label">Bulk IP Scan</span>
+          </div>
+        </div>
+        <div class="sr-stats">
+          <span class="sr-vulns">23 vulns</span>
+          <span class="sr-sev sr-high">High</span>
+        </div>
+        <a href="/reports" class="sr-view-btn"><i class="fa-solid fa-eye"></i><span>View</span></a>
+      </div>
+
+      <div class="sr-item">
+        <div class="sr-type-icon sr-web"><i class="fa-solid fa-magnifying-glass"></i></div>
+        <div class="sr-main">
+          <div class="sr-target">https://api.testsite.io</div>
+          <div class="sr-meta">
+            <span><i class="fa-regular fa-clock"></i> Yesterday</span>
+            <span><i class="fa-solid fa-stopwatch"></i> 6m 55s</span>
+            <span class="sr-type-label">Web Scan</span>
+          </div>
+        </div>
+        <div class="sr-stats">
+          <span class="sr-vulns">3 vulns</span>
+          <span class="sr-sev sr-medium">Medium</span>
+        </div>
+        <a href="/reports" class="sr-view-btn"><i class="fa-solid fa-eye"></i><span>View</span></a>
+      </div>
+
+      <div class="sr-item">
+        <div class="sr-type-icon sr-bulk"><i class="fa-solid fa-network-wired"></i></div>
+        <div class="sr-main">
+          <div class="sr-target">10.0.0.1 – 10.0.0.50 <span class="sr-ip-tag">50 IPs</span></div>
+          <div class="sr-meta">
+            <span><i class="fa-regular fa-clock"></i> 2 days ago</span>
+            <span><i class="fa-solid fa-stopwatch"></i> 9m 03s</span>
+            <span class="sr-type-label">Bulk IP Scan</span>
+          </div>
+        </div>
+        <div class="sr-stats">
+          <span class="sr-vulns">0 vulns</span>
+          <span class="sr-sev sr-clean">Clean</span>
+        </div>
+        <a href="/reports" class="sr-view-btn"><i class="fa-solid fa-eye"></i><span>View</span></a>
+      </div>
+
+      <div class="sr-item">
+        <div class="sr-type-icon sr-web"><i class="fa-solid fa-magnifying-glass"></i></div>
+        <div class="sr-main">
+          <div class="sr-target">https://staging.myapp.com</div>
+          <div class="sr-meta">
+            <span><i class="fa-regular fa-clock"></i> 3 days ago</span>
+            <span><i class="fa-solid fa-stopwatch"></i> 11m 27s</span>
+            <span class="sr-type-label">Web Scan</span>
+          </div>
+        </div>
+        <div class="sr-stats">
+          <span class="sr-vulns">14 vulns</span>
+          <span class="sr-sev sr-critical">Critical</span>
+        </div>
+        <a href="/reports" class="sr-view-btn"><i class="fa-solid fa-eye"></i><span>View</span></a>
+      </div>
+
+      <!-- ── Hidden: shown on "Show All" ──────────────────── -->
+      <div class="sr-item sr-hidden">
+        <div class="sr-type-icon sr-bulk"><i class="fa-solid fa-network-wired"></i></div>
+        <div class="sr-main">
+          <div class="sr-target">172.16.0.0/28 <span class="sr-ip-tag">14 IPs</span></div>
+          <div class="sr-meta">
+            <span><i class="fa-regular fa-clock"></i> 4 days ago</span>
+            <span><i class="fa-solid fa-stopwatch"></i> 3m 18s</span>
+            <span class="sr-type-label">Bulk IP Scan</span>
+          </div>
+        </div>
+        <div class="sr-stats">
+          <span class="sr-vulns">5 vulns</span>
+          <span class="sr-sev sr-high">High</span>
+        </div>
+        <a href="/reports" class="sr-view-btn"><i class="fa-solid fa-eye"></i><span>View</span></a>
+      </div>
+
+      <div class="sr-item sr-hidden">
+        <div class="sr-type-icon sr-web"><i class="fa-solid fa-magnifying-glass"></i></div>
+        <div class="sr-main">
+          <div class="sr-target">https://shop.example.org</div>
+          <div class="sr-meta">
+            <span><i class="fa-regular fa-clock"></i> 5 days ago</span>
+            <span><i class="fa-solid fa-stopwatch"></i> 8m 02s</span>
+            <span class="sr-type-label">Web Scan</span>
+          </div>
+        </div>
+        <div class="sr-stats">
+          <span class="sr-vulns">2 vulns</span>
+          <span class="sr-sev sr-low">Low</span>
+        </div>
+        <a href="/reports" class="sr-view-btn"><i class="fa-solid fa-eye"></i><span>View</span></a>
+      </div>
+
+      <div class="sr-item sr-hidden">
+        <div class="sr-type-icon sr-bulk"><i class="fa-solid fa-network-wired"></i></div>
+        <div class="sr-main">
+          <div class="sr-target">192.168.50.0/24 <span class="sr-ip-tag">254 IPs</span></div>
+          <div class="sr-meta">
+            <span><i class="fa-regular fa-clock"></i> 6 days ago</span>
+            <span><i class="fa-solid fa-stopwatch"></i> 22m 11s</span>
+            <span class="sr-type-label">Bulk IP Scan</span>
+          </div>
+        </div>
+        <div class="sr-stats">
+          <span class="sr-vulns">9 vulns</span>
+          <span class="sr-sev sr-high">High</span>
+        </div>
+        <a href="/reports" class="sr-view-btn"><i class="fa-solid fa-eye"></i><span>View</span></a>
+      </div>
+
+    </div><!-- /sr-list -->
+
+    <!-- Footer: toggle + link -->
+    <div class="sr-footer">
+      <button class="sr-toggle-btn" id="srToggleBtn" onclick="toggleSrViewAll()">
+        <i class="fa-solid fa-chevron-down" id="srChevron"></i>
+        <span id="srToggleTxt">Show All Scans</span>
+      </button>
+      <a href="/reports" class="sr-all-link">
+        <i class="fa-solid fa-file-lines"></i> Full Reports Page
+      </a>
+    </div>
+
+  </section>
+
+</div><!-- /content -->
+</div><!-- /_main -->
+{% endblock %}
+
+{% block scripts %}
+<script>initLayout('/documentation');</script>
+<script>
+// ── Section Nav: highlight active on scroll ───────────────────
+const _navSections = document.querySelectorAll('.doc-section');
+const _navTabs     = document.querySelectorAll('.dsn-tab');
+
+function _updateActiveTab() {
+  let activeId = '';
+  _navSections.forEach(sec => {
+    const rect = sec.getBoundingClientRect();
+    if (rect.top <= 110) activeId = sec.id;
+  });
+  _navTabs.forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.section === activeId);
+  });
+}
+window.addEventListener('scroll', _updateActiveTab, { passive: true });
+_updateActiveTab();
+
+// ── Section Nav: smooth scroll on click ──────────────────────
+_navTabs.forEach(tab => {
+  tab.addEventListener('click', e => {
+    e.preventDefault();
+    const el = document.getElementById(tab.dataset.section);
+    if (el) {
+      const offset = el.getBoundingClientRect().top + window.scrollY - 108;
+      window.scrollTo({ top: offset, behavior: 'smooth' });
+    }
+  });
+});
+
+// ── Recent Scans: toggle show all / show less ─────────────────
+let _srOpen = false;
+function toggleSrViewAll() {
+  _srOpen = !_srOpen;
+  document.querySelectorAll('.sr-hidden').forEach(el => {
+    el.style.display = _srOpen ? 'flex' : 'none';
+  });
+  document.getElementById('srChevron').className =
+    _srOpen ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down';
+  document.getElementById('srToggleTxt').textContent =
+    _srOpen ? 'Show Less' : 'Show All Scans';
+}
+</script>
+{% endblock %}
