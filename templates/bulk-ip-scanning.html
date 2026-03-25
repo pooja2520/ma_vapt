@@ -368,6 +368,14 @@
       <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Filtered Port Detection</div>
     </div>
     <div class="feat-card">
+      <h4><i class="fa-solid fa-box-archive" style="color:#8b5cf6"></i> Software Detection</h4>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Installed Software Inventory</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Version Detection via Banners</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> EOL / Outdated Version Check</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> CVE Mapping per Software</div>
+      <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Actionable Upgrade Remediations</div>
+    </div>
+    <div class="feat-card">
       <h4><i class="fa-solid fa-bug" style="color:var(--red,#ef4444)"></i> Vulnerability Scan</h4>
       <div class="feat-item"><i class="fa-solid fa-circle-check"></i> Nmap Vuln Scripts</div>
       <div class="feat-item"><i class="fa-solid fa-circle-check"></i> CVE Identification</div>
@@ -1236,25 +1244,108 @@ function renderResultsTable(results) {
 }
 
 function buildDrawerHTML(r) {
-  const ports   = r.ports || [];
-  const vulns   = r.vulnerabilities || [];
+  const ports    = r.ports || [];
+  const vulns    = r.vulnerabilities || [];
+  const swInv    = r.software_inventory || [];
+  const ipSafe   = (r.ip||'x').replace(/\./g,'-');
+
   const portTags = ports.map(p => {
-    const hr = [21,23,445,3389,5900].includes(p.port||p) ? 'high-risk' : '';
+    const hr = [21,23,445,3389,5900].includes(+(p.port||p)) ? 'high-risk' : '';
     return `<span class="port-tag ${hr}">${p.port||p}/${p.service||'?'}</span>`;
   }).join('') || '<span style="color:var(--text-muted);font-size:.72rem;">None detected</span>';
 
+  // ── Vulnerabilities HTML ───────────────────────────────────────────────────
   const vulnHTML = vulns.length
     ? vulns.map((v, vi) => {
         const cve = v.cve || (v.description && v.description.match(/CVE-\d{4}-\d{4,}/i)?.[0]);
-        const uid = `nvd-${(r.ip||'').replace(/\./g,'-')}-${vi}`;
-        const cvePart = cve ? `<span class="cve-nvd-trigger" data-cve="${cve}" data-target="${uid}" onclick="fetchNvdForCve(this)" title="Fetch NVD details (real-time)">${cve} <i class="fa-solid fa-database" style="font-size:.6rem;color:var(--blue)"></i></span>` : '';
-        return `<div class="vuln-mini" data-vuln-idx="${vi}">
-          <i class="fa-solid fa-triangle-exclamation"></i>
-          <span><strong>${v.name}</strong>${cve ? ' (' + cvePart + ')' : ''} — Port ${v.port||'-'}</span>
-          <div class="nvd-detail" id="${uid}" style="display:none;margin-top:.4rem;padding:.4rem;background:var(--bg-secondary);border-radius:6px;font-size:.72rem;"></div>
+        const uid = `nvd-${ipSafe}-${vi}`;
+        const cvePart = cve ? `<span class="cve-nvd-trigger" data-cve="${cve}" data-target="${uid}" onclick="fetchNvdForCve(this)" title="Fetch NVD details">${cve} <i class="fa-solid fa-database" style="font-size:.6rem;color:var(--blue)"></i></span>` : '';
+        const isSoftwareVuln = v.source === 'SoftwareVersionCheck';
+        const remId = `rem-${ipSafe}-${vi}`;
+        const remHTML = v.remediation ? `
+          <div class="sw-rem-toggle" onclick="toggleRem('${remId}')" style="cursor:pointer;margin-top:.3rem;font-size:.7rem;color:var(--blue);user-select:none;">
+            <i class="fa-solid fa-screwdriver-wrench"></i> Show Remediation Steps
+          </div>
+          <div id="${remId}" class="sw-rem-body" style="display:none;margin-top:.4rem;padding:.5rem .625rem;background:var(--bg-secondary);border-radius:6px;font-size:.7rem;border-left:3px solid var(--blue);white-space:pre-wrap;word-break:break-word;">${_escHtml(v.remediation)}</div>` : '';
+        const upgLink = v.upgrade_url ? `<a href="${v.upgrade_url}" target="_blank" rel="noopener" style="font-size:.68rem;margin-left:.5rem;"><i class="fa-solid fa-arrow-up-right-from-square"></i> Upgrade</a>` : '';
+        return `<div class="vuln-mini${isSoftwareVuln?' sw-vuln-item':''}" data-vuln-idx="${vi}">
+          <i class="fa-solid fa-${isSoftwareVuln?'box-archive':'triangle-exclamation'}"></i>
+          <div style="flex:1;">
+            <span><strong>${_escHtml(v.name)}</strong>${cve ? ' (' + cvePart + ')' : ''}${upgLink}</span>
+            ${v.detected_version ? `<div style="font-size:.68rem;color:var(--text-muted);margin-top:.15rem;">Detected: <b>${v.detected_version}</b> → Latest: <b>${v.latest_stable||'?'}</b></div>` : ''}
+            ${v.known_cves && v.known_cves.length ? `<div style="font-size:.66rem;color:#f59e0b;margin-top:.1rem;">⚠ CVEs: ${v.known_cves.slice(0,3).join(', ')}</div>` : ''}
+            <div class="nvd-detail" id="${uid}" style="display:none;margin-top:.4rem;padding:.4rem;background:var(--bg-secondary);border-radius:6px;font-size:.72rem;"></div>
+            ${remHTML}
+          </div>
         </div>`;
       }).join('')
     : '<div class="vuln-mini" style="color:var(--text-muted)"><i class="fa-solid fa-circle-check" style="color:var(--green)"></i><span>No vulnerabilities found</span></div>';
+
+  // ── Software Inventory HTML ────────────────────────────────────────────────
+  const statusColors = { eol:'#dc2626', critical:'#dc2626', outdated:'#f97316', current:'#16a34a', unknown:'#6b7280' };
+  const statusIcons  = { eol:'skull-crossbones', critical:'radiation', outdated:'arrow-up', current:'circle-check', unknown:'question-circle' };
+
+  const swHTML = swInv.length ? `
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:.72rem;">
+        <thead>
+          <tr style="background:var(--bg-secondary);">
+            <th style="padding:.3rem .5rem;text-align:left;font-weight:700;color:var(--text-muted);">Software</th>
+            <th style="padding:.3rem .5rem;text-align:center;font-weight:700;color:var(--text-muted);">Detected</th>
+            <th style="padding:.3rem .5rem;text-align:center;font-weight:700;color:var(--text-muted);">Latest</th>
+            <th style="padding:.3rem .5rem;text-align:center;font-weight:700;color:var(--text-muted);">Status</th>
+            <th style="padding:.3rem .5rem;text-align:left;font-weight:700;color:var(--text-muted);">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${swInv.map((sw, si) => {
+            const color = statusColors[sw.status] || '#6b7280';
+            const icon  = statusIcons[sw.status]  || 'question';
+            const swRemId = `swrem-${ipSafe}-${si}`;
+            const rem  = sw.remediation || {};
+            const steps = (rem.steps || []).slice(0, 5);
+            const cmds  = (rem.commands || []);
+            const hasRem = steps.length > 0;
+            return `<tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:.35rem .5rem;">
+                <div style="font-weight:700;">${_escHtml(sw.display_name||sw.software_key)}</div>
+                <div style="color:var(--text-muted);font-size:.65rem;">${sw.category||''} · port ${sw.port||'?'}</div>
+              </td>
+              <td style="padding:.35rem .5rem;text-align:center;font-family:'Courier New',monospace;font-weight:700;">${_escHtml(sw.detected_version||'?')}</td>
+              <td style="padding:.35rem .5rem;text-align:center;font-family:'Courier New',monospace;color:var(--green);font-weight:700;">${_escHtml(sw.latest_stable||'?')}</td>
+              <td style="padding:.35rem .5rem;text-align:center;">
+                <span style="color:${color};font-weight:800;font-size:.7rem;">
+                  <i class="fa-solid fa-${icon}"></i> ${(sw.status||'').toUpperCase()}
+                </span>
+              </td>
+              <td style="padding:.35rem .5rem;">
+                ${sw.upgrade_url ? `<a href="${sw.upgrade_url}" target="_blank" rel="noopener" style="font-size:.68rem;color:var(--blue);"><i class="fa-solid fa-arrow-up-right-from-square"></i> Upgrade</a>` : ''}
+                ${hasRem ? `<span onclick="toggleRem('${swRemId}')" style="cursor:pointer;font-size:.68rem;color:var(--blue);margin-left:.4rem;"><i class="fa-solid fa-screwdriver-wrench"></i> Fix</span>` : ''}
+                ${sw.known_cves && sw.known_cves.length ? `<div style="font-size:.63rem;color:#f59e0b;margin-top:.15rem;">${sw.known_cves.slice(0,2).join(', ')}</div>` : ''}
+                ${hasRem ? `<div id="${swRemId}" style="display:none;margin-top:.4rem;padding:.4rem .5rem;background:var(--bg-secondary);border-radius:5px;border-left:3px solid ${color};font-size:.68rem;">
+                  <div style="font-weight:700;margin-bottom:.3rem;color:${color};">${_escHtml(rem.title||'Remediation')}</div>
+                  <div style="margin-bottom:.3rem;">${_escHtml(rem.description||'')}</div>
+                  <ol style="margin:.25rem 0 .25rem 1rem;padding:0;">
+                    ${steps.map(s=>`<li style="margin-bottom:.2rem;">${_escHtml(s)}</li>`).join('')}
+                  </ol>
+                  ${cmds.length ? `<div style="margin-top:.3rem;font-weight:700;">Commands:</div>
+                    <div style="font-family:'Courier New',monospace;background:var(--bg);padding:.3rem .4rem;border-radius:4px;margin-top:.2rem;">
+                      ${cmds.map(c=>`<div>$ ${_escHtml(c)}</div>`).join('')}
+                    </div>` : ''}
+                  ${rem.references && rem.references.length ? `<div style="margin-top:.3rem;"><a href="${rem.references[0]}" target="_blank" rel="noopener" style="font-size:.66rem;">📖 Reference</a></div>` : ''}
+                </div>` : ''}
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>` : '<div style="color:var(--text-muted);font-size:.75rem;padding:.5rem 0;"><i class="fa-solid fa-magnifying-glass"></i> No software detected (service detection not enabled or no banners captured)</div>';
+
+  const swCount   = swInv.length;
+  const badCount  = swInv.filter(s => ['eol','critical','outdated'].includes(s.status)).length;
+  const swTabLabel = swCount
+    ? `Software <span style="background:${badCount?'#f97316':'#16a34a'};color:#fff;border-radius:10px;padding:0 .4rem;font-size:.65rem;margin-left:.2rem;">${badCount||swCount}</span>`
+    : 'Software';
 
   const infoRows = [
     { label: 'IP', val: r.ip },
@@ -1265,29 +1356,65 @@ function buildDrawerHTML(r) {
     { label: 'Latency', val: r.latency ? r.latency + ' ms' : '-' },
   ];
 
-  return `<div class="drawer-grid">
-    <div class="drawer-card">
-      <h5><i class="fa-solid fa-circle-info" style="color:var(--blue)"></i> Host Info</h5>
-      ${infoRows.map(x=>`<div style="display:flex;justify-content:space-between;font-size:.75rem;margin-bottom:.3rem;">
-        <span style="color:var(--text-muted);font-weight:600;">${x.label}</span>
-        <span style="font-family:'Courier New',monospace;font-weight:700;">${x.val}</span>
-      </div>`).join('')}
+  const drawerTabsId = `dtabs-${ipSafe}`;
+  return `<div class="drawer-tabs" id="${drawerTabsId}">
+    <div class="dtab-nav">
+      <button class="dtab-btn active" onclick="switchDTab('${drawerTabsId}',0,this)"><i class="fa-solid fa-circle-info"></i> Info</button>
+      <button class="dtab-btn" onclick="switchDTab('${drawerTabsId}',1,this)"><i class="fa-solid fa-door-open"></i> Ports</button>
+      <button class="dtab-btn" onclick="switchDTab('${drawerTabsId}',2,this)"><i class="fa-solid fa-bug"></i> Vulns <span style="background:#ef4444;color:#fff;border-radius:10px;padding:0 .35rem;font-size:.62rem;margin-left:.15rem;">${vulns.length||0}</span></button>
+      <button class="dtab-btn" onclick="switchDTab('${drawerTabsId}',3,this)"><i class="fa-solid fa-box-archive"></i> ${swTabLabel}</button>
     </div>
-    <div class="drawer-card">
-      <h5><i class="fa-solid fa-door-open" style="color:var(--green)"></i> Open Ports & Services</h5>
-      <div class="port-list">${portTags}</div>
-      ${ports.length ? `<div style="margin-top:.5rem;">${ports.slice(0,5).map(p=>`
-        <div style="display:flex;gap:.5rem;font-size:.7rem;margin-bottom:.2rem;align-items:center;">
-          <span class="port-tag" style="flex-shrink:0;">${p.port}</span>
-          <span style="color:var(--text-muted);">${p.service||''}</span>
-          <span style="color:var(--text);font-weight:600;">${p.version||''}</span>
-        </div>`).join('')}</div>` : ''}
-    </div>
-    <div class="drawer-card">
-      <h5><i class="fa-solid fa-bug" style="color:#ef4444"></i> Vulnerabilities</h5>
-      <div class="vuln-mini-list">${vulnHTML}</div>
+    <div class="dtab-panels">
+      <div class="dtab-panel active" data-panel="0">
+        ${infoRows.map(x=>`<div style="display:flex;justify-content:space-between;font-size:.75rem;margin-bottom:.35rem;border-bottom:1px solid var(--border);padding-bottom:.25rem;">
+          <span style="color:var(--text-muted);font-weight:600;">${x.label}</span>
+          <span style="font-family:'Courier New',monospace;font-weight:700;">${x.val}</span>
+        </div>`).join('')}
+      </div>
+      <div class="dtab-panel" data-panel="1" style="display:none;">
+        <div class="port-list" style="margin-bottom:.5rem;">${portTags}</div>
+        ${ports.length ? `<div>${ports.map(p=>`
+          <div style="display:flex;gap:.5rem;font-size:.7rem;margin-bottom:.3rem;align-items:center;border-bottom:1px solid var(--border);padding-bottom:.2rem;">
+            <span class="port-tag" style="flex-shrink:0;">${p.port}</span>
+            <span style="color:var(--text-muted);">${p.service||''}</span>
+            <span style="color:var(--text);font-weight:600;flex:1;">${p.version||''}</span>
+          </div>`).join('')}</div>` : '<div style="color:var(--text-muted);font-size:.75rem;">No open ports detected</div>'}
+      </div>
+      <div class="dtab-panel" data-panel="2" style="display:none;">
+        <div class="vuln-mini-list">${vulnHTML}</div>
+      </div>
+      <div class="dtab-panel" data-panel="3" style="display:none;">
+        ${swHTML}
+      </div>
     </div>
   </div>`;
+}
+
+function _escHtml(str) {
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toggleRem(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const showing = el.style.display !== 'none';
+  el.style.display = showing ? 'none' : '';
+  const btn = el.previousElementSibling;
+  if (btn && btn.classList.contains('sw-rem-toggle')) {
+    btn.innerHTML = showing
+      ? '<i class="fa-solid fa-screwdriver-wrench"></i> Show Remediation Steps'
+      : '<i class="fa-solid fa-screwdriver-wrench"></i> Hide Remediation Steps';
+  }
+}
+
+function switchDTab(containerId, panelIdx, clickedBtn) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.querySelectorAll('.dtab-btn').forEach(b => b.classList.remove('active'));
+  container.querySelectorAll('.dtab-panel').forEach(p => p.style.display = 'none');
+  clickedBtn.classList.add('active');
+  const panel = container.querySelector(`[data-panel="${panelIdx}"]`);
+  if (panel) panel.style.display = '';
 }
 
 async function fetchNvdForCve(el) {
