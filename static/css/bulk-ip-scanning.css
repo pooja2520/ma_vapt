@@ -883,3 +883,82 @@
   .cpp-label         { font-size: .72rem; }
   .cpp-input         { font-size: .75rem; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   Software Inventory & Drawer Tabs — added for v2 feature
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Drawer tab navigation ───────────────────────────────────── */
+.drawer-tabs {
+  padding: .75rem 1rem 1rem;
+}
+.dtab-nav {
+  display: flex;
+  gap: .25rem;
+  border-bottom: 2px solid var(--border, #e5e7eb);
+  margin-bottom: .75rem;
+  flex-wrap: wrap;
+}
+.dtab-btn {
+  padding: .35rem .85rem;
+  border: none;
+  background: transparent;
+  font-size: .76rem;
+  font-weight: 600;
+  color: var(--text-muted, #6b7280);
+  cursor: pointer;
+  border-bottom: 2.5px solid transparent;
+  margin-bottom: -2px;
+  border-radius: 6px 6px 0 0;
+  transition: color .15s, border-color .15s, background .15s;
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+}
+.dtab-btn:hover {
+  color: var(--blue, #2563eb);
+  background: var(--bg-secondary, #f9fafb);
+}
+.dtab-btn.active {
+  color: var(--blue, #2563eb);
+  border-bottom-color: var(--blue, #2563eb);
+  background: var(--bg-secondary, #f9fafb);
+}
+.dtab-panel {
+  animation: fadeInPanel .15s ease;
+}
+@keyframes fadeInPanel {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Software inventory table ────────────────────────────────── */
+.sw-vuln-item {
+  border-left: 3px solid #8b5cf6 !important;
+  padding-left: .5rem;
+  margin-bottom: .4rem;
+}
+.sw-rem-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .15rem .4rem;
+  border-radius: 4px;
+  background: rgba(37,99,235,.07);
+  transition: background .15s;
+}
+.sw-rem-toggle:hover {
+  background: rgba(37,99,235,.14);
+}
+.sw-rem-body {
+  line-height: 1.65;
+}
+
+/* ── Status badge colours (inline, override per element) ─────── */
+/* Used via inline style="color:X" so no extra class needed */
+
+/* ── Responsive drawer tabs ──────────────────────────────────── */
+@media (max-width: 600px) {
+  .dtab-btn { font-size: .7rem; padding: .3rem .55rem; }
+  .drawer-tabs { padding: .5rem .625rem .75rem; }
+}
