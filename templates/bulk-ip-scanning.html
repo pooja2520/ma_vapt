@@ -131,6 +131,44 @@
                 <span class="mod-toggle-track"></span>
               </div>
             </label>
+            <label class="mod-card" id="wmiModCard">
+              <input type="checkbox" id="optWMI" onchange="toggleWMIPanel(this.checked)">
+              <div class="mod-inner">
+                <i class="fa-brands fa-windows mod-icon"></i>
+                <span class="mod-label">WMI Scan</span>
+                <span class="mod-sub">Win Software</span>
+                <span class="mod-toggle-track"></span>
+              </div>
+            </label>
+
+            <!-- WMI Credential Panel — full-width, shown when WMI module is checked -->
+            <div id="wmiCredPanel" class="wmi-cred-panel" style="display:none;">
+              <div class="wmi-cred-header">
+                <i class="fa-brands fa-windows" style="color:#0078d4;"></i>
+                WMI Credentials
+                <span class="wmi-cred-sub">(Windows hosts only — requires TCP 135 / DCOM)</span>
+              </div>
+              <div class="wmi-cred-fields">
+                <div class="wmi-field">
+                  <label>Username <span class="wmi-hint">DOMAIN\user or user</span></label>
+                  <input type="text" id="wmiUsername" placeholder="DOMAIN\Administrator" class="wmi-input">
+                </div>
+                <div class="wmi-field">
+                  <label>Password</label>
+                  <input type="password" id="wmiPassword" placeholder="••••••••" class="wmi-input">
+                </div>
+                <div class="wmi-field">
+                  <label>Domain <span class="wmi-hint">(optional)</span></label>
+                  <input type="text" id="wmiDomain" placeholder="WORKGROUP" class="wmi-input">
+                </div>
+              </div>
+              <div class="wmi-cred-note">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                Install <code>impacket</code> (<code>pip install impacket</code>) for cross-platform WMI support.
+                On Windows-only setups, <code>wmic</code> is used as fallback.
+              </div>
+            </div>
+
             <div class="concurrency-row">
               <i class="fa-solid fa-bolt"></i>
               <span>Concurrency:</span>
@@ -678,10 +716,18 @@ async function startBulkScan() {
     const concurrency = parseInt(document.getElementById('concSlider').value);
     const portDepth   = document.getElementById('portDepth').value || 'full';
     const customPorts = getCustomPortsStr();
+    // WMI credentials (only sent when WMI module is checked)
+    const wmiUsername = (document.getElementById('wmiUsername')?.value || '').trim();
+    const wmiPassword = (document.getElementById('wmiPassword')?.value || '').trim();
+    const wmiDomain   = (document.getElementById('wmiDomain')?.value || '').trim();
     const res  = await fetch('/scan/bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ips: parsedIPs, modules, concurrency, port_depth: portDepth, custom_ports: customPorts }),
+      body: JSON.stringify({
+        ips: parsedIPs, modules, concurrency,
+        port_depth: portDepth, custom_ports: customPorts,
+        wmi_username: wmiUsername, wmi_password: wmiPassword, wmi_domain: wmiDomain,
+      }),
     });
     // 401 = session expired — do NOT fall into demo mode, let interceptor handle it
     if (res.status === 401) {
@@ -863,7 +909,13 @@ function getSelectedModules() {
   if (document.getElementById('optOS').checked)       modules.push('os');
   if (document.getElementById('optVuln').checked)     modules.push('vuln');
   if (document.getElementById('optNikto').checked)    modules.push('nikto');
+  if (document.getElementById('optWMI').checked)      modules.push('wmi');
   return modules;
+}
+
+function toggleWMIPanel(checked) {
+  const panel = document.getElementById('wmiCredPanel');
+  if (panel) panel.style.display = checked ? '' : 'none';
 }
 
 function logModules() {
@@ -1564,7 +1616,7 @@ function triggerDownload(blob, filename) {
     // Re-check modules
     const modMap = {
       ping:'optPing', ports:'optPorts', services:'optServices',
-      os:'optOS', vuln:'optVuln', nikto:'optNikto',
+      os:'optOS', vuln:'optVuln', nikto:'optNikto', wmi:'optWMI',
     };
     if (Array.isArray(p.modules) && p.modules.length) {
       Object.values(modMap).forEach(id => { const el = document.getElementById(id); if (el) el.checked = false; });
@@ -1637,7 +1689,7 @@ function triggerDownload(blob, filename) {
       // ── Restore modules (uncheck all first, then check saved ones) ───────
       const modMap = {
         ping:'optPing', ports:'optPorts', services:'optServices',
-        os:'optOS', vuln:'optVuln', nikto:'optNikto',
+        os:'optOS', vuln:'optVuln', nikto:'optNikto', wmi:'optWMI',
       };
       if (Array.isArray(saved.modules) && saved.modules.length) {
         // Uncheck all
