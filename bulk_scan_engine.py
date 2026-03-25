@@ -690,6 +690,15 @@ import shutil
 import platform
 from datetime import datetime
 
+# Software version detection & outdated-software CVE enrichment
+try:
+    from software_version_detector import enrich_scan_result_with_software
+    _SOFTWARE_DETECTION_ENABLED = True
+except ImportError:
+    _SOFTWARE_DETECTION_ENABLED = False
+    def enrich_scan_result_with_software(result):
+        return result
+
 # Directory for storing bulk scan reports
 REPORTS_DIR = 'reports'
 try:
@@ -1362,6 +1371,12 @@ def scan_single_ip(ip, modules=None, stopped_callback=None, port_depth='full'):
                 nuclei_vulns = run_nuclei_scan(ip, web_ports=web_ports)
                 result['vulnerabilities'].extend(nuclei_vulns)
 
+        # ── Software Inventory & Outdated-Version Vulnerability Detection ──────
+        # Analyses detected service banners to identify installed software,
+        # check versions against the known-version database, and inject
+        # vulnerability entries (with full remediation) for outdated/EOL software.
+        result = enrich_scan_result_with_software(result)
+
         # Severity / Risk
         vulns = result['vulnerabilities']
         high_sev = sum(1 for v in vulns if v.get('severity') == 'High')
@@ -1495,6 +1510,109 @@ def create_bulk_excel_report(scan_results, filepath=None):
 
     for i in range(1, 6):
         wv.column_dimensions[get_column_letter(i)].width = [18, 30, 12, 12, 70][i - 1]
+
+    # ── Software Inventory sheet ───────────────────────────────────────────
+    wi = wb.create_sheet('Software Inventory')
+    wi['A1'] = 'Detected Software & Version Status'
+    wi['A1'].font = Font(name='Arial', size=14, bold=True, color='1F4E78')
+    wi.merge_cells('A1:H1')
+
+    sw_headers = ['IP Address', 'Software', 'Category', 'Detected Version',
+                  'Latest Stable', 'Status', 'Known CVEs', 'Upgrade URL']
+    status_colors = {
+        'eol': 'C00000',       # dark red
+        'critical': 'FF0000',  # red
+        'outdated': 'FF6600',  # orange
+        'current': '00B050',   # green
+        'unknown': '808080',   # grey
+    }
+    for col, h in enumerate(sw_headers, 1):
+        c = wi.cell(row=3, column=col)
+        c.value = h
+        c.font = header_font
+        c.fill = PatternFill(start_color='1F4E78', end_color='1F4E78', fill_type='solid')
+        c.border = border_thin
+        c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    sw_row = 4
+    for r in scan_results:
+        sw_inventory = r.get('software_inventory', [])
+        if not sw_inventory:
+            # Still show the IP with "No software detected"
+            wi.cell(row=sw_row, column=1, value=r.get('ip', '')).border = border_thin
+            wi.cell(row=sw_row, column=2, value='No software detected').border = border_thin
+            wi.merge_cells(f'B{sw_row}:H{sw_row}')
+            sw_row += 1
+        else:
+            for sw in sw_inventory:
+                status = sw.get('status', 'unknown')
+                color = status_colors.get(status, 'FFFFFF')
+                row_fill = PatternFill(start_color=color + '33' if len(color) == 6 else 'FFFFFF',
+                                       end_color=color + '33' if len(color) == 6 else 'FFFFFF',
+                                       fill_type='solid')
+                wi.cell(row=sw_row, column=1, value=r.get('ip', '')).border = border_thin
+                wi.cell(row=sw_row, column=2, value=sw.get('display_name', '')).border = border_thin
+                wi.cell(row=sw_row, column=3, value=sw.get('category', '')).border = border_thin
+                wi.cell(row=sw_row, column=4, value=sw.get('detected_version', 'Unknown')).border = border_thin
+                wi.cell(row=sw_row, column=5, value=sw.get('latest_stable', 'Unknown')).border = border_thin
+                status_cell = wi.cell(row=sw_row, column=6, value=status.upper())
+                status_cell.border = border_thin
+                status_cell.font = Font(name='Arial', bold=True, color=color)
+                status_cell.alignment = Alignment(horizontal='center')
+                cves = sw.get('known_cves', [])
+                wi.cell(row=sw_row, column=7, value=', '.join(cves[:3])).border = border_thin
+                wi.cell(row=sw_row, column=8, value=sw.get('upgrade_url', '')).border = border_thin
+                wi.cell(row=sw_row, column=8).alignment = Alignment(wrap_text=True)
+                for col in range(1, 9):
+                    wi.cell(row=sw_row, column=col).fill = row_fill
+                sw_row += 1
+
+    sw_col_widths = [18, 28, 18, 18, 16, 12, 40, 50]
+    for i, w in enumerate(sw_col_widths, 1):
+        wi.column_dimensions[get_column_letter(i)].width = w
+
+    # ── Remediation sheet ─────────────────────────────────────────────────
+    wr = wb.create_sheet('Remediations')
+    wr['A1'] = 'Outdated Software Remediation Guide'
+    wr['A1'].font = Font(name='Arial', size=14, bold=True, color='C00000')
+    wr.merge_cells('A1:F1')
+
+    rem_headers = ['IP Address', 'Software', 'Version', 'Status', 'Remediation Steps', 'Commands']
+    for col, h in enumerate(rem_headers, 1):
+        c = wr.cell(row=3, column=col)
+        c.value = h
+        c.font = header_font
+        c.fill = PatternFill(start_color='C00000', end_color='C00000', fill_type='solid')
+        c.border = border_thin
+        c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    rem_row = 4
+    for r in scan_results:
+        sw_inventory = r.get('software_inventory', [])
+        for sw in sw_inventory:
+            if sw.get('status') not in ('eol', 'critical', 'outdated'):
+                continue
+            rem = sw.get('remediation') or {}
+            steps = rem.get('steps', [])
+            commands = rem.get('commands', [])
+            wr.cell(row=rem_row, column=1, value=r.get('ip', '')).border = border_thin
+            wr.cell(row=rem_row, column=2, value=sw.get('display_name', '')).border = border_thin
+            wr.cell(row=rem_row, column=3, value=sw.get('detected_version', '')).border = border_thin
+            wr.cell(row=rem_row, column=4, value=(sw.get('status') or '').upper()).border = border_thin
+            steps_text = '\n'.join(f'{i+1}. {s}' for i, s in enumerate(steps))
+            steps_cell = wr.cell(row=rem_row, column=5, value=steps_text)
+            steps_cell.border = border_thin
+            steps_cell.alignment = Alignment(wrap_text=True, vertical='top')
+            cmds_text = '\n'.join(f'$ {c}' for c in commands)
+            cmd_cell = wr.cell(row=rem_row, column=6, value=cmds_text)
+            cmd_cell.border = border_thin
+            cmd_cell.alignment = Alignment(wrap_text=True, vertical='top')
+            wr.row_dimensions[rem_row].height = max(60, len(steps) * 18)
+            rem_row += 1
+
+    rem_col_widths = [18, 24, 14, 12, 70, 55]
+    for i, w in enumerate(rem_col_widths, 1):
+        wr.column_dimensions[get_column_letter(i)].width = w
 
     if not filepath:
         filepath = f'{REPORTS_DIR}/bulk_scan_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
