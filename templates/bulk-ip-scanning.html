@@ -1337,8 +1337,29 @@ function buildDrawerHTML(r) {
   const statusColors = { eol:'#dc2626', critical:'#dc2626', outdated:'#f97316', current:'#16a34a', unknown:'#6b7280' };
   const statusIcons  = { eol:'skull-crossbones', critical:'radiation', outdated:'arrow-up', current:'circle-check', unknown:'question-circle' };
 
+  // WMI status banner (shown above software table)
+  const wmiErr   = r.wmi_error || '';
+  const wmiScanned = r.wmi_scanned || false;
+  const wmiItems   = swInv.filter(s => s.source === 'WMI');
+  const wmiStatusBanner = wmiErr
+    ? `<div style="margin-bottom:.5rem;padding:.4rem .6rem;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;font-size:.72rem;color:#92400e;">
+        <i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;"></i>
+        <strong>WMI:</strong> ${_escHtml(wmiErr)}
+        <div style="margin-top:.2rem;font-size:.66rem;color:#b45309;">
+          To fix: Run on target machine as Administrator:<br>
+          <code style="background:#fde68a;padding:1px 4px;border-radius:3px;">netsh advfirewall firewall set rule group="Windows Management Instrumentation (WMI)" new enable=yes</code>
+        </div>
+       </div>`
+    : wmiItems.length
+      ? `<div style="margin-bottom:.5rem;padding:.3rem .6rem;background:#f0fdf4;border:1px solid #16a34a;border-radius:6px;font-size:.71rem;color:#166534;">
+          <i class="fa-solid fa-circle-check" style="color:#16a34a;"></i>
+          <strong>WMI:</strong> ${wmiItems.length} installed package(s) retrieved from target
+         </div>`
+      : '';
+
   const swHTML = swInv.length ? `
     <div style="overflow-x:auto;">
+      ${wmiStatusBanner}
       <table style="width:100%;border-collapse:collapse;font-size:.72rem;">
         <thead>
           <tr style="background:var(--bg-secondary);">
@@ -1391,7 +1412,10 @@ function buildDrawerHTML(r) {
           }).join('')}
         </tbody>
       </table>
-    </div>` : '<div style="color:var(--text-muted);font-size:.75rem;padding:.5rem 0;"><i class="fa-solid fa-magnifying-glass"></i> No software detected (service detection not enabled or no banners captured)</div>';
+    </div>` : `<div>
+      ${wmiStatusBanner}
+      <div style="color:var(--text-muted);font-size:.75rem;padding:.5rem 0;"><i class="fa-solid fa-magnifying-glass"></i> No software detected (service detection not enabled or no banners captured)</div>
+    </div>`;
 
   const swCount   = swInv.length;
   const badCount  = swInv.filter(s => ['eol','critical','outdated'].includes(s.status)).length;
