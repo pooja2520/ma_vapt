@@ -704,6 +704,20 @@ except ImportError:
 try:
     from openvas_os_detector import enrich_result_with_os, check_openvas_available
     _OPENVAS_OS_ENABLED = True
+    # Read credentials from env BEFORE calling check (not after), so the check
+    # uses the real password from .env, not the hardcoded 'admin' default.
+    _ova_check = check_openvas_available(
+        gvm_socket   = os.environ.get('OPENVAS_SOCKET', '').strip() or None,
+        gvm_host     = os.environ.get('OPENVAS_HOST',     '127.0.0.1'),
+        gvm_port     = int(os.environ.get('OPENVAS_PORT', '9390')),
+        gvm_user     = os.environ.get('OPENVAS_USER',     'admin'),
+        gvm_password = os.environ.get('OPENVAS_PASSWORD', 'admin'),
+    )
+    if _ova_check['available']:
+        print(f"[OPENVAS] Connected via {_ova_check['method']} (GVM {_ova_check['version']})", flush=True)
+    else:
+        print(f"[OPENVAS] Not available — {_ova_check['error']}", flush=True)
+        print(f"[OPENVAS] OS detection will use nmap/banner fallbacks", flush=True)
 except ImportError:
     _OPENVAS_OS_ENABLED = False
     def enrich_result_with_os(result, openvas_config=None):
@@ -716,8 +730,32 @@ except ImportError:
 #   OPENVAS_PORT=9390
 #   OPENVAS_USER=admin
 #   OPENVAS_PASSWORD=admin
+
+def _auto_detect_gvm_socket():
+    """
+    Find the GVM socket file by checking all known locations.
+    Respects OPENVAS_SOCKET env var; falls back to common WSL/Linux paths.
+    Returns socket path string or '' if none found.
+    """
+    env_sock = os.environ.get('OPENVAS_SOCKET', '').strip()
+    if env_sock and os.path.exists(env_sock):
+        return env_sock
+    candidates = [
+        '/run/gvmd/gvmd.sock',          # Kali / Debian / Ubuntu default
+        '/var/run/gvmd/gvmd.sock',      # older distros
+        '/run/gvm/gvmd.sock',           # some community builds
+        '/var/run/gvm/gvmd.sock',
+        '/tmp/gvm/gvmd.sock',
+        '/usr/local/var/run/gvmd.sock', # macOS homebrew
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            log_output(f"[OPENVAS] Auto-detected GVM socket: {path}")
+            return path
+    return ''
+
 _OPENVAS_CONFIG = {
-    'socket':   os.environ.get('OPENVAS_SOCKET',   ''),
+    'socket':   _auto_detect_gvm_socket(),
     'host':     os.environ.get('OPENVAS_HOST',     '127.0.0.1'),
     'port':     int(os.environ.get('OPENVAS_PORT', '9390')),
     'user':     os.environ.get('OPENVAS_USER',     'admin'),
@@ -924,6 +962,8 @@ def run_nmap_scan(ip, modules=None, port_depth='full', stopped_callback=None):
             if 'services' in modules and open_ports:
                 port_list = ','.join(open_ports)
                 svc_args = ['nmap', '-T4', '-Pn', '-sV', '--version-intensity', '5',
+                            '-sC',
+                            '--script', 'ssh-hostkey,http-server-header,smb-os-discovery,banner',
                             '-p', port_list, ip]
                 if 'os' in modules and _has_root_for_nmap():
                     svc_args.extend(['-O', '--osscan-guess'])
@@ -953,7 +993,9 @@ def run_nmap_scan(ip, modules=None, port_depth='full', stopped_callback=None):
         # Non-full: single pass with all options
         nmap_args = ['nmap', '-T4', '-Pn', '--open', '-sT'] + port_args
         if 'services' in modules:
-            nmap_args.extend(['-sV', '--version-intensity', '5'])
+            nmap_args.extend(['-sV', '--version-intensity', '5',
+                              '-sC',
+                              '--script', 'ssh-hostkey,http-server-header,smb-os-discovery,banner'])
         if 'os' in modules and _has_root_for_nmap():
             nmap_args.extend(['-O', '--osscan-guess'])
         elif 'os' in modules:
