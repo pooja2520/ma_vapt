@@ -683,6 +683,7 @@
 Bulk IP Scan Engine - Nmap, Nikto, parsing, and report generation.
 Cross-platform (Windows, Linux, macOS).
 """
+import os
 import subprocess
 import re
 import sys
@@ -698,6 +699,30 @@ except ImportError:
     _SOFTWARE_DETECTION_ENABLED = False
     def enrich_scan_result_with_software(result):
         return result
+
+# OpenVAS / multi-layer OS detection (Ubuntu, Windows, Red Hat, etc.)
+try:
+    from openvas_os_detector import enrich_result_with_os, check_openvas_available
+    _OPENVAS_OS_ENABLED = True
+except ImportError:
+    _OPENVAS_OS_ENABLED = False
+    def enrich_result_with_os(result, openvas_config=None):
+        return result
+
+# OpenVAS connection config — reads from environment variables so you never
+# hard-code credentials. Set these in your .env file:
+#   OPENVAS_SOCKET=/run/gvmd/gvmd.sock   (preferred, same machine)
+#   OPENVAS_HOST=127.0.0.1
+#   OPENVAS_PORT=9390
+#   OPENVAS_USER=admin
+#   OPENVAS_PASSWORD=admin
+_OPENVAS_CONFIG = {
+    'socket':   os.environ.get('OPENVAS_SOCKET',   ''),
+    'host':     os.environ.get('OPENVAS_HOST',     '127.0.0.1'),
+    'port':     int(os.environ.get('OPENVAS_PORT', '9390')),
+    'user':     os.environ.get('OPENVAS_USER',     'admin'),
+    'password': os.environ.get('OPENVAS_PASSWORD', 'admin'),
+}
 
 # Directory for storing bulk scan reports
 REPORTS_DIR = 'reports'
@@ -1501,6 +1526,17 @@ def scan_single_ip(ip, modules=None, stopped_callback=None, port_depth='full',
         result['open_ports'] = [str(p['port']) for p in nmap_data['ports']]
         result['services'] = [f"{p['port']}/{p['service']}" for p in nmap_data['ports']]
         result['vulnerabilities'] = list(nmap_data['vulnerabilities'])
+
+        # OpenVAS / multi-layer OS detection
+        result['_nmap_raw'] = nmap_output
+        if _OPENVAS_OS_ENABLED:
+            result = enrich_result_with_os(result, openvas_config=_OPENVAS_CONFIG)
+            log_output(
+                f"[OS] {ip} -> {result.get('os', 'Unknown')} "
+                f"(source: {result.get('os_detail', {}).get('source', '?')}, "
+                f"confidence: {result.get('os_detail', {}).get('confidence', 0)}%)"
+            )
+        result.pop('_nmap_raw', None)
 
         # Nikto (only if web ports open)
         web_ports = [p['port'] for p in nmap_data['ports'] if p['port'] in ['80', '443', '8080', '8443']]
