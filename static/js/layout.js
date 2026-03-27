@@ -13,8 +13,11 @@
     // Fix: capture the logout click before navigation starts, flip _isLoggingOut,
     // and stop every known poller so no further requests are made.
     var _isLoggingOut = false;
+    var _isSessionDead = false;
+    var _startupTime = Date.now();
     var _notifIntervalId    = null; // notification poll interval — cleared on logout
     var _heartbeatIntervalId = null; // session heartbeat interval — cleared on logout
+
 
     document.addEventListener('click', function (e) {
         var link = e.target.closest('a[href="/logout"]');
@@ -45,44 +48,67 @@
     // Three rules prevent false positives:
     //  1. _isLoggingOut = true  → skip entirely (user chose to log out)
     //  2. 5-second startup grace window → parallel DOMContentLoaded fetches
-    //     must not trigger the banner
-    //  3. Only act on { error: 'session_expired' } JSON body → never trigger
-    //     on 3rd-party 401s, CDN errors, or JSON parse failures
-    (function _installFetchInterceptor() {
-        var _origFetch    = window.fetch;
-        var _pageLoadedAt = Date.now();
-        var _GRACE_MS     = 12000; // 12s — covers slow connections + parallel DOMContentLoaded fetches
+    // ── Fetch Interceptor ───────────────────────────────────────────
+    function _installFetchInterceptor() {
+        if (window._fetchIntercepted) return;
+        window._fetchIntercepted = true;
 
+        var _origFetch = window.fetch;
         window.fetch = function (url, opts) {
             if (!opts) opts = {};
             if (!opts.credentials) opts.credentials = 'same-origin';
 
             return _origFetch.call(this, url, opts).then(function (response) {
                 if (response.status === 401) {
-                    // Rule 1 — deliberate logout in progress
-                    if (_isLoggingOut) return response;
-                    // Rule 2 — startup grace window
-                    if ((Date.now() - _pageLoadedAt) < _GRACE_MS) return response;
-                    // Rule 3 — only act on explicit session_expired marker
+                    if (_isLoggingOut || _isSessionDead) return response;
+                    
+                    // Grace window for page load / active navigation
+                    if (Date.now() - _startupTime < 5000) return response;
+
+                    // "Second Opinion" check: Is the session REALLY gone?
+                    // We clone the response to read body without consuming it for the caller.
                     response.clone().json().then(function (body) {
                         if (body && body.error === 'session_expired') {
-                            _showSessionExpiredBanner();
+                            _verifyAndShowBanner(url);
                         }
-                    }).catch(function () {
-                        // JSON parse failed (non-JSON 401, CDN error, etc.) — do nothing
+                    }).catch(function() {
+                        // Not JSON or other error — still might be a session issue if 401
+                        _verifyAndShowBanner(url);
                     });
                 }
                 return response;
             });
         };
-    })();
+    }
 
-        // ── Session-expired banner ────────────────────────────────────────────
-    var _sessionBannerShown = false;
+    /**
+     * Performs a quiet 'second opinion' ping to verify if the session is truly dead.
+     * Prevents phantom logouts during polling race conditions.
+     */
+    function _verifyAndShowBanner(failedUrl) {
+        if (_isSessionDead || _isLoggingOut) return;
+
+        // Try a quiet heartbeat check
+        fetch('/api/session-ping', { credentials: 'same-origin' })
+            .then(function(res) {
+                if (res.status === 401) {
+                    // Session is INDEED dead on the server.
+                    _isSessionDead = true;
+                    _showSessionExpiredBanner();
+                } else {
+                    // Session is actually fine! This was a phantom 401.
+                    console.warn('[SessionGuard] Ignored phantom 401 for: ' + failedUrl);
+                }
+            })
+            .catch(function(err) {
+                // Network error or other disaster while checking — play it safe and assume session dead
+                _isSessionDead = true;
+                _showSessionExpiredBanner();
+            });
+    }
+
+    // ── UI Components ───────────────────────────────────────────────
     function _showSessionExpiredBanner() {
-        if (_sessionBannerShown) return;
-        _sessionBannerShown = true;
-        // Stop notification polling immediately
         if (_notifIntervalId) { clearInterval(_notifIntervalId); _notifIntervalId = null; }
         if (_heartbeatIntervalId) { clearInterval(_heartbeatIntervalId); _heartbeatIntervalId = null; }
 
@@ -826,8 +852,11 @@
                 children.forEach(function(c) { wrapper.appendChild(c); });
             }
         }
+        // Install the fetch interceptor once
+        _installFetchInterceptor();
         // Initial fetch + polling — store IDs so logout guard can cancel them
         _fetch(false);
+
         _notifIntervalId = setInterval(function(){ _fetch(true); }, _POLL_MS);
         // Start session heartbeat to keep idle tabs alive
         _startHeartbeat();
