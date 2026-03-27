@@ -576,9 +576,9 @@
             ['/vulnerabilities',    'fa-solid fa-bug',                 'Vulnerabilities', null],
             ['/reports',            'fa-regular fa-file-lines',        'Reports',         null],
             ['/scheduled',          'fa-solid fa-calendar-check',      'Scheduled',       null],
-            ['/features',           'fa-solid fa-bolt',                'Features',        null],
+            // ['/features',           'fa-solid fa-bolt',                'Features',        null],
             ['/documentation',      'fa-solid fa-book-open',           'Documentation',   null],
-            ['/about',              'fa-solid fa-circle-info',         'About',           null],
+            // ['/about',              'fa-solid fa-circle-info',         'About',           null],
             ['/settings',           'fa-solid fa-gear',                'Settings',        null],
         ];
         return `<aside class="sb" id="sb">
