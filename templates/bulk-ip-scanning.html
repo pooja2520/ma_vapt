@@ -1429,7 +1429,10 @@ function buildDrawerHTML(r) {
     { label: 'OS', val: r.os||'-' },
     { label: 'Status', val: r.status },
     { label: 'Scanned', val: r.scanned_at ? new Date(r.scanned_at).toLocaleString() : '-' },
-    { label: 'Latency', val: r.latency ? r.latency + ' ms' : '-' },
+    { label: 'Latency', val: r.latency != null ? r.latency + ' ms' : ((r.ping_detail||{}).avg_rtt || '-') },
+    { label: 'MAC', val: r.mac_address || '-' },
+    { label: 'Scan Duration', val: r.scan_duration || '-' },
+    { label: 'Port Range', val: r.port_range || '-' },
   ];
 
   const drawerTabsId = `dtabs-${ipSafe}`;
