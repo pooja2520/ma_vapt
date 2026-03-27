@@ -1,6 +1,21 @@
 /* VAPT Scanner Pro - Layout Injector (Flask version) */
 (function () {
 
+    // ── FOUC Prevention ───────────────────────────────────────────────────
+    // Runs immediately when this script is parsed — before DOMContentLoaded
+    // and before initLayout() is called — so #_main is already at the correct
+    // margin when the browser first paints the page.  Without this the content
+    // sits at margin-left:0 until JS injects the sidebar, causing the visible
+    // "slide from left / blink" on every page navigation.
+    (function () {
+        if (document.getElementById('_layout-fouc-fix')) return;
+        var s = document.createElement('style');
+        s.id = '_layout-fouc-fix';
+        s.textContent = '#_main{margin-left:220px;padding-top:56px}'
+                      + '@media(max-width:768px){#_main{margin-left:0}}';
+        (document.head || document.documentElement).appendChild(s);
+    }());
+
     // ── Logout guard ──────────────────────────────────────────────────────
     // When the user deliberately clicks "Logout", the browser navigates to
     // /logout which clears the session and redirects to /.  During those few
@@ -834,8 +849,9 @@
         if (mEl) {
             mEl.classList.add('main');
             mEl.id = 'main';
-            mEl.style.removeProperty('margin-left');
-            mEl.style.removeProperty('transition');
+            // Do NOT modify margin-left here — layout.css/#_main already
+            // pre-positions the element at 220px to prevent FOUC.
+            // Stripping it would cause a brief jump.
         } else {
             // Fallback: wrap all non-layout body children
             var wrapper = document.createElement('div');
