@@ -297,3 +297,17 @@ a.ni i { font-size: .9rem; width: 18px; text-align: center; flex-shrink: 0; }
 
 /* Ensure overlay covers full viewport */
 .sb-overlay { position: fixed; }
+
+/* ── FOUC Prevention ─────────────────────────────────────────────────────────
+   Pre-position #_main via CSS *before* layout.js injects the sidebar.
+   Without this, #_main starts at margin-left:0 then jumps to 220px when
+   the .main class is added by JS — causing the "slide from left" flash.
+   Since --sw (220px) matches the --ml default, there is zero visual change
+   when JS later applies .main, so no jump, no blink.               ──────── */
+#_main {
+    margin-left: var(--sw);    /* 220px — matches expanded sidebar width  */
+    padding-top: var(--hh);    /* 56px  — matches fixed header height     */
+}
+@media (max-width: 768px) {
+    #_main { margin-left: 0; } /* mobile: sidebar is an overlay, not inline */
+}
