@@ -88,7 +88,11 @@ app.config['SESSION_COOKIE_HTTPONLY']     = True
 app.config['SESSION_COOKIE_SECURE']       = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
 app.config['SESSION_COOKIE_SAMESITE']     = 'Lax'
 # Re-issue cookie on every authenticated response → rolling expiry window.
-app.config['SESSION_REFRESH_EACH_REQUEST'] = True
+# Disable auto-refreshing session cookie on every request to avoid "Set-Cookie"
+# race conditions during frequent background polling (e.g. 2s scan logs).
+# Rolling renewal is now handled explicitly by the 10m heartbeat.
+app.config['SESSION_REFRESH_EACH_REQUEST'] = False
+
 
 # Initialize database on startup
 _db_initialized = False
@@ -127,17 +131,21 @@ def ensure_db_initialized():
     # Fix: only set permanent + modified when an authenticated session exists.
     if 'user_email' in session:
         # Keep the session permanent so it survives browser restarts.
-        session.permanent = True
-        # Ensure user_id is populated (migration for old sessions created before
-        # multi-tenancy was added).
+        if not session.permanent:
+            session.permanent = True
+        
+        # Ensure user_id is populated (migration for old sessions)
         if 'user_id' not in session:
             import db
             user = db.get_user_by_email(session['user_email'])
             if user:
                 session['user_id'] = user['id']
-        # Rolling / sliding expiry: mark modified so Flask re-issues the cookie
-        # on every authenticated response, resetting the Max-Age clock.
-        session.modified = True
+        
+        # NOTE: We NO LONGER set session.modified = True here.
+        # This was causing Flask to re-issue the cookie on every 2s poll,
+        # leading to "Set-Cookie" race conditions and phantom logouts.
+        # Rolling expiry is now managed by the /api/session-ping heartbeat.
+
 
 
 @app.after_request
@@ -228,9 +236,11 @@ def login_required(f):
             # for navigations but Accept: */* for fetch(), making it unreliable.
             is_api = (
                 request.path.startswith('/api/')
-                or request.path in ('/scan-status', '/scan-progress')
-                or request.path.startswith('/scan/')   # /scan/bulk, /scan/result/*, /scan/stop/*
+                or request.path in ('/scan-status', '/scan-progress', '/test-auth')
+                or request.path.startswith('/scan/')
+                or request.method != 'GET'
             )
+
             # POST /scan is a JSON API call (initiated by fetch, never by form/navigation)
             if request.path == '/scan' and request.method == 'POST':
                 is_api = True
@@ -330,7 +340,8 @@ def login():
         session['user_name'] = user['name']
         session['user_role'] = user['role']
         session.permanent = True
-        session.modified = True   # force Flask to re-issue the cookie
+        session.modified = True   # Force immediate cookie issuance
+
         return redirect(url_for('dashboard'))
     flash('Invalid email or password. Please try again.', 'error')
     return redirect(url_for('index'))
@@ -651,10 +662,12 @@ def settings():
 def api_session_ping():
     """
     Lightweight heartbeat endpoint called by the frontend every 10 minutes.
-    Its only job is to trigger before_request (which sets session.modified=True),
+    Its only job is to touch the session (setting session.modified=True),
     causing Flask to re-issue the session cookie with a refreshed Max-Age.
     This prevents idle authenticated tabs from being silently logged out.
     """
+    session.modified = True
+
     return jsonify({'ok': True, 'user': session.get('user_email')})
 
 
