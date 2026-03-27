@@ -794,8 +794,86 @@ def _has_root_for_nmap():
 def _ping_cmd(ip):
     """Return ping command args for current OS."""
     if _is_windows():
-        return ['ping', '-n', '1', '-w', '1000', ip]
-    return ['ping', '-c', '1', '-W', '1', ip]
+        return ['ping', '-n', '4', '-w', '1000', ip]
+    return ['ping', '-c', '4', '-W', '2', ip]
+
+
+def run_ping_detailed(ip):
+    """
+    Run ping and return a detailed dict with latency, RTT stats, packet loss, etc.
+    Returns: {
+        'alive': bool,
+        'latency': float|None,   # avg RTT in ms
+        'min_rtt': str,
+        'max_rtt': str,
+        'avg_rtt': str,
+        'packets_sent': int,
+        'packets_recv': int,
+        'packet_loss': str,      # e.g. "0%"
+        'raw': str               # full ping output
+    }
+    """
+    detail = {
+        'alive': False,
+        'latency': None,
+        'min_rtt': None,
+        'max_rtt': None,
+        'avg_rtt': None,
+        'packets_sent': None,
+        'packets_recv': None,
+        'packet_loss': None,
+        'raw': '',
+    }
+    try:
+        proc = subprocess.run(
+            _ping_cmd(ip),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        output = (proc.stdout or '') + (proc.stderr or '')
+        detail['raw'] = output
+        detail['alive'] = proc.returncode == 0
+
+        if _is_windows():
+            # Windows: "Minimum = 1ms, Maximum = 2ms, Average = 1ms"
+            m = re.search(r'Minimum\s*=\s*(\d+)ms,\s*Maximum\s*=\s*(\d+)ms,\s*Average\s*=\s*(\d+)ms', output, re.I)
+            if m:
+                detail['min_rtt'] = m.group(1) + ' ms'
+                detail['max_rtt'] = m.group(2) + ' ms'
+                detail['avg_rtt'] = m.group(3) + ' ms'
+                detail['latency'] = float(m.group(3))
+            # Windows: "Packets: Sent = 4, Received = 4, Lost = 0 (0% loss)"
+            pm = re.search(r'Sent\s*=\s*(\d+),\s*Received\s*=\s*(\d+),\s*Lost\s*=\s*\d+\s*\((\d+)%\s*loss\)', output, re.I)
+            if pm:
+                detail['packets_sent'] = int(pm.group(1))
+                detail['packets_recv'] = int(pm.group(2))
+                detail['packet_loss'] = pm.group(3) + '%'
+        else:
+            # Linux/Mac: "rtt min/avg/max/mdev = 0.123/0.456/0.789/0.100 ms"
+            m = re.search(r'rtt\s+min/avg/max/\w+\s*=\s*([\d.]+)/([\d.]+)/([\d.]+)', output, re.I)
+            if m:
+                detail['min_rtt'] = m.group(1) + ' ms'
+                detail['avg_rtt'] = m.group(2) + ' ms'
+                detail['max_rtt'] = m.group(3) + ' ms'
+                detail['latency'] = float(m.group(2))
+            # Linux: "4 packets transmitted, 4 received, 0% packet loss"
+            pm = re.search(r'(\d+)\s+packets\s+transmitted,\s*(\d+)\s+received,\s*([\d.]+)%\s+packet\s+loss', output, re.I)
+            if pm:
+                detail['packets_sent'] = int(pm.group(1))
+                detail['packets_recv'] = int(pm.group(2))
+                detail['packet_loss'] = pm.group(3) + '%'
+            # If host alive but no RTT stats (ICMP blocked but host replied via other means)
+            if detail['alive'] and not detail['latency']:
+                # Try single-line time= extraction: "time=1.23 ms"
+                tm = re.search(r'time[<=]([\d.]+)\s*ms', output, re.I)
+                if tm:
+                    val = float(tm.group(1))
+                    detail['latency'] = val
+                    detail['avg_rtt'] = str(val) + ' ms'
+    except (subprocess.TimeoutExpired, OSError, Exception):
+        pass
+    return detail
 
 
 def log_output(message):
@@ -1124,20 +1202,40 @@ def generate_mock_nikto_output(ip):
 
 
 def parse_nmap_output(nmap_output):
-    """Parse nmap output to extract hostname, OS, ports, and vulnerabilities."""
+    """Parse nmap output to extract hostname, OS, ports, scan stats, and vulnerabilities."""
     data = {
         'hostname': 'Unknown',
         'os': 'Unknown',
         'ports': [],
-        'vulnerabilities': []
+        'vulnerabilities': [],
+        # Scan metadata
+        'mac_address': None,
+        'scan_duration': None,
+        'ports_scanned': None,
+        'port_range': None,
+        'scan_technique': 'TCP SYN',
     }
     if not nmap_output or len(nmap_output.strip()) < 10:
         return data
 
-    # Hostname
+    # Hostname — "Nmap scan report for hostname (IP)" or "Nmap scan report for IP"
     m = re.search(r'Nmap scan report for (.+?)(?:\s*\(|$)', nmap_output)
     if m:
-        data['hostname'] = m.group(1).strip()
+        candidate = m.group(1).strip()
+        # If it looks like a hostname (not just an IP), store it
+        if candidate and not re.match(r'^\d+\.\d+\.\d+\.\d+$', candidate):
+            data['hostname'] = candidate
+        # Also try to find hostname in parentheses format: "hostname (IP)"
+    # Sometimes: "Nmap scan report for 192.168.1.1\nHost is up"
+    # And RDNS shows up in a different line
+
+    # MAC address
+    mac_m = re.search(r'MAC Address:\s*([0-9A-Fa-f:]{17})\s*(?:\(([^)]+)\))?', nmap_output)
+    if mac_m:
+        data['mac_address'] = mac_m.group(1)
+        # If vendor available, append it
+        if mac_m.group(2):
+            data['mac_address'] = f"{mac_m.group(1)} ({mac_m.group(2)})"
 
     # OS patterns
     os_patterns = [
@@ -1153,12 +1251,30 @@ def parse_nmap_output(nmap_output):
             data['os'] = om.group(1).strip()[:100]
             break
 
-    # Ports: robust parsing for nmap output formats
-    # Format 1: "22/tcp   open  ssh     OpenSSH 8.2p1 Ubuntu..."
-    # Format 2: "22/tcp   open  ssh"
-    # Format 3: "22/tcp open ssh OpenSSH 8.2"
+    # Scan duration: "Nmap done: 1 IP address (1 host up) scanned in 25.42 seconds"
+    dur_m = re.search(r'scanned in ([\d.]+) seconds', nmap_output, re.IGNORECASE)
+    if dur_m:
+        secs = float(dur_m.group(1))
+        data['scan_duration'] = f"{secs:.1f}s"
+
+    # Scan technique
+    if '-sS' in nmap_output or 'SYN' in nmap_output:
+        data['scan_technique'] = 'TCP SYN'
+    elif '-sT' in nmap_output or 'CONNECT' in nmap_output.upper():
+        data['scan_technique'] = 'TCP SYN'
+
+    # Ports: robust parsing — also extract CPE and extra_info
+    # nmap -sV output format:
+    #   PORT      STATE  SERVICE        VERSION
+    #   22/tcp    open   ssh            OpenSSH 8.2p1 Ubuntu 4ubuntu0.5
+    # With -sC scripts, extra info may appear on next | lines
+    # CPE appears as: "cpe:/a:openbsd:openssh:8.2p1"
     seen_ports = set()
-    for line in nmap_output.splitlines():
+    lines = nmap_output.splitlines()
+    port_list_for_range = []
+
+    for i, line in enumerate(lines):
+        raw_line = line
         line = line.strip()
         # Skip script output lines (start with |)
         if line.startswith('|'):
@@ -1170,14 +1286,69 @@ def parse_nmap_output(nmap_output):
             if port in seen_ports:
                 continue
             seen_ports.add(port)
-            version = rest[:80] if rest else 'Unknown'
+            port_list_for_range.append(int(port))
+
+            # Extract CPE from version string: "OpenSSH 8.2p1 ... cpe:/a:openbsd:openssh:8.2p1"
+            cpe = None
+            cpe_m = re.search(r'(cpe:/[^\s]+)', rest, re.IGNORECASE)
+            if cpe_m:
+                cpe = cpe_m.group(1)
+                rest = rest[:cpe_m.start()].strip()
+
+            # extra_info: text in parentheses at end of version line
+            extra_info = None
+            ei_m = re.search(r'\(([^)]+)\)\s*$', rest)
+            if ei_m:
+                extra_info = ei_m.group(1)
+
+            # If no CPE in version line, check subsequent script output lines for CPE
+            if not cpe:
+                for j in range(i+1, min(i+10, len(lines))):
+                    sl = lines[j].strip()
+                    if sl and not sl.startswith('|') and not sl.startswith('#'):
+                        break
+                    cpe_sm = re.search(r'(cpe:/[^\s|]+)', sl, re.IGNORECASE)
+                    if cpe_sm:
+                        cpe = cpe_sm.group(1)
+                        break
+
+            # Banner: look for banner script output on next lines
+            banner = None
+            for j in range(i+1, min(i+8, len(lines))):
+                sl = lines[j].strip()
+                if sl and not sl.startswith('|') and not sl.startswith('#'):
+                    break
+                bm = re.match(r'\|\s*(?:banner|http-server-header):\s*(.+)', sl, re.I)
+                if bm:
+                    banner = bm.group(1).strip()
+                    break
+
+            version = rest[:120] if rest else None
+
             data['ports'].append({
                 'port': port,
                 'protocol': proto,
                 'service': svc,
                 'version': version,
-                'state': 'open'
+                'state': 'open',
+                'extra_info': extra_info or banner,
+                'cpe': cpe,
+                'banner': banner,
             })
+
+    # Port range from the ports we found
+    if port_list_for_range:
+        port_list_for_range.sort()
+        if len(port_list_for_range) == 1:
+            data['port_range'] = str(port_list_for_range[0])
+        else:
+            data['port_range'] = f"{port_list_for_range[0]} – {port_list_for_range[-1]}"
+        data['ports_scanned'] = len(port_list_for_range)
+
+    # Also look for "Scanning X ports" hint
+    sp_m = re.search(r'Scanning (\d+) ports', nmap_output, re.IGNORECASE)
+    if sp_m:
+        data['ports_scanned'] = int(sp_m.group(1))
 
     # CVE extraction (CVE-YYYY-NNNNN+)
     for cve in set(re.findall(r'(CVE-\d{4}-\d{4,})', nmap_output, re.IGNORECASE)):
@@ -1219,10 +1390,71 @@ def parse_nmap_output(nmap_output):
 
 
 def parse_nikto_output(nikto_output):
-    """Parse nikto output to extract vulnerabilities."""
-    vulnerabilities = []
+    """
+    Parse nikto output to extract vulnerabilities and scan metadata.
+    Returns a dict: {
+        'findings': [...],        # list of vuln dicts
+        'web_server': str|None,   # e.g. "Apache/2.4.41 (Ubuntu)"
+        'scan_duration': str|None,# e.g. "12s"
+        'target': str|None,
+        'port': int|None,
+    }
+    For backwards compat, callers that expect a list should use result['findings'].
+    """
+    result_meta = {
+        'findings': [],
+        'web_server': None,
+        'scan_duration': None,
+        'target': None,
+        'port': None,
+    }
     if not nikto_output or len(nikto_output.strip()) < 10:
-        return vulnerabilities
+        return result_meta
+
+    # Extract metadata from header lines
+    start_time = None
+    end_time = None
+    for line in nikto_output.split('\n'):
+        ls = line.strip()
+        # "+ Server: Apache/2.4.41 (Ubuntu)"
+        if ls.startswith('+ Server:') or ls.startswith('- Server:'):
+            srv = ls.split(':', 1)[1].strip()
+            if srv and result_meta['web_server'] is None:
+                result_meta['web_server'] = srv
+        # "+ Target IP: ..."
+        elif 'Target IP:' in ls or 'Target Hostname:' in ls:
+            m = re.search(r'(?:Target IP|Target Hostname):\s*(.+)', ls)
+            if m and not result_meta['target']:
+                result_meta['target'] = m.group(1).strip()
+        # "+ Target Port: 80"
+        elif 'Target Port:' in ls:
+            m = re.search(r'Target Port:\s*(\d+)', ls)
+            if m:
+                result_meta['port'] = int(m.group(1))
+        # "+ Start Time: 2026-03-26 05:28:25 (GMT+5.5)"
+        elif 'Start Time:' in ls:
+            m = re.search(r'Start Time:\s*(.+)', ls)
+            if m:
+                try:
+                    from datetime import datetime as _dt
+                    ts = re.sub(r'\s*\(.*\)\s*$', '', m.group(1).strip())
+                    start_time = _dt.strptime(ts, '%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    pass
+        # "+ End Time: 2026-03-26 05:28:37 (GMT+5.5)"
+        elif 'End Time:' in ls:
+            m = re.search(r'End Time:\s*(.+)', ls)
+            if m:
+                try:
+                    from datetime import datetime as _dt
+                    ts = re.sub(r'\s*\(.*\)\s*$', '', m.group(1).strip())
+                    end_time = _dt.strptime(ts, '%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    pass
+
+    if start_time and end_time:
+        secs = int((end_time - start_time).total_seconds())
+        result_meta['scan_duration'] = f"{secs}s"
 
     skip_patterns = [
         'target ip:', 'target hostname:', 'target port:', 'start time:', 'end time:',
@@ -1265,16 +1497,16 @@ def parse_nikto_output(nikto_output):
         elif 'ssl' in fl or 'tls' in fl:
             vuln_name = 'SSL/TLS Configuration Issue'
 
-        vulnerabilities.append({
+        result_meta['findings'].append({
             'source': 'Nikto',
             'name': vuln_name,
             'description': finding,
             'severity': severity,
             'cve': cve_match.group(1).upper() if cve_match else None,
-            'port': 80
+            'port': result_meta['port'] or 80,
         })
 
-    return vulnerabilities
+    return result_meta
 
 
 def get_remediation_steps(vulnerability):
@@ -1511,7 +1743,12 @@ def scan_single_ip(ip, modules=None, stopped_callback=None, port_depth='full',
                    wmi_username='', wmi_password='', wmi_domain=''):
     """
     Perform full scan on a single IP.
-    Returns dict with: ip, status ('online'|'offline'), hostname, os, ports, vulnerabilities, severity, scanned_at
+    Returns dict with all scan detail fields needed by the frontend tabs:
+      ip, status, hostname, os, ports (with cpe/extra_info/banner),
+      vulnerabilities, severity, scanned_at,
+      ping_detail, latency, mac_address,
+      scan_duration, ports_scanned, port_range, scan_technique,
+      nikto (dict with web_server, scan_duration, findings)
     stopped_callback: callable that returns True if scan should stop
     wmi_username / wmi_password / wmi_domain: WMI credentials for Windows software inventory
     """
@@ -1529,21 +1766,29 @@ def scan_single_ip(ip, modules=None, stopped_callback=None, port_depth='full',
         'risk': 'None',
         'ping': False,
         'scanned_at': datetime.now().isoformat(),
+        # Detailed fields for frontend tabs
+        'ping_detail': None,
+        'latency': None,
+        'mac_address': None,
+        'scan_duration': None,
+        'ports_scanned': None,
+        'port_range': None,
+        'scan_technique': 'TCP SYN',
+        'nikto': None,
     }
 
     try:
-        # Ping
+        # ── Ping ─────────────────────────────────────────────────────────────
         if 'ping' in modules:
-            ping_ok = subprocess.run(
-                _ping_cmd(ip),
-                capture_output=True,
-                timeout=5
-            ).returncode == 0
+            ping_detail = run_ping_detailed(ip)
+            ping_ok = ping_detail['alive']
             result['ping'] = ping_ok
+            result['ping_detail'] = ping_detail
+            result['latency'] = ping_detail.get('latency')
         else:
             ping_ok = True  # Assume reachable if we skip ping
 
-        # Nmap
+        # ── Nmap ──────────────────────────────────────────────────────────────
         nmap_modules = []
         if 'ports' in modules or 'services' in modules:
             nmap_modules.append('ports')
@@ -1569,6 +1814,22 @@ def scan_single_ip(ip, modules=None, stopped_callback=None, port_depth='full',
         result['services'] = [f"{p['port']}/{p['service']}" for p in nmap_data['ports']]
         result['vulnerabilities'] = list(nmap_data['vulnerabilities'])
 
+        # Populate detailed scan metadata from nmap parse
+        result['mac_address']   = nmap_data.get('mac_address')
+        result['scan_duration'] = nmap_data.get('scan_duration')
+        result['ports_scanned'] = nmap_data.get('ports_scanned')
+        result['port_range']    = nmap_data.get('port_range')
+        result['scan_technique']= nmap_data.get('scan_technique', 'TCP SYN')
+
+        # If nmap found a latency hint and we don't have one from ping yet, use it
+        if not result['latency']:
+            lat_m = re.search(r'Host is up \(([\d.]+)s latency\)', nmap_output)
+            if lat_m:
+                result['latency'] = round(float(lat_m.group(1)) * 1000, 2)  # convert to ms
+                if result['ping_detail']:
+                    result['ping_detail']['latency'] = result['latency']
+                    result['ping_detail']['avg_rtt'] = f"{result['latency']} ms"
+
         # OpenVAS / multi-layer OS detection
         result['_nmap_raw'] = nmap_output
         if _OPENVAS_OS_ENABLED:
@@ -1580,13 +1841,31 @@ def scan_single_ip(ip, modules=None, stopped_callback=None, port_depth='full',
             )
         result.pop('_nmap_raw', None)
 
-        # Nikto (only if web ports open)
+        # ── Nikto (only if web ports open) ────────────────────────────────────
         web_ports = [p['port'] for p in nmap_data['ports'] if p['port'] in ['80', '443', '8080', '8443']]
         if 'nikto' in modules and web_ports:
             if not (stopped_callback and stopped_callback()):
                 nikto_output = run_nikto_scan(ip, web_ports=web_ports)
-                nikto_vulns = parse_nikto_output(nikto_output)
+                nikto_meta = parse_nikto_output(nikto_output)
+                nikto_vulns = nikto_meta['findings']
                 result['vulnerabilities'].extend(nikto_vulns)
+                # Store full nikto detail for the Nikto tab
+                result['nikto'] = {
+                    'web_server':    nikto_meta.get('web_server'),
+                    'scan_duration': nikto_meta.get('scan_duration'),
+                    'target':        nikto_meta.get('target'),
+                    'port':          nikto_meta.get('port'),
+                    'findings':      nikto_vulns,
+                    'has_http':      True,
+                }
+        elif 'nikto' in modules and not web_ports:
+            # Nikto was requested but no HTTP ports — record that for the tab
+            result['nikto'] = {
+                'web_server':    None,
+                'scan_duration': None,
+                'findings':      [],
+                'has_http':      False,
+            }
 
         # Nuclei (template-based vuln scan, only if web ports open)
         if 'nuclei' in modules and web_ports:
