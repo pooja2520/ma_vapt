@@ -885,49 +885,68 @@ def log_output(message):
 def run_nmap_discovery(ip):
     """
     Run a fast nmap host-discovery scan (no port scan) to get:
-      - MAC address (works on LAN via ARP)
-      - Hostname via reverse DNS (-R) and NetBIOS/SMB scripts
+      - MAC address (works on LAN via ARP, also from nbstat script)
+      - Hostname via reverse DNS (-R) and NetBIOS scripts
       - Latency from the 'Host is up (Xs latency)' line
 
-    Uses 'nmap -sn -R' WITHOUT -Pn so ARP is used on local subnets.
+    Uses 'nmap -sn -R' WITHOUT -Pn so ARP fires on local subnets.
     Falls back to empty dict on failure.
     Returns: { 'mac_address': str|None, 'hostname': str|None, 'latency_ms': float|None }
     """
     if not _check_tool('nmap'):
         return {}
     try:
-        # -sn  = ping scan only (no port scan), allows ARP on LAN
-        # -R   = always do reverse DNS resolution
-        # --script nbstat = NetBIOS name lookup (Windows hostnames)
-        # No -Pn so nmap uses ARP for local subnet hosts → gets MAC
-        args = ['nmap', '-sn', '-R', '--script', 'nbstat', '--script-timeout', '5s', ip]
+        # -sn  = ping scan only (no port scan), allows ARP on LAN → gives MAC
+        # -R   = always do reverse DNS resolution → gives rDNS hostname
+        # nbstat script = NetBIOS name + MAC for Windows hosts
+        # No -Pn so nmap uses ARP for local subnet hosts
+        args = ['nmap', '-sn', '-R',
+                '--script', 'nbstat,smb2-security-mode',
+                '--script-timeout', '5s', ip]
         proc = subprocess.run(args, capture_output=True, text=True, timeout=30)
         output = proc.stdout or ''
-        log_output(f"[DISCOVERY] nmap -sn output for {ip}:\n{output[:400]}")
+        log_output(f"[DISCOVERY] nmap -sn for {ip} → {len(output)} bytes")
 
         result = {}
 
-        # MAC address: "MAC Address: AA:BB:CC:DD:EE:FF (Vendor Name)"
-        mac_m = re.search(r'MAC Address:\s*([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s*(?:\(([^)]+)\))?', output)
+        # --- MAC address ---
+        # Source 1: standard ARP line "MAC Address: AA:BB:CC:DD:EE:FF (Vendor)"
+        mac_m = re.search(
+            r'MAC Address:\s*([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s*(?:\(([^)]+)\))?',
+            output, re.IGNORECASE)
         if mac_m:
             mac = mac_m.group(1).upper()
             vendor = mac_m.group(2)
             result['mac_address'] = f"{mac} ({vendor})" if vendor else mac
 
-        # Hostname: "Nmap scan report for HOSTNAME (IP)" — hostname is before the paren
-        # or "Nmap scan report for IP" — no hostname
+        # Source 2: nbstat script line
+        # "|_nbstat: NetBIOS name: X, NetBIOS user: Y, NetBIOS MAC: AA:BB:CC:DD:EE:FF (Vendor)"
+        if not result.get('mac_address'):
+            nb_mac = re.search(
+                r'NetBIOS MAC:\s*([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s*(?:\(([^)]+)\))?',
+                output, re.IGNORECASE)
+            if nb_mac:
+                mac = nb_mac.group(1).upper()
+                vendor = nb_mac.group(2)
+                result['mac_address'] = f"{mac} ({vendor})" if vendor else mac
+
+        # --- Hostname ---
+        # Source 1: rDNS "Nmap scan report for HOSTNAME (IP)"
         hn_m = re.search(r'Nmap scan report for\s+(.+?)\s*\([\d.]+\)', output)
         if hn_m:
-            hostname = hn_m.group(1).strip()
-            if hostname and not re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname):
-                result['hostname'] = hostname
-        # Also try nbstat script output: "NetBIOS name: DESKTOP-XXXXX"
-        if not result.get('hostname'):
-            nb_m = re.search(r'NetBIOS name:\s*(\S+)', output, re.IGNORECASE)
-            if nb_m:
-                result['hostname'] = nb_m.group(1).strip().rstrip('.')
+            candidate = hn_m.group(1).strip()
+            if candidate and not re.match(r'^\d+\.\d+\.\d+\.\d+$', candidate):
+                result['hostname'] = candidate
 
-        # Latency from "Host is up (0.00050s latency)"
+        # Source 2: nbstat NetBIOS name
+        if not result.get('hostname'):
+            nb_hn = re.search(r'NetBIOS name:\s*([A-Za-z0-9_\-]+)', output, re.IGNORECASE)
+            if nb_hn:
+                name = nb_hn.group(1).strip()
+                if name and name.upper() not in ('<UNKNOWN>', 'UNKNOWN'):
+                    result['hostname'] = name
+
+        # --- Latency ---
         lat_m = re.search(r'Host is up \(([\d.]+)s latency\)', output)
         if lat_m:
             result['latency_ms'] = round(float(lat_m.group(1)) * 1000, 2)
@@ -1298,27 +1317,86 @@ def parse_nmap_output(nmap_output):
     # Sometimes: "Nmap scan report for 192.168.1.1\nHost is up"
     # And RDNS shows up in a different line
 
-    # MAC address
-    mac_m = re.search(r'MAC Address:\s*([0-9A-Fa-f:]{17})\s*(?:\(([^)]+)\))?', nmap_output)
+    # MAC address — try multiple sources in priority order:
+    # 1. Standard nmap line: "MAC Address: AA:BB:CC:DD:EE:FF (Vendor)"
+    mac_m = re.search(r'MAC Address:\s*([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s*(?:\(([^)]+)\))?',
+                      nmap_output, re.IGNORECASE)
     if mac_m:
-        data['mac_address'] = mac_m.group(1)
-        # If vendor available, append it
-        if mac_m.group(2):
-            data['mac_address'] = f"{mac_m.group(1)} ({mac_m.group(2)})"
+        mac = mac_m.group(1).upper()
+        vendor = mac_m.group(2)
+        data['mac_address'] = f"{mac} ({vendor})" if vendor else mac
+    else:
+        # 2. nbstat script: "|_nbstat: NetBIOS name: X, ..., NetBIOS MAC: AA:BB:CC:DD:EE:FF (Vendor)"
+        nb_mac_m = re.search(
+            r'NetBIOS MAC:\s*([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s*(?:\(([^)]+)\))?',
+            nmap_output, re.IGNORECASE)
+        if nb_mac_m:
+            mac = nb_mac_m.group(1).upper()
+            vendor = nb_mac_m.group(2)
+            data['mac_address'] = f"{mac} ({vendor})" if vendor else mac
 
-    # OS patterns
-    os_patterns = [
-        r'OS details:\s*(.+?)(?:\n|$)',
-        r'Running:\s*(.+?)(?:\n|$)',
-        r'OS:\s*(.+?)(?:;|\n|$)',
-        r'Aggressive OS guesses:\s*(.+?)(?:\(|,|\n)',
-        r'Service Info:\s*OS:\s*(.+?)(?:;|\n|$)',
-    ]
-    for pat in os_patterns:
-        om = re.search(pat, nmap_output, re.MULTILINE | re.IGNORECASE)
-        if om:
-            data['os'] = om.group(1).strip()[:100]
-            break
+    # Hostname from nbstat if not already found via rDNS
+    # "|_nbstat: NetBIOS name: DESKTOP-AT5LNGV, ..."
+    if data['hostname'] == 'Unknown':
+        nb_hn_m = re.search(r'NetBIOS name:\s*([A-Za-z0-9_\-]+)', nmap_output, re.IGNORECASE)
+        if nb_hn_m:
+            nb_name = nb_hn_m.group(1).strip()
+            if nb_name and nb_name.upper() not in ('<UNKNOWN>', 'UNKNOWN', ''):
+                data['hostname'] = nb_name
+
+    # OS detection — ordered from most to least specific
+    # Priority: OS details > Running (exact) > Aggressive guesses > Service Info OS > CPE
+    os_found = False
+    # 1. "OS details: Microsoft Windows 10 1903" (most reliable)
+    m = re.search(r'OS details:\s*(.+?)(?:\n|$)', nmap_output, re.IGNORECASE)
+    if m:
+        data['os'] = m.group(1).strip()[:120]
+        os_found = True
+
+    # 2. "Running: Microsoft Windows 10|11|2019" (exact match)
+    if not os_found:
+        m = re.search(r'^Running:\s*(.+?)(?:\n|$)', nmap_output, re.MULTILINE | re.IGNORECASE)
+        if m:
+            # Clean up pipe-separated alternatives: "Windows 10|11|2019" → "Windows 10/11/2019"
+            os_str = m.group(1).strip().replace('|', '/')
+            data['os'] = os_str[:120]
+            os_found = True
+
+    # 3. "Running (JUST GUESSING): Microsoft Windows 10|11|2019 (97%)"
+    if not os_found:
+        m = re.search(r'Running \(JUST GUESSING\):\s*(.+?)(?:\n|$)', nmap_output, re.IGNORECASE)
+        if m:
+            os_str = m.group(1).strip()
+            # Extract just the OS name before the confidence percentage
+            os_str = re.sub(r'\s*\(\d+%\)\s*$', '', os_str).replace('|', '/')
+            data['os'] = os_str[:120]
+            os_found = True
+
+    # 4. "Aggressive OS guesses: Microsoft Windows 10 1903 – 21H1 (97%), ..."
+    if not os_found:
+        m = re.search(r'Aggressive OS guesses:\s*(.+?)(?:\n|$)', nmap_output, re.IGNORECASE)
+        if m:
+            # Take only the first/best guess (highest confidence, first in list)
+            first_guess = re.split(r',\s*(?=[A-Z])', m.group(1))[0]
+            # Remove confidence percentage: "Windows 10 1903 (97%)" → "Windows 10 1903"
+            first_guess = re.sub(r'\s*\(\d+%\)\s*$', '', first_guess).strip()
+            data['os'] = first_guess[:120]
+            os_found = True
+
+    # 5. "Service Info: OS: Windows; CPE: ..."
+    if not os_found:
+        m = re.search(r'Service Info:.*?OS:\s*([^;,\n]+)', nmap_output, re.IGNORECASE)
+        if m:
+            data['os'] = m.group(1).strip()[:120]
+            os_found = True
+
+    # 6. CPE-based OS fallback: "cpe:/o:microsoft:windows_10"
+    if not os_found:
+        cpe_m = re.search(r'cpe:/o:([^:\s]+):([^:\s]+)', nmap_output, re.IGNORECASE)
+        if cpe_m:
+            vendor_cpe = cpe_m.group(1).replace('_', ' ').title()
+            product_cpe = cpe_m.group(2).replace('_', ' ').title()
+            data['os'] = f"{vendor_cpe} {product_cpe}"
 
     # Scan duration: "Nmap done: 1 IP address (1 host up) scanned in 25.42 seconds"
     dur_m = re.search(r'scanned in ([\d.]+) seconds', nmap_output, re.IGNORECASE)
