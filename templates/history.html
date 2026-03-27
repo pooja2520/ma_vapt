@@ -2183,7 +2183,11 @@
       const portCount = (r.ports || []).length;
       const vulnCount = (r.vulnerabilities || []).length;
       const sev = (r.severity || 'none').toLowerCase();
-      const hostname = r.hostname && r.hostname !== '-' ? esc(r.hostname) : 'Unknown';
+      const hostname = r.hostname && r.hostname !== '-' && r.hostname !== 'Unknown' ? esc(r.hostname) : '—';
+      const os = r.os && r.os !== 'Unknown' ? esc(r.os) : '—';
+      const macRaw = r.mac_address || r.mac || '';
+      // Show MAC without vendor in table; full string in tooltip
+      const macShort = macRaw ? macRaw.substring(0, 17) : '—';
       const isOnline = r.status === 'online';
       return `<tr>
       <td>
@@ -2194,6 +2198,8 @@
       </td>
       <td><span class="ipt-status ${isOnline ? 'online' : 'offline'}"><i class="fa-solid fa-circle"></i>${isOnline ? 'Online' : 'Offline'}</span></td>
       <td class="ipt-host">${hostname}</td>
+      <td style="font-size:.72rem;color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(os)}">${os}</td>
+      <td style="font-family:'Courier New',monospace;font-size:.7rem;color:var(--text-muted);" title="${esc(macRaw)}">${macShort}</td>
       <td class="ipt-ports">${portCount} port${portCount !== 1 ? 's' : ''}</td>
       <td><span class="ipt-sev ${sev}">${sev === 'none' ? 'NONE' : sev.toUpperCase()}</span></td>
       <td class="ipt-vulns">${vulnCount} vuln${vulnCount !== 1 ? 's' : ''}</td>
@@ -2224,6 +2230,7 @@
       <table class="h-ip-tbl">
         <thead><tr>
           <th>IP Address</th><th>Status</th><th>Hostname</th>
+          <th>Operating System</th><th>MAC Address</th>
           <th>Ports</th><th>Severity</th><th>Vulns</th>
         </tr></thead>
         <tbody>${trows}</tbody>
