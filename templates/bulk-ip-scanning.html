@@ -354,6 +354,7 @@
                 <th style="width:32px;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
                 <th>IP Address</th>
                 <th>Hostname / OS</th>
+                <th>MAC Address</th>
                 <th>Status</th>
                 <th>Open Ports</th>
                 <th>Services</th>
@@ -1258,7 +1259,7 @@ function showResults(results) {
 function renderResultsTable(results) {
   const tbody = document.getElementById('resultsTbody');
   if (!results || !results.length) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--text-muted);">No results available.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;color:var(--text-muted);">No results available.</td></tr>`;
     return;
   }
 
@@ -1267,16 +1268,23 @@ function renderResultsTable(results) {
     const svcStr  = (r.ports||[]).slice(0,2).map(p=>p.service||'').filter(Boolean).join(', ');
     const sev     = r.severity || 'none';
     const statusCls = r.status === 'online' ? 'online' : 'offline';
+    const mac = r.mac_address || '—';
+    // Show just the MAC part without vendor in table (vendor in tooltip)
+    const macShort = mac.length > 17 ? mac.substring(0,17) : mac;
+    const macTitle = mac !== '—' ? mac : '';
     return `<tr onclick="toggleDrawer(${idx})" data-idx="${idx}">
       <td onclick="event.stopPropagation()"><input type="checkbox" class="row-check" data-idx="${idx}"></td>
       <td class="mono">${r.ip}</td>
       <td>
-        <div style="font-weight:600;font-size:.78rem;">${r.hostname||'-'}</div>
-        <div style="font-size:.68rem;color:var(--text-muted);">${r.os||'-'}</div>
+        <div style="font-weight:600;font-size:.78rem;">${r.hostname && r.hostname !== 'Unknown' ? r.hostname : '—'}</div>
+        <div style="font-size:.68rem;color:var(--text-muted);">${r.os && r.os !== 'Unknown' ? r.os : '—'}</div>
+      </td>
+      <td>
+        <div style="font-family:'Courier New',monospace;font-size:.7rem;color:var(--text-muted);" title="${macTitle}">${macShort}</div>
       </td>
       <td><span class="tbl-status ${statusCls}"><i class="fa-solid fa-circle" style="font-size:.4rem;"></i>${r.status==='online'?'Online':'Offline'}</span></td>
-      <td style="font-family:'Courier New',monospace;font-size:.75rem;">${portStr||'-'}</td>
-      <td style="font-size:.75rem;color:var(--text-muted);">${svcStr||'-'}</td>
+      <td style="font-family:'Courier New',monospace;font-size:.75rem;">${portStr||'—'}</td>
+      <td style="font-size:.75rem;color:var(--text-muted);">${svcStr||'—'}</td>
       <td><span class="sev-badge ${sev}">${sev.toUpperCase()}</span></td>
       <td>
         <div class="tbl-actions" onclick="event.stopPropagation()">
@@ -1286,7 +1294,7 @@ function renderResultsTable(results) {
       </td>
     </tr>
     <tr class="drawer-row" id="drawer-${idx}" style="display:none;">
-      <td colspan="8" style="padding:0;">
+      <td colspan="9" style="padding:0;">
         <div class="detail-drawer open" id="drawerContent-${idx}">
           ${buildDrawerHTML(r)}
         </div>
