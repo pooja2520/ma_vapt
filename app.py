@@ -71,22 +71,24 @@ def _parse_mysql_datetime(value):
     return s  # return as-is so MySQL raises a clear error
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', '929465f4cc9c6769c0d77377b820975d19bf0b5cada96422bec0608ebc4e32b5')
+_raw_secret = os.environ.get('SECRET_KEY', '').strip()
+# Guard: reject the placeholder that ships in default .env.
+# os.environ.get() returns the placeholder string (not None), so the
+# hardcoded fallback is NEVER reached without this explicit check.
+_PLACEHOLDER = 'your-secret-key-here'
+if not _raw_secret or _raw_secret == _PLACEHOLDER:
+    _raw_secret = '929465f4cc9c6769c0d77377b820975d19bf0b5cada96422bec0608ebc4e32b5'
+app.secret_key = _raw_secret
 
 # ── Session configuration ──────────────────────────────────────────────────
-# Without PERMANENT_SESSION_LIFETIME, permanent sessions expire at browser
-# close OR after Flask's default (31 days). We set it explicitly to 30 days.
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
-app.config['SESSION_COOKIE_NAME'] = 'vapt_session_id'
-
-# Prevent session cookie from being wiped by client-side JS
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-
-# Mark cookie as Secure only when running behind HTTPS (set via env var)
-app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
-
-# SameSite=Lax protects against CSRF without breaking normal navigation
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+_session_days = int(os.environ.get('SESSION_LIFETIME_DAYS', '31'))
+app.config['PERMANENT_SESSION_LIFETIME']  = timedelta(days=_session_days)
+app.config['SESSION_COOKIE_NAME']         = 'vapt_session_id'
+app.config['SESSION_COOKIE_HTTPONLY']     = True
+app.config['SESSION_COOKIE_SECURE']       = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
+app.config['SESSION_COOKIE_SAMESITE']     = 'Lax'
+# Re-issue cookie on every authenticated response → rolling expiry window.
+app.config['SESSION_REFRESH_EACH_REQUEST'] = True
 
 # Initialize database on startup
 _db_initialized = False
@@ -111,21 +113,30 @@ def init_db():
 def ensure_db_initialized():
     """Ensure DB and tables exist before first request (handles flask run, gunicorn, etc.)."""
     init_db()
-    # Make every session permanent so the PERMANENT_SESSION_LIFETIME applies.
-    # Without this, sessions are browser-session cookies and vanish on tab/browser close.
-    session.permanent = True
-    # Ensure user_id in session for logged-in users (migration for old sessions)
-    if 'user_email' in session and 'user_id' not in session:
-        import db
-        user = db.get_user_by_email(session['user_email'])
-        if user:
-            session['user_id'] = user['id']
-    # Rolling session: mark the session modified on every authenticated request so
-    # Flask re-issues the cookie and resets the Max-Age/Expires to NOW + LIFETIME.
-    # Without this, a 7-day cookie issued at login will expire 7 days after login
-    # regardless of how recently the user was active (absolute timeout).
-    # With this, the expiry is pushed forward on each visit (rolling/sliding timeout).
+
+    # ── Only touch the session when the user is already authenticated ────────
+    # CRITICAL BUG FIXED: setting session.permanent = True unconditionally on
+    # EVERY request (including unauthenticated API calls, static files, 401s)
+    # causes Flask to write back a new session cookie containing only
+    # {'_permanent': True}.  When the browser receives that cookie it replaces
+    # the valid login cookie, wiping user_email / user_id and immediately
+    # logging the user out on the next navigation.
+    # Proof: the server log showed  session keys: ['_permanent']  on the 401
+    # response — the session was overwritten with an empty-but-permanent one.
+    #
+    # Fix: only set permanent + modified when an authenticated session exists.
     if 'user_email' in session:
+        # Keep the session permanent so it survives browser restarts.
+        session.permanent = True
+        # Ensure user_id is populated (migration for old sessions created before
+        # multi-tenancy was added).
+        if 'user_id' not in session:
+            import db
+            user = db.get_user_by_email(session['user_email'])
+            if user:
+                session['user_id'] = user['id']
+        # Rolling / sliding expiry: mark modified so Flask re-issues the cookie
+        # on every authenticated response, resetting the Max-Age clock.
         session.modified = True
 
 
