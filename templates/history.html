@@ -3575,7 +3575,9 @@ async function exportAllHistory() {
     const hostname = (r.hostname && r.hostname !== '-') ? r.hostname : 'Unknown';
     // scanned_at from IP result, or fallback to session started_at
     const scannedAt = r.scanned_at || r.time || r.scan_time || (session && session.started_at) || null;
-    const latency = r.latency != null ? r.latency + ' ms' : (r.rtt || '—');
+    const pd = r.ping_detail || r.ping_result || r.ping_data || {};
+    const latencyNum = r.latency != null ? r.latency : (pd.latency != null ? pd.latency : null);
+    const latency = latencyNum != null ? latencyNum + ' ms' : (pd.avg_rtt || r.rtt || '—');
 
     el.innerHTML = `
     <div class="ipdm-info-grid">
@@ -3651,10 +3653,21 @@ async function exportAllHistory() {
   /* PING TEST */
   function renderIPTabPing(r) {
     const el = document.getElementById('ipdm-ping-content');
-    const ping = r.ping || r.ping_result || r.ping_data || {};
-    const pings = ping.probes || ping.results || ping.replies || [];
+    // ping_detail is the new rich dict from run_ping_detailed()
+    // fall back to legacy ping object shapes for backwards compat
+    const pd = r.ping_detail || r.ping_result || r.ping_data || {};
+    const pings = pd.probes || pd.results || pd.replies || [];
     const isAlive = r.status === 'online';
-    const latency = r.latency != null ? r.latency + ' ms' : (r.rtt || ping.avg_rtt || ping.rtt || '—');
+
+    // Latency: prefer r.latency (set from ping_detail.latency), then pd fields
+    const latencyNum = r.latency != null ? r.latency
+      : (pd.latency != null ? pd.latency : null);
+    const avgRtt   = pd.avg_rtt || (latencyNum != null ? latencyNum + ' ms' : null);
+    const minRtt   = pd.min_rtt || '—';
+    const maxRtt   = pd.max_rtt || '—';
+    const pktSent  = pd.packets_sent != null ? pd.packets_sent : (pings.length || '—');
+    const pktLoss  = pd.packet_loss != null ? pd.packet_loss : '0%';
+    const latencyDisplay = latencyNum != null ? latencyNum + ' ms' : (avgRtt || r.rtt || '—');
 
     el.innerHTML = `
     <div class="ipdm-info-grid">
@@ -3664,23 +3677,23 @@ async function exportAllHistory() {
       </div>
       <div class="ipdm-info-card">
         <div class="ipdm-info-card-title"><i class="fa-solid fa-gauge" style="color:#2563eb;"></i> Latency / Avg RTT</div>
-        <div class="ipdm-info-card-val">${esc(String(latency))}</div>
+        <div class="ipdm-info-card-val">${esc(String(latencyDisplay))}</div>
       </div>
       <div class="ipdm-info-card">
         <div class="ipdm-info-card-title"><i class="fa-solid fa-paper-plane" style="color:#2563eb;"></i> Packets Sent</div>
-        <div class="ipdm-info-card-val">${ping.sent != null ? ping.sent : (pings.length || '—')}</div>
+        <div class="ipdm-info-card-val">${esc(String(pktSent))}</div>
       </div>
       <div class="ipdm-info-card">
         <div class="ipdm-info-card-title"><i class="fa-solid fa-triangle-exclamation" style="color:#2563eb;"></i> Packet Loss</div>
-        <div class="ipdm-info-card-val ${ping.loss ? 'orange' : 'green'}">${ping.loss != null ? ping.loss + '%' : '0%'}</div>
+        <div class="ipdm-info-card-val ${pktLoss !== '0%' ? 'orange' : 'green'}">${esc(String(pktLoss))}</div>
       </div>
       <div class="ipdm-info-card">
         <div class="ipdm-info-card-title"><i class="fa-solid fa-arrow-down" style="color:#2563eb;"></i> Min RTT</div>
-        <div class="ipdm-info-card-val">${esc(String(ping.min_rtt || '—'))}</div>
+        <div class="ipdm-info-card-val">${esc(String(minRtt))}</div>
       </div>
       <div class="ipdm-info-card">
         <div class="ipdm-info-card-title"><i class="fa-solid fa-arrow-up" style="color:#2563eb;"></i> Max RTT</div>
-        <div class="ipdm-info-card-val">${esc(String(ping.max_rtt || '—'))}</div>
+        <div class="ipdm-info-card-val">${esc(String(maxRtt))}</div>
       </div>
     </div>
     ${pings.length ? `
@@ -3706,13 +3719,26 @@ async function exportAllHistory() {
     const scanInfo = r.port_scan || r.scan_info || {};
     const depth = session && session.port_depth ? session.port_depth : (r.port_depth || 'standard');
     const depthMap = { standard: 'Standard (Top 1000)', full: 'Full (1–65535)', deep: 'Deep (All Ports)', quick: 'Quick (Top 100)' };
-    const portRange = depth === 'full' ? '1 – 65535' : depth === 'standard' ? '1 – 1000 (top)' : (scanInfo.range || '—');
+
+    // Port range: use backend-provided r.port_range first, then derive from session depth
+    const portRange = r.port_range || scanInfo.range
+      || (depth === 'full' ? '1 – 65535' : depth === 'standard' ? '1 – 1000 (top)' : depth === 'quick' ? 'Top 100' : depth === 'deep' ? 'Top 1000' : '—');
+
+    // Ports scanned: use backend r.ports_scanned, then scanInfo, then portRange
+    const portsScanned = r.ports_scanned != null ? r.ports_scanned
+      : (scanInfo.total_scanned != null ? scanInfo.total_scanned : portRange);
+
+    // Scan technique
+    const technique = r.scan_technique || scanInfo.technique || r.scan_type || 'TCP SYN';
+
+    // Scan duration: backend provides r.scan_duration
+    const duration = r.scan_duration || scanInfo.duration || '—';
 
     el.innerHTML = `
     <div class="ipdm-info-grid">
       <div class="ipdm-info-card">
         <div class="ipdm-info-card-title"><i class="fa-solid fa-list-ol" style="color:#2563eb;"></i> Ports Scanned</div>
-        <div class="ipdm-info-card-val">${esc(String(scanInfo.total_scanned || r.ports_scanned || portRange))}</div>
+        <div class="ipdm-info-card-val">${esc(String(portsScanned))}</div>
       </div>
       <div class="ipdm-info-card">
         <div class="ipdm-info-card-title"><i class="fa-solid fa-door-open" style="color:#16a34a;"></i> Open Ports Found</div>
@@ -3720,7 +3746,7 @@ async function exportAllHistory() {
       </div>
       <div class="ipdm-info-card">
         <div class="ipdm-info-card-title"><i class="fa-solid fa-wand-magic-sparkles" style="color:#2563eb;"></i> Scan Technique</div>
-        <div class="ipdm-info-card-val" style="font-size:.82rem;">${esc(scanInfo.technique || r.scan_type || 'TCP SYN')}</div>
+        <div class="ipdm-info-card-val" style="font-size:.82rem;">${esc(technique)}</div>
       </div>
       <div class="ipdm-info-card">
         <div class="ipdm-info-card-title"><i class="fa-solid fa-layer-group" style="color:#2563eb;"></i> Scan Depth</div>
@@ -3728,11 +3754,11 @@ async function exportAllHistory() {
       </div>
       <div class="ipdm-info-card">
         <div class="ipdm-info-card-title"><i class="fa-solid fa-stopwatch" style="color:#2563eb;"></i> Scan Duration</div>
-        <div class="ipdm-info-card-val">${esc(String(scanInfo.duration || r.scan_duration || '—'))}</div>
+        <div class="ipdm-info-card-val">${esc(String(duration))}</div>
       </div>
       <div class="ipdm-info-card">
         <div class="ipdm-info-card-title"><i class="fa-solid fa-arrows-left-right" style="color:#2563eb;"></i> Port Range</div>
-        <div class="ipdm-info-card-val" style="font-size:.78rem;">${esc(portRange)}</div>
+        <div class="ipdm-info-card-val" style="font-size:.78rem;">${esc(String(portRange))}</div>
       </div>
     </div>
     ${ports.length ? `
@@ -3853,8 +3879,11 @@ async function exportAllHistory() {
     const items = Array.isArray(nikto) ? nikto
       : (nikto.items || nikto.findings || nikto.results || nikto.vulnerabilities || []);
     const hasHTTP = (r.ports || []).some(p => [80, 443, 8080, 8443, 8000, 8888, 4443].includes(Number(p.port)));
-    const server = nikto.server || nikto.web_server || nikto.banner || '—';
+    // web_server: backend stores as nikto.web_server
+    const server = nikto.web_server || nikto.server || nikto.banner || '—';
     const target = nikto.target || nikto.host || r.ip || '—';
+    // scan_duration: backend stores as nikto.scan_duration
+    const duration = nikto.scan_duration || nikto.duration || nikto.scan_time || '—';
 
     el.innerHTML = `
     <div class="ipdm-info-grid" style="margin-bottom:.875rem;">
@@ -3872,7 +3901,7 @@ async function exportAllHistory() {
       </div>
       <div class="ipdm-info-card">
         <div class="ipdm-info-card-title"><i class="fa-solid fa-stopwatch" style="color:#2563eb;"></i> Scan Duration</div>
-        <div class="ipdm-info-card-val">${esc(nikto.duration || nikto.scan_time || '—')}</div>
+        <div class="ipdm-info-card-val">${esc(String(duration))}</div>
       </div>
     </div>
     ${items.length ? items.map(it => {
