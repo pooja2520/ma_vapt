@@ -882,6 +882,62 @@ def log_output(message):
     sys.stdout.flush()
 
 
+def run_nmap_discovery(ip):
+    """
+    Run a fast nmap host-discovery scan (no port scan) to get:
+      - MAC address (works on LAN via ARP)
+      - Hostname via reverse DNS (-R) and NetBIOS/SMB scripts
+      - Latency from the 'Host is up (Xs latency)' line
+
+    Uses 'nmap -sn -R' WITHOUT -Pn so ARP is used on local subnets.
+    Falls back to empty dict on failure.
+    Returns: { 'mac_address': str|None, 'hostname': str|None, 'latency_ms': float|None }
+    """
+    if not _check_tool('nmap'):
+        return {}
+    try:
+        # -sn  = ping scan only (no port scan), allows ARP on LAN
+        # -R   = always do reverse DNS resolution
+        # --script nbstat = NetBIOS name lookup (Windows hostnames)
+        # No -Pn so nmap uses ARP for local subnet hosts → gets MAC
+        args = ['nmap', '-sn', '-R', '--script', 'nbstat', '--script-timeout', '5s', ip]
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=30)
+        output = proc.stdout or ''
+        log_output(f"[DISCOVERY] nmap -sn output for {ip}:\n{output[:400]}")
+
+        result = {}
+
+        # MAC address: "MAC Address: AA:BB:CC:DD:EE:FF (Vendor Name)"
+        mac_m = re.search(r'MAC Address:\s*([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s*(?:\(([^)]+)\))?', output)
+        if mac_m:
+            mac = mac_m.group(1).upper()
+            vendor = mac_m.group(2)
+            result['mac_address'] = f"{mac} ({vendor})" if vendor else mac
+
+        # Hostname: "Nmap scan report for HOSTNAME (IP)" — hostname is before the paren
+        # or "Nmap scan report for IP" — no hostname
+        hn_m = re.search(r'Nmap scan report for\s+(.+?)\s*\([\d.]+\)', output)
+        if hn_m:
+            hostname = hn_m.group(1).strip()
+            if hostname and not re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname):
+                result['hostname'] = hostname
+        # Also try nbstat script output: "NetBIOS name: DESKTOP-XXXXX"
+        if not result.get('hostname'):
+            nb_m = re.search(r'NetBIOS name:\s*(\S+)', output, re.IGNORECASE)
+            if nb_m:
+                result['hostname'] = nb_m.group(1).strip().rstrip('.')
+
+        # Latency from "Host is up (0.00050s latency)"
+        lat_m = re.search(r'Host is up \(([\d.]+)s latency\)', output)
+        if lat_m:
+            result['latency_ms'] = round(float(lat_m.group(1)) * 1000, 2)
+
+        return result
+    except Exception as e:
+        log_output(f"[DISCOVERY] nmap -sn failed for {ip}: {e}")
+        return {}
+
+
 def run_masscan_scan(ip, port_range='1-65535'):
     """Run masscan for fast port discovery. Requires root. Returns list of open port strings or []."""
     if not _check_tool('masscan'):
@@ -1016,8 +1072,10 @@ def run_nmap_scan(ip, modules=None, port_depth='full', stopped_callback=None):
                 log_output("[MASSCAN] Skipped (requires root). Using Nmap - full scan may take 15-40 min.")
             if not open_ports:
                 log_output(f"[NMAP] Phase 1: Discovering ALL open ports on {ip} (1-65535)...")
-                discovery_args = ['nmap', '-T5', '-Pn', '--open', '-sT', '--min-rate', '500',
-                                 '-p', '1-65535', ip]
+                # No -Pn: allow ARP on LAN so MAC address is captured
+                # -R: reverse DNS resolution for hostname
+                discovery_args = ['nmap', '-T5', '--open', '-sT', '-R',
+                                 '--min-rate', '500', '-p', '1-65535', ip]
                 timeout = 2400  # 40 min for full port discovery
                 proc = subprocess.run(discovery_args, capture_output=True, text=True, timeout=timeout)
                 result = proc.stdout or ''
@@ -1036,12 +1094,14 @@ def run_nmap_scan(ip, modules=None, port_depth='full', stopped_callback=None):
             if _stopped():
                 return result
 
-            # PHASE 2: Service detection ONLY on found ports (fast)
+            # PHASE 2: Service/version detection on found ports only
+            # -Pn kept here since we already know host is up from phase 1
+            # -R for reverse DNS
             if 'services' in modules and open_ports:
                 port_list = ','.join(open_ports)
-                svc_args = ['nmap', '-T4', '-Pn', '-sV', '--version-intensity', '5',
+                svc_args = ['nmap', '-T4', '-Pn', '-R', '-sV', '--version-intensity', '5',
                             '-sC',
-                            '--script', 'ssh-hostkey,http-server-header,smb-os-discovery,banner',
+                            '--script', 'ssh-hostkey,http-server-header,smb-os-discovery,nbstat,banner',
                             '-p', port_list, ip]
                 if 'os' in modules and _has_root_for_nmap():
                     svc_args.extend(['-O', '--osscan-guess'])
@@ -1055,7 +1115,7 @@ def run_nmap_scan(ip, modules=None, port_depth='full', stopped_callback=None):
                 # Merge OS/vuln if requested (run on found ports)
                 if ('os' in modules or 'vuln' in modules) and open_ports:
                     port_list = ','.join(open_ports)
-                    extra_args = ['nmap', '-T4', '-Pn', '-p', port_list, ip]
+                    extra_args = ['nmap', '-T4', '-Pn', '-R', '-p', port_list, ip]
                     if 'os' in modules and _has_root_for_nmap():
                         extra_args.extend(['-O', '--osscan-guess'])
                     elif 'os' in modules:
@@ -1069,11 +1129,13 @@ def run_nmap_scan(ip, modules=None, port_depth='full', stopped_callback=None):
             return result
 
         # Non-full: single pass with all options
-        nmap_args = ['nmap', '-T4', '-Pn', '--open', '-sT'] + port_args
+        # No -Pn so ARP is used on LAN (gives MAC address)
+        # -R for reverse DNS hostname resolution
+        nmap_args = ['nmap', '-T4', '--open', '-sT', '-R'] + port_args
         if 'services' in modules:
             nmap_args.extend(['-sV', '--version-intensity', '5',
                               '-sC',
-                              '--script', 'ssh-hostkey,http-server-header,smb-os-discovery,banner'])
+                              '--script', 'ssh-hostkey,http-server-header,smb-os-discovery,nbstat,banner'])
         if 'os' in modules and _has_root_for_nmap():
             nmap_args.extend(['-O', '--osscan-guess'])
         elif 'os' in modules:
@@ -1218,14 +1280,21 @@ def parse_nmap_output(nmap_output):
     if not nmap_output or len(nmap_output.strip()) < 10:
         return data
 
-    # Hostname — "Nmap scan report for hostname (IP)" or "Nmap scan report for IP"
-    m = re.search(r'Nmap scan report for (.+?)(?:\s*\(|$)', nmap_output)
-    if m:
-        candidate = m.group(1).strip()
-        # If it looks like a hostname (not just an IP), store it
+    # Hostname — two formats nmap uses:
+    #   "Nmap scan report for HOSTNAME (192.168.1.x)"  ← has rDNS
+    #   "Nmap scan report for 192.168.1.x"             ← no rDNS
+    hn_paren = re.search(r'Nmap scan report for\s+(.+?)\s*\([\d.]+\)', nmap_output)
+    if hn_paren:
+        candidate = hn_paren.group(1).strip()
         if candidate and not re.match(r'^\d+\.\d+\.\d+\.\d+$', candidate):
             data['hostname'] = candidate
-        # Also try to find hostname in parentheses format: "hostname (IP)"
+    else:
+        # No parentheses — could be bare IP or hostname
+        m = re.search(r'Nmap scan report for\s+(\S+)', nmap_output)
+        if m:
+            candidate = m.group(1).strip()
+            if candidate and not re.match(r'^\d+\.\d+\.\d+\.\d+$', candidate):
+                data['hostname'] = candidate
     # Sometimes: "Nmap scan report for 192.168.1.1\nHost is up"
     # And RDNS shows up in a different line
 
@@ -1778,13 +1847,29 @@ def scan_single_ip(ip, modules=None, stopped_callback=None, port_depth='full',
     }
 
     try:
+        # ── ARP/Hostname Discovery (fast pre-scan) ───────────────────────────
+        # Run nmap -sn WITHOUT -Pn so ARP is used on LAN → gets MAC address.
+        # Also does reverse DNS + NetBIOS for real hostname.
+        discovery = run_nmap_discovery(ip)
+        if discovery.get('mac_address'):
+            result['mac_address'] = discovery['mac_address']
+        if discovery.get('hostname'):
+            result['hostname'] = discovery['hostname']
+        if discovery.get('latency_ms'):
+            result['latency'] = discovery['latency_ms']
+
         # ── Ping ─────────────────────────────────────────────────────────────
         if 'ping' in modules:
             ping_detail = run_ping_detailed(ip)
             ping_ok = ping_detail['alive']
             result['ping'] = ping_ok
             result['ping_detail'] = ping_detail
-            result['latency'] = ping_detail.get('latency')
+            # Prefer detailed ping latency; fallback to discovery latency
+            if ping_detail.get('latency') is not None:
+                result['latency'] = ping_detail['latency']
+            elif result['latency'] and ping_detail:
+                ping_detail['latency'] = result['latency']
+                ping_detail['avg_rtt'] = f"{result['latency']} ms"
         else:
             ping_ok = True  # Assume reachable if we skip ping
 
@@ -1814,8 +1899,15 @@ def scan_single_ip(ip, modules=None, stopped_callback=None, port_depth='full',
         result['services'] = [f"{p['port']}/{p['service']}" for p in nmap_data['ports']]
         result['vulnerabilities'] = list(nmap_data['vulnerabilities'])
 
-        # Populate detailed scan metadata from nmap parse
-        result['mac_address']   = nmap_data.get('mac_address')
+        # Hostname: use nmap_data if it found one, otherwise keep discovery result
+        if nmap_data['hostname'] != 'Unknown':
+            result['hostname'] = nmap_data['hostname']
+        # else result['hostname'] already set from discovery above
+
+        # MAC address: nmap port-scan output may also contain MAC (if run as root on LAN)
+        # Use it only if discovery didn't already get one
+        if nmap_data.get('mac_address') and not result.get('mac_address'):
+            result['mac_address'] = nmap_data['mac_address']
         result['scan_duration'] = nmap_data.get('scan_duration')
         result['ports_scanned'] = nmap_data.get('ports_scanned')
         result['port_range']    = nmap_data.get('port_range')
