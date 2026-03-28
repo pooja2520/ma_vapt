@@ -7,12 +7,22 @@
     // margin when the browser first paints the page.  Without this the content
     // sits at margin-left:0 until JS injects the sidebar, causing the visible
     // "slide from left / blink" on every page navigation.
+    //
+    // Also injects a content-only fade-in so only the page body animates on
+    // navigation — the sidebar and header are fixed chrome that never blink.
     (function () {
         if (document.getElementById('_layout-fouc-fix')) return;
         var s = document.createElement('style');
         s.id = '_layout-fouc-fix';
-        s.textContent = '#_main{margin-left:220px;padding-top:56px}'
-                      + '@media(max-width:768px){#_main{margin-left:0}}';
+        s.textContent =
+            // Pre-position content wrapper to prevent margin jump
+            '#_main{margin-left:220px;padding-top:56px}'
+          + '@media(max-width:768px){#_main{margin-left:0}}'
+            // Sidebar + header: render instantly, no animation ever
+          + '.sb,.hdr{opacity:1!important;visibility:visible!important;animation:none!important;transition-property:width,left!important;}'
+            // Content area: gentle fade-in so only the page body transitions
+          + '@keyframes _pgIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}'
+          + '#_main,.main{animation:_pgIn .18s ease-out both;}';
         (document.head || document.documentElement).appendChild(s);
     }());
 
@@ -833,7 +843,9 @@
         _injectStyles();
         // Set CSS var BEFORE inserting DOM so there's no layout flash
         document.documentElement.style.setProperty('--ml', '220px');
-        // Insert sidebar first, then header — both go afterbegin so header ends up on top
+        // Insert sidebar + header. They are injected synchronously so the
+        // browser lays them out at their correct fixed positions before the
+        // first paint — no pop-in, no slide-in, no blink.
         document.body.insertAdjacentHTML('afterbegin', renderHeader());
         document.body.insertAdjacentHTML('afterbegin', renderSidebar(active));
         // Inject mobile overlay
