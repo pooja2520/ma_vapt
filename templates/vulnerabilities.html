@@ -548,8 +548,9 @@ function renderGroups(vulns) {
     const sevPct  = sev => rawTotal ? Math.round((rg[sev==='medium'?'med':sev] || 0)/rawTotal*100) : 0;
     const fixedPct= (vulnItems+fixedItems) ? Math.round(fixedItems/(vulnItems+fixedItems)*100) : 0;
 
-    // Find linked report
-    const reportLink = g.url ? `/reports` : null;
+    // Find linked report by looking up report ID from mapping
+    const reportId = getReportId(g.url, g.date);
+    const reportLink = reportId ? `/reports/${reportId}` : null;
     // Encode groupKey safely for inline onclick
     const encodedKey = encodeURIComponent(groupKey);
 
@@ -882,6 +883,30 @@ async function loadPreScanSummary(targetUrl) {
   }
 }
 
+/* ─────────── REPORTS MAPPING ─────────── */
+let reportMap = {}; // Map of (target_url + '|||' + scan_date) -> report_id
+
+async function loadReportsMapping() {
+  try {
+    const res = await fetch('/api/reports');
+    const data = await res.json();
+    reportMap = {};
+    (data.reports || []).forEach(r => {
+      const key = (r.target_url || '') + '|||' + (r.scan_time || r.date || '');
+      if (!reportMap[key]) {
+        reportMap[key] = r.id;
+      }
+    });
+  } catch (e) {
+    console.error('Failed to load reports mapping:', e);
+  }
+}
+
+function getReportId(targetUrl, scanDate) {
+  const key = (targetUrl || '') + '|||' + (scanDate || '');
+  return reportMap[key] || null;
+}
+
 /* ─────────── INIT ─────────── */
 let firstLoad = true;
 async function loadVulnerabilities() {
@@ -916,6 +941,8 @@ async function loadVulnerabilities() {
     updateCharts();
     populateUrlFilter();
     filterAndRender();
+    // Load reports mapping for correct report links
+    await loadReportsMapping();
     // Subtitle shows RAW total — same number shown on Dashboard & Targets
     const total = rawVulns.length;
     document.getElementById('vulnSubtitle').textContent =
