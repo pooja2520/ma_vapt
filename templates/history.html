@@ -1723,6 +1723,7 @@
 
 {% block scripts %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="{{ url_for('static', filename='js/layout.js') }}"></script>
 <script>
   initLayout('/history');
@@ -2015,9 +2016,9 @@
       ${vulnBadge}
       ${sevBadge}
       ${actionBtn}
-      <button class="h-btn h-btn-export-wrap" onclick="event.stopPropagation();toggleExportMenu(event,${h.id})"
-        title="Export session" ${running ? 'disabled style="opacity:.4"' : ''}>
-        <i class="fa-solid fa-file-arrow-down"></i> Export <i class="fa-solid fa-caret-down" style="font-size:.6rem;margin-left:.1rem;"></i>
+      <button class="h-btn h-btn-pdf" onclick="event.stopPropagation();_doExport(${h.id},'pdf')"
+        title="Download PDF report" ${running ? 'disabled style="opacity:.4"' : ''}>
+        <i class="fa-solid fa-file-pdf"></i> Export PDF
       </button>
       <button class="h-btn danger" onclick="event.stopPropagation();openDeleteModal(${h.id})" title="Delete">
         <i class="fa-solid fa-trash"></i>
@@ -3217,6 +3218,13 @@ function _buildSummarySheet(h, generatedAt) {
       return;
     }
  
+    // ── PDF path ───────────────────────────────────────────────────────────
+    if (fmt === 'pdf') {
+      const ips = (h.results || []).map(r => r.ip).filter(Boolean).join('_') || h.scan_id || id;
+      _generateBulkPDF(h.results || [], h, `bulk-scan-${ips}.pdf`);
+      return;
+    }
+
     // ── JSON path (unchanged) ──────────────────────────────────────────────
     dl(new Blob([JSON.stringify(h, null, 2)], { type: 'application/json' }), `bulk-scan-${h.scan_id || id}.json`);
  
@@ -4066,167 +4074,9 @@ async function exportAllHistory() {
       return;
     }
 
-    // ── PDF (printable HTML) ─────────────────────────────────────
+    // ── PDF — direct download via jsPDF ─────────────────────────
     if (fmt === 'pdf') {
-      const sevColors = { CRITICAL: '#dc2626', HIGH: '#ea580c', MEDIUM: '#d97706', LOW: '#2563eb', NONE: '#16a34a' };
-      const sevBgs = { CRITICAL: '#fee2e2', HIGH: '#ffedd5', MEDIUM: '#fef3c7', LOW: '#dbeafe', NONE: '#dcfce7' };
-      const sevC = sevColors[sev] || '#374151';
-      const sevBg = sevBgs[sev] || '#f3f4f6';
-
-      const portsHTML = ports.length ? `
-      <table>
-        <thead><tr><th>Port</th><th>Protocol</th><th>State</th><th>Service</th><th>Version / Product</th><th>Banner</th></tr></thead>
-        <tbody>${ports.map(p => `<tr>
-          <td class="mono bl">${p.port}</td>
-          <td><span class="badge">${(p.protocol || 'tcp').toUpperCase()}</span></td>
-          <td><span class="badge gr">open</span></td>
-          <td><strong>${esc(p.service || p.name || '—')}</strong></td>
-          <td class="mono">${esc([p.product, p.version].filter(Boolean).join(' ') || '—')}</td>
-          <td class="sm muted">${esc(p.banner || p.extra_info || '—')}</td>
-        </tr>`).join('')}</tbody>
-      </table>` : '<p class="muted">No open ports detected.</p>';
-
-      const vulnsHTML = vulns.length ? (() => {
-        const sevOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-        const sorted = [...vulns].sort((a, b) => (sevOrder[(a.severity || 'low').toLowerCase()] ?? 3) - (sevOrder[(b.severity || 'low').toLowerCase()] ?? 3));
-        const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
-        sorted.forEach(v => { const k = (v.severity || 'low').toUpperCase(); if (counts[k] !== undefined) counts[k]++; });
-        return `<div class="sev-summary">
-        ${Object.entries(counts).map(([k, n]) => `<div class="sev-box" style="background:${sevBgs[k]};border:1px solid ${sevColors[k]}33;">
-          <div class="sev-box-lbl">${k}</div>
-          <div class="sev-box-val" style="color:${sevColors[k]};">${n}</div>
-        </div>`).join('')}
-      </div>
-      ${sorted.map(v => {
-          const vs = (v.severity || 'low').toUpperCase();
-          const vc = sevColors[vs] || '#9ca3af';
-          const vbg = sevBgs[vs] || '#f9fafb';
-          const cves = v.cve ? (Array.isArray(v.cve) ? v.cve : [v.cve]) : (v.cves || []);
-          const plist = v.port != null ? [v.port] : (v.ports || []);
-          return `<div class="vuln-card" style="border-left:4px solid ${vc};">
-          <div class="vuln-hdr">
-            <span class="vuln-name">${esc(v.name || v.title || 'Unknown Vulnerability')}</span>
-            <span class="sev-pill" style="background:${vbg};color:${vc};border:1px solid ${vc}33;">${vs}</span>
-          </div>
-          ${v.description || v.desc ? `<p class="vuln-desc">${esc(v.description || v.desc)}</p>` : ''}
-          <div class="tags">
-            ${cves.map(c => `<span class="tag cve">${esc(c)}</span>`).join('')}
-            ${plist.map(p => `<span class="tag">Port ${esc(String(p))}</span>`).join('')}
-            ${v.cvss || v.score ? `<span class="tag" style="background:${vbg};color:${vc};">CVSS ${esc(String(v.cvss || v.score))}</span>` : ''}
-            ${v.published ? `<span class="tag">Published: ${esc(v.published)}</span>` : ''}
-          </div>
-          ${v.reference || v.url ? `<a href="${esc(v.reference || v.url)}" class="ref">${esc(v.reference || v.url)}</a>` : ''}
-        </div>`;
-        }).join('')}`;
-      })() : `<div class="clean"><span>✅ No vulnerabilities found — host is clean.</span></div>`;
-
-      const nikto = r.nikto || r.nikto_results || r.nikto_output || {};
-      const niktoItems = Array.isArray(nikto) ? nikto : (nikto.items || nikto.findings || nikto.results || []);
-      const niktoHTML = niktoItems.length
-        ? niktoItems.map(it => `<div class="nikto-row">
-          ${it.url || it.uri ? `<div class="mono bl sm">${esc(it.url || it.uri)}</div>` : ''}
-          <div>${esc(it.msg || it.message || it.description || String(it))}</div>
-          ${it.id || it.nikto_id ? `<span class="tag sm">ID: ${esc(String(it.id || it.nikto_id))}</span>` : ''}
-        </div>`).join('')
-        : '<p class="muted">No Nikto findings — ' + ((!ports.find(p => [80, 443, 8080, 8443].includes(Number(p.port))))
-          ? 'no HTTP/HTTPS ports detected on this host.' : 'Nikto scan returned no findings.') + '</p>';
-
-      const html = `<!DOCTYPE html><html lang="en"><head>
-<meta charset="UTF-8"><title>IP Report — ${ip}</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box;}
-body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#111827;background:#fff;padding:28px 32px;}
-h1{font-size:24px;font-weight:800;color:#111827;}
-h2{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#9ca3af;
-   margin:22px 0 8px;padding-bottom:7px;border-bottom:2px solid #f3f4f6;display:flex;align-items:center;gap:6px;}
-h2 span{font-size:12px;background:#f3f4f6;color:#6b7280;padding:1px 8px;border-radius:10px;font-weight:700;text-transform:none;letter-spacing:0;}
-.page-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid #e5e7eb;}
-.page-header .sub{font-size:12px;color:#6b7280;margin-top:5px;line-height:1.6;}
-.sev-main{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:20px;font-weight:800;font-size:14px;background:${sevBg};color:${sevC};}
-.info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:4px;}
-.info-card{background:#f9fafb;border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px;}
-.info-card .lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#9ca3af;margin-bottom:4px;}
-.info-card .val{font-weight:700;font-size:13px;color:#111827;font-family:monospace;}
-.info-card .val.gr{color:#16a34a;font-family:sans-serif;} .info-card .val.rd{color:#dc2626;font-family:sans-serif;} .info-card .val.bl{color:#1d4ed8;}
-.info-card .vendor{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;font-family:sans-serif;}
-table{width:100%;border-collapse:collapse;font-size:12px;margin:4px 0 8px;}
-thead th{padding:7px 10px;text-align:left;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#9ca3af;background:#f9fafb;border-bottom:2px solid #e5e7eb;}
-tbody tr{border-bottom:1px solid #f3f4f6;} tbody tr:last-child{border-bottom:none;}
-td{padding:8px 10px;vertical-align:middle;}
-.mono{font-family:monospace;font-weight:700;} .bl{color:#1d4ed8;} .sm{font-size:11px;} .muted{color:#9ca3af;}
-.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:#eff6ff;color:#1d4ed8;}
-.badge.gr{background:#dcfce7;color:#15803d;}
-.sev-summary{display:flex;gap:8px;margin-bottom:12px;}
-.sev-box{flex:1;text-align:center;padding:8px;border-radius:8px;}
-.sev-box-lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;}
-.sev-box-val{font-size:22px;font-weight:800;margin-top:2px;}
-.vuln-card{border:1px solid #e5e7eb;border-radius:9px;padding:12px;margin-bottom:8px;}
-.vuln-hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px;}
-.vuln-name{font-weight:700;font-size:13px;flex:1;}
-.vuln-desc{font-size:12px;color:#4b5563;margin-bottom:8px;line-height:1.55;}
-.tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
-.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;background:#f3f4f6;color:#374151;}
-.tag.cve{background:#eff6ff;color:#1e40af;}
-.sev-pill{display:inline-flex;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:800;flex-shrink:0;}
-.ref{display:block;font-size:11px;color:#2563eb;margin-top:7px;word-break:break-all;}
-.clean{padding:16px;background:#f0fdf4;border-radius:9px;border:1.5px solid #bbf7d0;color:#15803d;font-weight:600;text-align:center;font-size:14px;}
-.nikto-row{padding:9px 12px;background:#f9fafb;border-radius:7px;border:1px solid #e5e7eb;margin-bottom:6px;font-size:12px;line-height:1.5;}
-.footer{margin-top:28px;padding-top:14px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;display:flex;justify-content:space-between;}
-@media print{body{padding:16px;} @page{margin:1.2cm; size:A4;}}
-</style></head><body>
-
-<div class="page-header">
-  <div>
-    <h1>IP Security Report</h1>
-    <div class="sub">
-      <strong>${esc(ip)}</strong> &nbsp;·&nbsp; ${esc(hostname)} &nbsp;·&nbsp; ${esc(r.os || 'Unknown OS')}<br>
-      Generated: ${ts}
-    </div>
-  </div>
-  <div class="sev-main">${sev === 'NONE' ? '✅ Clean' : '⚠ ' + sev}</div>
-</div>
-
-<h2>Host Information</h2>
-<div class="info-grid">
-  <div class="info-card"><div class="lbl">IP Address</div><div class="val bl">${esc(ip)}</div></div>
-  <div class="info-card"><div class="lbl">Hostname / rDNS</div><div class="val">${esc(hostname)}</div></div>
-  <div class="info-card"><div class="lbl">Operating System</div><div class="val" style="font-family:sans-serif;">${esc(r.os || 'Unknown')}</div></div>
-  <div class="info-card">
-    <div class="lbl">MAC Address</div>
-    <div class="val">${macStr ? esc(macStr) : '<span style="color:#9ca3af;font-size:12px;font-family:sans-serif;">Not available</span>'}</div>
-    ${vendor ? `<div class="vendor">${esc(vendor)}</div>` : ''}
-  </div>
-  <div class="info-card"><div class="lbl">Status</div><div class="val ${r.status === 'online' ? 'gr' : 'rd'}">${r.status === 'online' ? '● Online' : '● Offline'}</div></div>
-  <div class="info-card"><div class="lbl">Latency</div><div class="val">${r.latency != null ? r.latency + ' ms' : '—'}</div></div>
-  <div class="info-card"><div class="lbl">Scanned At</div><div class="val" style="font-size:12px;">${r.scanned_at || '—'}</div></div>
-  <div class="info-card"><div class="lbl">Open Ports</div><div class="val bl">${ports.length}</div></div>
-  <div class="info-card"><div class="lbl">Vulnerabilities</div><div class="val ${vulns.length ? 'rd' : 'gr'}">${vulns.length}</div></div>
-</div>
-
-<h2>Open Ports &amp; Services <span>${ports.length} found</span></h2>
-${portsHTML}
-
-<h2>Vulnerability Scan <span>${vulns.length} found</span></h2>
-${vulnsHTML}
-
-<h2>Nikto Web Scanner <span>${niktoItems.length} findings</span></h2>
-${niktoHTML}
-
-<div class="footer">
-  <span>VAPT Scanner Pro — IP Security Report</span>
-  <span>${esc(ip)} &nbsp;|&nbsp; ${ts}</span>
-</div>
-</body></html>`;
-
-      const win = window.open('', '_blank');
-      if (win) {
-        win.document.write(html);
-        win.document.close();
-        win.focus();
-        setTimeout(() => { win.print(); }, 700);
-      } else {
-        alert('Popup blocked. Please allow popups for this site to download the PDF report.');
-      }
+      _generateIPPDF([r], `ip-report-${ip.replace(/\./g,'_')}.pdf`);
     }
   }
 
@@ -4235,6 +4085,651 @@ ${niktoHTML}
     const a = document.createElement('a');
     a.href = u; a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(u), 1000);
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  PDF GENERATION  — jsPDF-based, no popup required
+  //  results: array of IP result objects  |  filename: string
+  // ════════════════════════════════════════════════════════════════
+  function _generateIPPDF(results, filename) {
+    const { jsPDF } = window.jspdf;
+    if (!jsPDF) { alert('PDF library not loaded yet. Please try again in a moment.'); return; }
+
+    const doc   = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait' });
+    const PW    = doc.internal.pageSize.getWidth();
+    const PH    = doc.internal.pageSize.getHeight();
+    const ML    = 36, MR = 36, MT = 36;
+    const CW    = PW - ML - MR;
+    const ts    = new Date().toLocaleString();
+
+    const SEV_COLORS = {
+      CRITICAL: [220, 38,  38],
+      HIGH:     [234, 88,  12],
+      MEDIUM:   [217,119,   6],
+      LOW:      [ 37, 99, 235],
+      NONE:     [ 22,163,  74],
+      CLEAN:    [ 22,163,  74],
+    };
+
+    function hexToRgb(hex) {
+      const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+      return [r,g,b];
+    }
+    function sevRgb(s) { return SEV_COLORS[(s||'NONE').toUpperCase()] || [100,116,139]; }
+    function clamp(y) { return Math.min(y, PH - 36); }
+
+    // ── helpers ───────────────────────────────────────────────────
+    function checkPage(y, need) {
+      if (y + need > PH - 40) { doc.addPage(); return MT; }
+      return y;
+    }
+
+    function drawHeader(pageNum) {
+      doc.setFillColor(15, 23, 42);
+      doc.rect(0, 0, PW, 28, 'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(9);
+      doc.setTextColor(148,163,184);
+      doc.text('VAPT Scanner Pro  —  IP Security Report', ML, 18);
+      doc.text(`Generated: ${ts}`, PW - MR, 18, { align: 'right' });
+    }
+
+    function sectionTitle(y, label, count) {
+      y = checkPage(y, 28);
+      doc.setFillColor(248,250,252);
+      doc.rect(ML, y, CW, 20, 'F');
+      doc.setDrawColor(226,232,240); doc.setLineWidth(0.5);
+      doc.rect(ML, y, CW, 20, 'S');
+      doc.setFont('helvetica','bold'); doc.setFontSize(8);
+      doc.setTextColor(100,116,139);
+      doc.text(label.toUpperCase(), ML + 8, y + 13);
+      if (count !== undefined) {
+        const badge = String(count);
+        const bw = doc.getTextWidth(badge) + 10;
+        doc.setFillColor(226,232,240);
+        doc.roundedRect(ML + CW - bw - 8, y + 4, bw, 12, 3, 3, 'F');
+        doc.setTextColor(71,85,105);
+        doc.text(badge, ML + CW - 8 - bw/2, y + 12.5, { align: 'center' });
+      }
+      return y + 26;
+    }
+
+    function infoGrid(y, items) {
+      // items: [[label, value], ...]  — 3 per row
+      const cellW = CW / 3;
+      const cellH = 38;
+      for (let i = 0; i < items.length; i++) {
+        const col = i % 3;
+        const row = Math.floor(i / 3);
+        if (col === 0 && row > 0) y = checkPage(y, cellH);
+        const x = ML + col * cellW;
+        const cy = y + row * cellH;
+        doc.setFillColor(249,250,251); doc.setDrawColor(229,231,235);
+        doc.roundedRect(x + 2, cy + 2, cellW - 4, cellH - 4, 4, 4, 'FD');
+        doc.setFont('helvetica','bold'); doc.setFontSize(7);
+        doc.setTextColor(156,163,175);
+        doc.text((items[i][0]||'').toUpperCase(), x + 10, cy + 14);
+        doc.setFont('helvetica','bold'); doc.setFontSize(9);
+        doc.setTextColor(17,24,39);
+        const val = String(items[i][1] || '—');
+        doc.text(val, x + 10, cy + 28, { maxWidth: cellW - 20 });
+      }
+      const rows = Math.ceil(items.length / 3);
+      return y + rows * cellH + 6;
+    }
+
+    function drawTable(y, headers, rows, colWidths) {
+      const rowH = 18, hdrH = 20;
+      y = checkPage(y, hdrH + rowH);
+
+      // header row
+      doc.setFillColor(30, 58, 138);
+      doc.rect(ML, y, CW, hdrH, 'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(7.5);
+      doc.setTextColor(255,255,255);
+      let cx = ML + 4;
+      headers.forEach((h, i) => {
+        doc.text(h, cx, y + 13, { maxWidth: colWidths[i] - 4 });
+        cx += colWidths[i];
+      });
+      y += hdrH;
+
+      rows.forEach((row, ri) => {
+        y = checkPage(y, rowH);
+        doc.setFillColor(ri % 2 === 0 ? 249 : 255, ri % 2 === 0 ? 250 : 255, ri % 2 === 0 ? 251 : 255);
+        doc.rect(ML, y, CW, rowH, 'F');
+        doc.setDrawColor(243,244,246); doc.setLineWidth(0.3);
+        doc.line(ML, y + rowH, ML + CW, y + rowH);
+        doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
+        doc.setTextColor(31,41,55);
+        cx = ML + 4;
+        row.forEach((cell, i) => {
+          doc.text(String(cell || '—'), cx, y + 12, { maxWidth: colWidths[i] - 6 });
+          cx += colWidths[i];
+        });
+        y += rowH;
+      });
+      return y + 6;
+    }
+
+    function vulnBlock(y, v) {
+      const sev   = (v.severity || 'low').toUpperCase();
+      const [sr,sg,sb] = sevRgb(sev);
+      const name  = v.name || v.title || 'Unknown Vulnerability';
+      const desc  = v.description || v.desc || '';
+      const cves  = v.cve ? (Array.isArray(v.cve) ? v.cve : [v.cve]) : (v.cves || []);
+      const ref   = v.reference || v.url || '';
+      const lines = desc ? doc.splitTextToSize(desc, CW - 24) : [];
+      const blockH = 44 + lines.length * 10 + (ref ? 14 : 0);
+      y = checkPage(y, blockH + 6);
+
+      doc.setFillColor(249,250,251); doc.setDrawColor(sr,sg,sb);
+      doc.setLineWidth(3);
+      doc.line(ML, y, ML, y + blockH);
+      doc.setLineWidth(0.4);
+      doc.setDrawColor(229,231,235);
+      doc.rect(ML + 3, y, CW - 3, blockH, 'FD');
+
+      // severity pill
+      doc.setFillColor(sr,sg,sb);
+      const pillW = doc.getTextWidth(sev) + 14;
+      doc.roundedRect(ML + CW - pillW - 8, y + 6, pillW, 14, 4, 4, 'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(7);
+      doc.setTextColor(255,255,255);
+      doc.text(sev, ML + CW - pillW/2 - 8, y + 15.5, { align: 'center' });
+
+      // name
+      doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
+      doc.setTextColor(17,24,39);
+      doc.text(name, ML + 12, y + 16, { maxWidth: CW - pillW - 30 });
+
+      // CVEs
+      if (cves.length) {
+        let tx = ML + 12;
+        cves.slice(0, 4).forEach(c => {
+          const cw2 = doc.getTextWidth(c) + 10;
+          doc.setFillColor(219,234,254); doc.roundedRect(tx, y + 22, cw2, 11, 2, 2, 'F');
+          doc.setFont('helvetica','bold'); doc.setFontSize(6.5);
+          doc.setTextColor(30,64,175);
+          doc.text(c, tx + 5, y + 29.5);
+          tx += cw2 + 4;
+        });
+      }
+
+      // description
+      if (lines.length) {
+        doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
+        doc.setTextColor(75,85,99);
+        doc.text(lines, ML + 12, y + 40);
+      }
+
+      // reference
+      if (ref) {
+        const ry = y + blockH - 10;
+        doc.setFont('helvetica','normal'); doc.setFontSize(7);
+        doc.setTextColor(37,99,235);
+        doc.text(ref.slice(0,90), ML + 12, ry, { maxWidth: CW - 20 });
+      }
+
+      return y + blockH + 8;
+    }
+
+    // ── Render each IP result ──────────────────────────────────────
+    results.forEach((r, idx) => {
+      if (idx > 0) doc.addPage();
+      drawHeader();
+
+      const ip      = r.ip || 'unknown';
+      const hostname= (r.hostname && r.hostname !== '-') ? r.hostname : 'Unknown';
+      const sev     = (r.severity || 'none').toUpperCase();
+      const ports   = r.ports || [];
+      const vulns   = r.vulnerabilities || r.vulns || [];
+      const macRaw  = r.mac || r.mac_address || r.mac_addr || null;
+      const macStr  = macRaw ? String(macRaw).toUpperCase() : '—';
+      const [cr,cg,cb] = sevRgb(sev);
+
+      let y = 50;
+
+      // ── Cover block ──────────────────────────────────────────────
+      doc.setFillColor(cr, cg, cb);
+      doc.rect(ML, y, 5, 60, 'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(18);
+      doc.setTextColor(15,23,42);
+      doc.text('IP Security Report', ML + 14, y + 20);
+      doc.setFont('helvetica','normal'); doc.setFontSize(9);
+      doc.setTextColor(100,116,139);
+      doc.text(`${ip}  ·  ${hostname}  ·  ${r.os || 'Unknown OS'}`, ML + 14, y + 34);
+      doc.text(`Generated: ${ts}`, ML + 14, y + 46);
+
+      // severity badge (top-right)
+      const sevLabel = sev === 'NONE' ? 'CLEAN' : sev;
+      const badgeW   = Math.max(doc.getTextWidth(sevLabel) + 24, 70);
+      doc.setFillColor(cr, cg, cb);
+      doc.roundedRect(PW - MR - badgeW, y + 8, badgeW, 22, 5, 5, 'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(9);
+      doc.setTextColor(255,255,255);
+      doc.text(sevLabel, PW - MR - badgeW/2, y + 23, { align: 'center' });
+      y += 72;
+
+      // ── Host Info grid ───────────────────────────────────────────
+      y = sectionTitle(y, 'Host Information');
+      y = infoGrid(y, [
+        ['IP Address',        ip],
+        ['Hostname / rDNS',   hostname],
+        ['Operating System',  r.os || 'Unknown'],
+        ['MAC Address',       macStr],
+        ['Status',            r.status === 'online' ? 'Online ✓' : 'Offline ✗'],
+        ['Latency',           r.latency != null ? r.latency + ' ms' : '—'],
+        ['Scanned At',        r.scanned_at || '—'],
+        ['Open Ports',        ports.length],
+        ['Vulnerabilities',   vulns.length],
+      ]);
+
+      // ── Ports table ──────────────────────────────────────────────
+      y = sectionTitle(y, 'Open Ports & Services', ports.length);
+      if (ports.length) {
+        const pRows = ports.map(p => [
+          p.port,
+          (p.protocol || 'tcp').toUpperCase(),
+          p.service || p.name || '—',
+          [p.product, p.version].filter(Boolean).join(' ') || '—',
+          p.banner || p.extra_info || '—',
+        ]);
+        y = drawTable(y, ['Port','Protocol','Service','Version / Product','Banner'],
+                         pRows, [48, 60, 80, 130, CW - 48 - 60 - 80 - 130]);
+      } else {
+        doc.setFont('helvetica','italic'); doc.setFontSize(8);
+        doc.setTextColor(156,163,175);
+        doc.text('No open ports detected.', ML + 8, y + 12);
+        y += 20;
+      }
+
+      // ── Vulnerability blocks ──────────────────────────────────────
+      const sevOrder = { critical:0, high:1, medium:2, low:3 };
+      const sortedVulns = [...vulns].sort((a,b) =>
+        (sevOrder[(a.severity||'low').toLowerCase()] ?? 3) -
+        (sevOrder[(b.severity||'low').toLowerCase()] ?? 3));
+
+      y = sectionTitle(y, 'Vulnerabilities', vulns.length);
+      if (!vulns.length) {
+        doc.setFillColor(240,253,244); doc.setDrawColor(187,247,208);
+        doc.roundedRect(ML, y, CW, 26, 5, 5, 'FD');
+        doc.setFont('helvetica','bold'); doc.setFontSize(9);
+        doc.setTextColor(22,163,74);
+        doc.text('✓  No vulnerabilities found — host appears clean.', ML + CW/2, y + 16.5, { align: 'center' });
+        y += 34;
+      } else {
+        // severity summary bar
+        const counts = { CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0 };
+        vulns.forEach(v => { const k=(v.severity||'low').toUpperCase(); if(counts[k]!==undefined) counts[k]++; });
+        const boxW = CW / 4;
+        Object.entries(counts).forEach(([k,n], i) => {
+          const [br,bg2,bb] = sevRgb(k);
+          const bx = ML + i * boxW;
+          doc.setFillColor(br,bg2,bb,0.08);
+          doc.roundedRect(bx+2, y+2, boxW-4, 38, 4, 4, 'F');
+          doc.setDrawColor(br,bg2,bb);  doc.setLineWidth(0.5);
+          doc.roundedRect(bx+2, y+2, boxW-4, 38, 4, 4, 'S');
+          doc.setFont('helvetica','bold'); doc.setFontSize(7);
+          doc.setTextColor(br,bg2,bb);
+          doc.text(k, bx + boxW/2, y + 14, { align: 'center' });
+          doc.setFontSize(16);
+          doc.text(String(n), bx + boxW/2, y + 33, { align: 'center' });
+        });
+        y += 48;
+        sortedVulns.forEach(v => { y = vulnBlock(y, v); });
+      }
+
+      // ── Nikto ────────────────────────────────────────────────────
+      const nikto      = r.nikto || r.nikto_results || r.nikto_output || {};
+      const niktoItems = Array.isArray(nikto) ? nikto : (nikto.items || nikto.findings || nikto.results || []);
+      y = sectionTitle(y, 'Nikto Web Scanner', niktoItems.length);
+      if (!niktoItems.length) {
+        doc.setFont('helvetica','italic'); doc.setFontSize(8);
+        doc.setTextColor(156,163,175);
+        const hasWeb = ports.find(p => [80,443,8080,8443].includes(Number(p.port)));
+        doc.text(hasWeb ? 'Nikto scan returned no findings.' : 'No HTTP/HTTPS ports detected — Nikto not run.', ML+8, y+12);
+        y += 20;
+      } else {
+        niktoItems.forEach(it => {
+          const msg = it.msg || it.message || it.description || String(it);
+          const uri = it.url || it.uri || '';
+          const lines2 = doc.splitTextToSize(msg, CW - 20);
+          const bh = 14 + lines2.length * 10 + (uri ? 12 : 0);
+          y = checkPage(y, bh + 6);
+          doc.setFillColor(249,250,251); doc.setDrawColor(229,231,235);
+          doc.roundedRect(ML, y, CW, bh, 3, 3, 'FD');
+          if (uri) {
+            doc.setFont('helvetica','bold'); doc.setFontSize(7);
+            doc.setTextColor(37,99,235);
+            doc.text(uri.slice(0,80), ML+8, y+11);
+          }
+          doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
+          doc.setTextColor(55,65,81);
+          doc.text(lines2, ML+8, y + (uri ? 22 : 12));
+          y += bh + 6;
+        });
+      }
+
+      // ── Footer line ───────────────────────────────────────────────
+      const totalPages = doc.internal.getNumberOfPages();
+      for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        doc.setDrawColor(226,232,240); doc.setLineWidth(0.5);
+        doc.line(ML, PH - 24, PW - MR, PH - 24);
+        doc.setFont('helvetica','normal'); doc.setFontSize(7);
+        doc.setTextColor(156,163,175);
+        doc.text('VAPT Scanner Pro  —  IP Security Report', ML, PH - 14);
+        doc.text(`Page ${p} of ${totalPages}  |  ${ip}`, PW - MR, PH - 14, { align: 'right' });
+      }
+    });
+
+    doc.save(filename);
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  BULK PDF GENERATOR  — full session report (cover + all IPs)
+  //  Used by: Export dropdown → PDF, expanded row PDF button
+  // ════════════════════════════════════════════════════════════════
+  function _generateBulkPDF(results, sessionMeta, filename) {
+    const { jsPDF } = window.jspdf;
+    if (!jsPDF) { alert('PDF library not loaded yet. Please try again.'); return; }
+
+    const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait' });
+    const PW  = doc.internal.pageSize.getWidth();
+    const PH  = doc.internal.pageSize.getHeight();
+    const ML  = 36, MR = 36, MT = 36;
+    const CW  = PW - ML - MR;
+    const ts  = new Date().toLocaleString();
+    const meta = sessionMeta || {};
+
+    const SEV_RGB = {
+      CRITICAL:[220,38,38], HIGH:[234,88,12], MEDIUM:[217,119,6],
+      LOW:[37,99,235], NONE:[22,163,74], CLEAN:[22,163,74],
+    };
+    function sevRgb(s){ return SEV_RGB[(s||'NONE').toUpperCase()]||[100,116,139]; }
+    function checkPage(y,need){ if(y+need>PH-44){doc.addPage();return MT;}return y; }
+
+    function drawPageHeader(){
+      doc.setFillColor(15,23,42); doc.rect(0,0,PW,28,'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(148,163,184);
+      doc.text('VAPT Scanner Pro  —  Bulk IP Scan Report', ML, 18);
+      doc.text(`Generated: ${ts}`, PW-MR, 18, {align:'right'});
+    }
+
+    function sectionTitle(y, label, count){
+      y = checkPage(y,26);
+      doc.setFillColor(248,250,252); doc.setDrawColor(226,232,240); doc.setLineWidth(0.5);
+      doc.rect(ML,y,CW,20,'FD');
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(100,116,139);
+      doc.text(label.toUpperCase(), ML+8, y+13);
+      if(count!==undefined){
+        const badge=String(count), bw=doc.getTextWidth(badge)+10;
+        doc.setFillColor(226,232,240); doc.roundedRect(ML+CW-bw-8,y+4,bw,12,3,3,'F');
+        doc.setTextColor(71,85,105); doc.setFontSize(7.5);
+        doc.text(badge,ML+CW-bw/2-8,y+12.5,{align:'center'});
+      }
+      return y+26;
+    }
+
+    function drawTable(y, headers, rows, colWidths){
+      const rowH=16, hdrH=18;
+      y=checkPage(y,hdrH+rowH);
+      doc.setFillColor(30,58,138); doc.rect(ML,y,CW,hdrH,'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(255,255,255);
+      let cx=ML+4; headers.forEach((h,i)=>{doc.text(h,cx,y+12,{maxWidth:colWidths[i]-4});cx+=colWidths[i];}); y+=hdrH;
+      rows.forEach((row,ri)=>{
+        y=checkPage(y,rowH);
+        doc.setFillColor(ri%2===0?249:255,ri%2===0?250:255,ri%2===0?251:255);
+        doc.rect(ML,y,CW,rowH,'F');
+        doc.setDrawColor(243,244,246); doc.setLineWidth(0.3); doc.line(ML,y+rowH,ML+CW,y+rowH);
+        doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(31,41,55);
+        cx=ML+4;
+        row.forEach((cell,i)=>{ doc.text(String(cell||'—'),cx,y+11,{maxWidth:colWidths[i]-6}); cx+=colWidths[i]; });
+        y+=rowH;
+      });
+      return y+6;
+    }
+
+    function vulnBlock(y, v){
+      const sev=(v.severity||'low').toUpperCase();
+      const [vr,vg,vb]=sevRgb(sev);
+      const name=v.name||v.title||'Unknown Vulnerability';
+      const desc=v.description||v.desc||'';
+      const cves=v.cve?(Array.isArray(v.cve)?v.cve:[v.cve]):(v.cves||[]);
+      const ref=v.reference||v.url||'';
+      const lines=desc?doc.splitTextToSize(desc,CW-24):[];
+      const bh=38+lines.length*10+(ref?14:0)+(cves.length?14:0);
+      y=checkPage(y,bh+8);
+      doc.setFillColor(249,250,251); doc.setDrawColor(vr,vg,vb); doc.setLineWidth(2.5);
+      doc.line(ML,y,ML,y+bh); doc.setLineWidth(0.4); doc.setDrawColor(229,231,235);
+      doc.rect(ML+3,y,CW-3,bh,'FD');
+      const pillW=doc.getTextWidth(sev)+14;
+      doc.setFillColor(vr,vg,vb); doc.roundedRect(ML+CW-pillW-8,y+5,pillW,13,3,3,'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(255,255,255);
+      doc.text(sev,ML+CW-pillW/2-8,y+13.5,{align:'center'});
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(17,24,39);
+      doc.text(name,ML+10,y+14,{maxWidth:CW-pillW-26});
+      let vy=y+22;
+      if(cves.length){
+        let tx=ML+10;
+        cves.slice(0,5).forEach(c=>{
+          const cw=doc.getTextWidth(c)+10;
+          doc.setFillColor(219,234,254); doc.roundedRect(tx,vy-1,cw,10,2,2,'F');
+          doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(30,64,175);
+          doc.text(c,tx+5,vy+7); tx+=cw+4;
+        }); vy+=14;
+      }
+      if(lines.length){ doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(75,85,99); doc.text(lines,ML+10,vy+8); vy+=lines.length*10+4; }
+      if(ref){ doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(37,99,235); doc.text(ref.slice(0,90),ML+10,vy+10,{maxWidth:CW-20}); }
+      return y+bh+8;
+    }
+
+    // ── COVER PAGE ──────────────────────────────────────────────────
+    drawPageHeader();
+    let y = 54;
+
+    // Dark title bar
+    doc.setFillColor(15,23,42); doc.rect(ML,y,CW,84,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(22); doc.setTextColor(255,255,255);
+    doc.text('Bulk IP Scan Report', ML+20, y+30);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(148,163,184);
+    doc.text(`Scan ID: ${meta.scan_id || meta.id || '—'}`, ML+20, y+48);
+    doc.text(`Label: ${meta.label || '—'}`, ML+20, y+62);
+    doc.text(`Generated: ${ts}`, ML+20, y+76);
+    y += 98;
+
+    // Aggregate stats
+    const totalIPs    = results.length;
+    const onlineCount = results.filter(r=>r.status==='online').length;
+    const totalVulns  = results.reduce((s,r)=>s+((r.vulnerabilities||r.vulns||[]).length),0);
+    const totalPorts  = results.reduce((s,r)=>s+((r.ports||[]).length),0);
+    const critCount   = results.reduce((s,r)=>s+(r.vulnerabilities||r.vulns||[]).filter(v=>(v.severity||'').toUpperCase()==='CRITICAL').length,0);
+    const highCount   = results.reduce((s,r)=>s+(r.vulnerabilities||r.vulns||[]).filter(v=>(v.severity||'').toUpperCase()==='HIGH').length,0);
+    const medCount    = results.reduce((s,r)=>s+(r.vulnerabilities||r.vulns||[]).filter(v=>(v.severity||'').toUpperCase()==='MEDIUM').length,0);
+    const lowCount    = results.reduce((s,r)=>s+(r.vulnerabilities||r.vulns||[]).filter(v=>(v.severity||'').toUpperCase()==='LOW').length,0);
+
+    const statItems = [
+      ['Total IPs',   totalIPs,    [37,99,235]],
+      ['Online',      onlineCount, [22,163,74]],
+      ['Open Ports',  totalPorts,  [124,58,237]],
+      ['Total Vulns', totalVulns,  [220,38,38]],
+    ];
+    const boxW = CW/statItems.length;
+    statItems.forEach(([lbl,val,col],i)=>{
+      const bx=ML+i*boxW;
+      doc.setFillColor(249,250,251); doc.setDrawColor(229,231,235); doc.setLineWidth(0.5);
+      doc.roundedRect(bx+3,y+3,boxW-6,54,5,5,'FD');
+      doc.setFillColor(...col); doc.roundedRect(bx+3,y+3,boxW-6,5,2,2,'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(22); doc.setTextColor(...col);
+      doc.text(String(val),bx+boxW/2,y+38,{align:'center'});
+      doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(100,116,139);
+      doc.text(lbl,bx+boxW/2,y+52,{align:'center'});
+    });
+    y += 68;
+
+    // Severity breakdown row
+    const sevItems=[['CRITICAL',critCount,[220,38,38]],['HIGH',highCount,[234,88,12]],['MEDIUM',medCount,[217,119,6]],['LOW',lowCount,[37,99,235]]];
+    const sevW=CW/sevItems.length;
+    sevItems.forEach(([lbl,val,col],i)=>{
+      const bx=ML+i*sevW;
+      doc.setFillColor(...col.map(c=>Math.min(255,c+210))); doc.setDrawColor(...col); doc.setLineWidth(0.5);
+      doc.roundedRect(bx+3,y+3,sevW-6,34,4,4,'FD');
+      doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(...col);
+      doc.text(lbl,bx+sevW/2,y+16,{align:'center'});
+      doc.setFontSize(14); doc.text(String(val),bx+sevW/2,y+30,{align:'center'});
+    });
+    y += 50;
+
+    // Scan meta info row
+    const scanInfo = [
+      ['Scan ID',     meta.scan_id || meta.id || '—'],
+      ['Started',     meta.started_at ? new Date(meta.started_at.replace(' ','T')).toLocaleString() : '—'],
+      ['Duration',    meta.duration_seconds!=null ? `${meta.duration_seconds}s` : '—'],
+      ['Port Depth',  meta.port_depth || 'full'],
+      ['Modules',     (meta.modules||[]).join(', ') || '—'],
+      ['Status',      meta.status || '—'],
+    ];
+    const infoW=CW/3, infoH=38;
+    scanInfo.forEach(([lbl,val],i)=>{
+      const col2=i%3, row2=Math.floor(i/3);
+      const bx=ML+col2*infoW, by=y+row2*infoH;
+      doc.setFillColor(249,250,251); doc.setDrawColor(229,231,235); doc.setLineWidth(0.4);
+      doc.roundedRect(bx+2,by+2,infoW-4,infoH-4,4,4,'FD');
+      doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(156,163,175);
+      doc.text(lbl.toUpperCase(),bx+8,by+13);
+      doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(17,24,39);
+      doc.text(String(val||'—'),bx+8,by+28,{maxWidth:infoW-16});
+    });
+    y += Math.ceil(scanInfo.length/3)*infoH + 10;
+
+    // ── IP SUMMARY TABLE ──────────────────────────────────────────
+    y = sectionTitle(y, 'IP Summary', results.length);
+    const tHdrs=['IP Address','Hostname','OS','Status','Ports','Vulns','Severity'];
+    const tW=[90,110,100,52,38,38,CW-90-110-100-52-38-38];
+    y = drawTable(y, tHdrs,
+      results.map(r=>{
+        const vulns2=r.vulnerabilities||r.vulns||[];
+        return [r.ip||'—', (r.hostname&&r.hostname!=='-')?r.hostname:'—', r.os||'—', r.status||'—', String((r.ports||[]).length), String(vulns2.length), (r.severity||'none').toUpperCase()];
+      }), tW);
+
+    // ── PER-IP DETAIL PAGES ──────────────────────────────────────
+    results.forEach((r) => {
+      doc.addPage(); drawPageHeader();
+      y = 50;
+      const ip     = r.ip||'unknown';
+      const sev    = (r.severity||'none').toUpperCase();
+      const ports  = r.ports||[];
+      const vulns  = r.vulnerabilities||r.vulns||[];
+      const [cr,cg,cb] = sevRgb(sev);
+      const hostnameStr = (r.hostname&&r.hostname!=='-')?r.hostname:'Unknown';
+
+      // IP header block
+      doc.setFillColor(cr,cg,cb); doc.rect(ML,y,5,60,'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(15,23,42);
+      doc.text(ip, ML+14, y+20);
+      doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(100,116,139);
+      doc.text(`${hostnameStr}  ·  ${r.os||'Unknown OS'}`, ML+14, y+35);
+      doc.text(`Status: ${r.status||'—'}  ·  Ports: ${ports.length}  ·  Vulns: ${vulns.length}`, ML+14, y+50);
+      const sevLabel=sev==='NONE'?'CLEAN':sev, badgeW=Math.max(doc.getTextWidth(sevLabel)+24,60);
+      doc.setFillColor(cr,cg,cb); doc.roundedRect(PW-MR-badgeW,y+12,badgeW,20,4,4,'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(255,255,255);
+      doc.text(sevLabel,PW-MR-badgeW/2,y+25,{align:'center'});
+      y += 72;
+
+      // Info grid
+      const infoItems=[
+        ['IP Address',ip],['Hostname',hostnameStr],['Operating System',r.os||'Unknown'],
+        ['MAC Address',(r.mac||r.mac_address||'—')],
+        ['Status',r.status==='online'?'Online ✓':'Offline ✗'],
+        ['Latency',r.latency!=null?r.latency+' ms':'—'],
+        ['Scanned At',r.scanned_at||'—'],['Open Ports',ports.length],['Vulnerabilities',vulns.length],
+      ];
+      const cellW3=CW/3, cellH3=38;
+      infoItems.forEach(([lbl,val],i)=>{
+        const col3=i%3, row3=Math.floor(i/3);
+        if(col3===0&&row3>0) y=checkPage(y,cellH3);
+        const bx=ML+col3*cellW3, cy=y+row3*cellH3;
+        doc.setFillColor(249,250,251); doc.setDrawColor(229,231,235); doc.setLineWidth(0.4);
+        doc.roundedRect(bx+2,cy+2,cellW3-4,cellH3-4,4,4,'FD');
+        doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(156,163,175);
+        doc.text(lbl.toUpperCase(),bx+8,cy+13);
+        doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(17,24,39);
+        doc.text(String(val||'—'),bx+8,cy+28,{maxWidth:cellW3-16});
+      });
+      y += Math.ceil(infoItems.length/3)*cellH3+6;
+
+      // Ports table
+      y = sectionTitle(y,'Open Ports & Services',ports.length);
+      if(ports.length){
+        y=drawTable(y,['Port','Protocol','Service','Version / Product','Banner'],
+          ports.map(p=>[p.port,(p.protocol||'tcp').toUpperCase(),p.service||p.name||'—',[p.product,p.version].filter(Boolean).join(' ')||'—',p.banner||p.extra_info||'—']),
+          [44,56,80,130,CW-44-56-80-130]);
+      } else {
+        doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(156,163,175);
+        doc.text('No open ports detected.',ML+8,y+12); y+=22;
+      }
+
+      // Vulnerabilities
+      y = sectionTitle(y,'Vulnerabilities',vulns.length);
+      if(!vulns.length){
+        doc.setFillColor(240,253,244); doc.setDrawColor(187,247,208); doc.setLineWidth(0.5);
+        doc.roundedRect(ML,y,CW,26,5,5,'FD');
+        doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(22,163,74);
+        doc.text('✓  No vulnerabilities found — host appears clean.',ML+CW/2,y+16.5,{align:'center'}); y+=34;
+      } else {
+        // Severity summary boxes
+        const counts={CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0};
+        vulns.forEach(v=>{const k=(v.severity||'low').toUpperCase();if(counts[k]!==undefined)counts[k]++;});
+        const bxW=CW/4;
+        Object.entries(counts).forEach(([k,n],i)=>{
+          const [br,bg2,bb]=sevRgb(k), bx=ML+i*bxW;
+          doc.setFillColor(Math.min(255,br+210),Math.min(255,bg2+210),Math.min(255,bb+210));
+          doc.setDrawColor(br,bg2,bb); doc.setLineWidth(0.5);
+          doc.roundedRect(bx+2,y+2,bxW-4,38,4,4,'FD');
+          doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(br,bg2,bb);
+          doc.text(k,bx+bxW/2,y+14,{align:'center'});
+          doc.setFontSize(16); doc.text(String(n),bx+bxW/2,y+33,{align:'center'});
+        });
+        y+=48;
+        const sevOrder={critical:0,high:1,medium:2,low:3};
+        [...vulns].sort((a,b)=>(sevOrder[(a.severity||'low').toLowerCase()]??3)-(sevOrder[(b.severity||'low').toLowerCase()]??3))
+          .forEach(v=>{ y=vulnBlock(y,v); });
+      }
+
+      // Nikto
+      const nikto=r.nikto||r.nikto_results||r.nikto_output||{};
+      const niktoItems=Array.isArray(nikto)?nikto:(nikto.items||nikto.findings||nikto.results||[]);
+      y=sectionTitle(y,'Nikto Web Scanner',niktoItems.length);
+      if(!niktoItems.length){
+        doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(156,163,175);
+        const hasWeb=ports.find(p=>[80,443,8080,8443].includes(Number(p.port)));
+        doc.text(hasWeb?'Nikto scan returned no findings.':'No HTTP/HTTPS ports — Nikto not run.',ML+8,y+12); y+=22;
+      } else {
+        niktoItems.forEach(it=>{
+          const msg=it.msg||it.message||it.description||String(it);
+          const uri=it.url||it.uri||'';
+          const lines3=doc.splitTextToSize(msg,CW-20);
+          const bh3=14+lines3.length*10+(uri?12:0);
+          y=checkPage(y,bh3+6);
+          doc.setFillColor(249,250,251); doc.setDrawColor(229,231,235); doc.setLineWidth(0.4);
+          doc.roundedRect(ML,y,CW,bh3,3,3,'FD');
+          if(uri){ doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(37,99,235); doc.text(uri.slice(0,80),ML+8,y+11); }
+          doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(55,65,81);
+          doc.text(lines3,ML+8,y+(uri?22:12)); y+=bh3+6;
+        });
+      }
+    });
+
+    // ── PAGE FOOTERS ────────────────────────────────────────────────
+    const totalPages=doc.internal.getNumberOfPages();
+    for(let p=1;p<=totalPages;p++){
+      doc.setPage(p);
+      doc.setDrawColor(226,232,240); doc.setLineWidth(0.5); doc.line(ML,PH-24,PW-MR,PH-24);
+      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(156,163,175);
+      doc.text('VAPT Scanner Pro  —  Bulk IP Scan Report', ML, PH-14);
+      doc.text(`Page ${p} of ${totalPages}`, PW-MR, PH-14, {align:'right'});
+    }
+    doc.save(filename);
   }
 
   // ════════════════════════════════════════════════════════════════
@@ -4295,21 +4790,24 @@ ${niktoHTML}
     menu.classList.add('open');
   }
 
-  function _doExport(id, fmt) {
+  async function _doExport(id, fmt) {
     if (_exportMenuEl) _exportMenuEl.classList.remove('open');
+
     if (fmt === 'pdf') {
-      // PDF: find and open the session's PDF report
-      const h = allHistory.find(s => s.id === id);
-      if (h && h.results && h.results.length) {
-        // Open the PDF for the first IP; for multi-IP redirect to PDF
-        const firstIP = h.results[0].ip;
-        // Reuse the downloadIPReport mechanism via a temp modal state
-        currentIPSessionId = id;
-        currentIPAddr      = firstIP;
-        currentIPData      = h.results[0];
-        downloadIPReport('pdf');
-        return;
+      try {
+        const res  = await fetch(`/api/bulk/history/${id}`, { credentials: 'same-origin' });
+        const data = await res.json();
+        const h    = data.session;
+        if (h && h.results && h.results.length) {
+          const ips  = h.results.map(r => r.ip).filter(Boolean).join('_') || String(id);
+          _generateBulkPDF(h.results, h, `bulk-scan-${ips}.pdf`);
+        } else {
+          alert('No result data found for this session.');
+        }
+      } catch (e) {
+        alert('PDF export failed: ' + e.message);
       }
+      return;
     }
     exportSession(id, fmt);
   }
